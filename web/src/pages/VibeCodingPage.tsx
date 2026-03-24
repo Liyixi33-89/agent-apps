@@ -11,6 +11,14 @@ import type { Agent, Provider, ModelType, ChatMessage } from '../types';
 
 // ─── 类型 ──────────────────────────────────────────────────────────────────────
 
+interface PipelineStep {
+  step: number;
+  total: number;
+  title: string;
+  status: 'pending' | 'running' | 'done' | 'error';
+  content?: string;
+}
+
 interface VibeSession {
   sessionId: string;
   agentName: string;
@@ -22,6 +30,7 @@ interface CodeParts {
   html: string;
   css: string;
   js: string;
+  isFullHtml?: boolean;
 }
 
 type PreviewTab = 'preview' | 'code';
@@ -33,35 +42,90 @@ type CodeTab = 'html' | 'css' | 'js';
 const sanitizeHtml = (html: string): string =>
   html.replace(/\s+integrity="[^"]*"/gi, '').replace(/\s+integrity='[^']*'/gi, '');
 
-// 从 AI 输出中分别提取 HTML / CSS / JS 三段代码
+// 需要自动注入的 CDN 脚本/样式（如果 HTML 中已有则跳过）
+const CDN_INJECTIONS = [
+  { tag: 'script', attr: 'src', url: 'https://cdn.tailwindcss.com', check: 'tailwindcss.com' },
+  { tag: 'link', attr: 'href', url: 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css', check: 'font-awesome' },
+  { tag: 'script', attr: 'src', url: 'https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js', check: 'echarts' },
+];
+
+// 向完整 HTML 的 <head> 中注入缺失的 CDN，并修复内联脚本执行时序问题
+const injectCdnToFullHtml = (html: string): string => {
+  let result = html;
+
+  // 1. 注入缺失的 CDN 到 </head> 前
+  const headInjections: string[] = [];
+  for (const cdn of CDN_INJECTIONS) {
+    if (!result.includes(cdn.check)) {
+      if (cdn.tag === 'script') {
+        headInjections.push(`  <script src="${cdn.url}"><\/script>`);
+      } else {
+        headInjections.push(`  <link rel="stylesheet" href="${cdn.url}" crossorigin="anonymous" />`);
+      }
+    }
+  }
+  if (headInjections.length > 0) {
+    result = result.replace('</head>', `${headInjections.join('\n')}\n</head>`);
+  }
+
+  // 2. 将所有内联 <script>（非外链 src）的内容提取出来，
+  //    用 DOMContentLoaded 包裹后统一放到 </body> 前执行，
+  //    避免 CDN 未加载完 / DOM 未就绪时报 null 错误
+  const inlineScriptContents: string[] = [];
+  result = result.replace(
+    /<script(?![^>]*\bsrc\b)([^>]*)>([\s\S]*?)<\/script>/gi,
+    (_match, _attrs, content) => {
+      const trimmed = content.trim();
+      if (trimmed) inlineScriptContents.push(trimmed);
+      return ''; // 移除原位置的内联 script
+    }
+  );
+
+  if (inlineScriptContents.length > 0) {
+    const wrappedScript =
+      `<script>\ndocument.addEventListener('DOMContentLoaded', function() {\n` +
+      inlineScriptContents.join('\n\n') +
+      `\n});\n<\/script>`;
+    result = result.replace('</body>', `${wrappedScript}\n</body>`);
+  }
+
+  return result;
+};
+
+// 修复被截断的 HTML：自动补全缺失的闭合标签
+const repairTruncatedHtml = (html: string): string => {
+  let result = html.trim();
+  // 如果缺少 </body>，补全
+  if (!result.includes('</body>')) result += '\n</body>';
+  // 如果缺少 </html>，补全
+  if (!result.includes('</html>')) result += '\n</html>';
+  return result;
+};
+
+// 从 AI 输出中提取完整 HTML 或分段代码
 const extractCodeParts = (markdown: string): CodeParts => {
-  // 优先提取完整 HTML 文档，再从中拆分
+  // 优先提取完整 HTML 文档（保留所有 script/style 标签，不拆分）
   const fullHtmlMatch = markdown.match(/```html\n([\s\S]*?)```/i);
   const doctypeMatch = markdown.match(/(<!DOCTYPE[\s\S]*?<\/html>)/i);
 
-  const fullHtml = fullHtmlMatch?.[1] ?? doctypeMatch?.[1] ?? null;
+  // 降级处理：如果 HTML 被截断（没有结束的 ``` ），提取 ```html 之后的所有内容
+  const truncatedHtmlMatch = !fullHtmlMatch
+    ? markdown.match(/```html\n([\s\S]+)$/i)
+    : null;
 
-  if (fullHtml) {
-    // 从完整 HTML 中提取 <style> 和 <script> 内容
-    const styleMatch = fullHtml.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
-    const scriptMatch = fullHtml.match(/<script[^>]*>([\s\S]*?)<\/script>/i);
+  const rawHtml =
+    fullHtmlMatch?.[1] ??
+    doctypeMatch?.[1] ??
+    truncatedHtmlMatch?.[1] ??
+    null;
 
-    // 去掉 style 和 script 标签后剩余的 body 内容
-    let bodyContent = fullHtml
-      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
-
-    // 提取 <body> 内部内容
-    const bodyInner = bodyContent.match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1]?.trim() ?? bodyContent.trim();
-
-    return {
-      html: bodyInner,
-      css: styleMatch?.[1]?.trim() ?? '',
-      js: scriptMatch?.[1]?.trim() ?? '',
-    };
+  if (rawHtml) {
+    // 修复可能被截断的 HTML
+    const fullHtml = repairTruncatedHtml(rawHtml);
+    return { html: fullHtml, css: '', js: '', isFullHtml: true };
   }
 
-  // 分段提取
+  // 分段提取（无完整 HTML 时的降级处理）
   const cssMatch = markdown.match(/```css\n([\s\S]*?)```/i);
   const jsMatch = markdown.match(/```(?:js|javascript)\n([\s\S]*?)```/i);
   const bodyMatch = markdown.match(/```(?:html|jsx?)\n([\s\S]*?)```/i);
@@ -70,20 +134,27 @@ const extractCodeParts = (markdown: string): CodeParts => {
     html: bodyMatch?.[1]?.trim() ?? '',
     css: cssMatch?.[1]?.trim() ?? '',
     js: jsMatch?.[1]?.trim() ?? '',
+    isFullHtml: false,
   };
 };
 
 // 将 CodeParts 组合成完整可运行 HTML
-const buildHtmlFromParts = (parts: CodeParts): string =>
-  sanitizeHtml(`<!DOCTYPE html>
+const buildHtmlFromParts = (parts: CodeParts): string => {
+  // 完整 HTML 模式：直接注入 CDN 后渲染，不拆分重组（保留所有 script 标签）
+  if (parts.isFullHtml && parts.html) {
+    return sanitizeHtml(injectCdnToFullHtml(parts.html));
+  }
+
+  // 分段模式：手动组装
+  return sanitizeHtml(`<!DOCTYPE html>
 <html lang="zh">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Vibe UI Preview</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.tailwindcss.com"><\/script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" />
-  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"><\/script>
   ${parts.css ? `<style>\n${parts.css}\n</style>` : ''}
 </head>
 <body>
@@ -91,6 +162,7 @@ ${parts.html}
 ${parts.js ? `<script>\n${parts.js}\n<\/script>` : ''}
 </body>
 </html>`);
+};
 
 // 过滤掉 markdown 中的代码块，只保留文字说明
 const stripCodeBlocks = (markdown: string): string =>
@@ -179,10 +251,12 @@ const MessageBubble = ({
   msg,
   lang,
   isStreaming,
+  isContinuing,
 }: {
   msg: ChatMessage;
   lang: 'zh' | 'en';
   isStreaming?: boolean;
+  isContinuing?: boolean;
 }) => {
   if (msg.role === 'system') return null;
 
@@ -217,6 +291,12 @@ const MessageBubble = ({
           )}
           {isStreaming && !isUser && (
             <span className="inline-block w-1 h-3.5 bg-violet-400 ml-1 animate-pulse rounded-sm align-middle" />
+          )}
+          {isContinuing && isStreaming && !isUser && (
+            <span className="block mt-1.5 text-[10px] text-amber-400/80 flex items-center gap-1">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+              {lang === 'zh' ? '内容较长，正在续写...' : 'Content long, continuing...'}
+            </span>
           )}
         </div>
         <span className="text-[10px] text-gray-600 px-1">
@@ -260,7 +340,26 @@ const UIPreviewPanel = ({
   const [localParts, setLocalParts] = useState<CodeParts>({ html: '', css: '', js: '' });
 
   useEffect(() => {
-    if (codeParts) setLocalParts(codeParts);
+    if (!codeParts) return;
+    // isFullHtml 模式：从完整 HTML 中拆分 css/js 供代码面板展示
+    if (codeParts.isFullHtml && codeParts.html) {
+      const styleMatch = codeParts.html.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
+      // 提取所有 script 标签内容（排除外链 src 脚本）
+      const scriptContents: string[] = [];
+      const scriptRegex = /<script(?![^>]*\bsrc\b)[^>]*>([\s\S]*?)<\/script>/gi;
+      let m: RegExpExecArray | null;
+      while ((m = scriptRegex.exec(codeParts.html)) !== null) {
+        if (m[1].trim()) scriptContents.push(m[1].trim());
+      }
+      setLocalParts({
+        html: codeParts.html,
+        css: styleMatch?.[1]?.trim() ?? '',
+        js: scriptContents.join('\n\n'),
+        isFullHtml: true,
+      });
+    } else {
+      setLocalParts(codeParts);
+    }
   }, [codeParts]);
 
   // 写入 iframe
@@ -489,6 +588,9 @@ const VibeCodingPage = () => {
   const [session, setSession] = useState<VibeSession | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [streaming, setStreaming] = useState(false);
+  // 续写状态：记录当前是第几次续写（0 = 首次生成，>0 = 续写中）
+  const [continuationCount, setContinuationCount] = useState(0);
+  const [isContinuing, setIsContinuing] = useState(false);
 
   // 输入状态
   const [input, setInput] = useState('');
@@ -500,6 +602,11 @@ const VibeCodingPage = () => {
 
   // UI 预览状态
   const [codeParts, setCodeParts] = useState<CodeParts | null>(null);
+
+  // Pipeline 模式状态
+  const [pipelineMode, setPipelineMode] = useState(false);
+  const [pipelineSteps, setPipelineSteps] = useState<PipelineStep[]>([]);
+  const [pipelineRunning, setPipelineRunning] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -533,7 +640,126 @@ const VibeCodingPage = () => {
     setSession(null);
     setCodeParts(null);
     setInput('');
+    setContinuationCount(0);
+    setIsContinuing(false);
+    setPipelineSteps([]);
+    setPipelineRunning(false);
   }, [streaming]);
+
+  // ─── Pipeline 多 Agent 流水线 ────────────────────────────────────────────────
+
+  const handlePipeline = async () => {
+    const trimmed = input.trim();
+    if (!trimmed || pipelineRunning || streaming) return;
+
+    setInput('');
+    setPipelineRunning(true);
+    setPipelineSteps([]);
+
+    // 初始化 4 个步骤为 pending
+    const initialSteps: PipelineStep[] = [
+      { step: 1, total: 4, title: '📋 需求分析', status: 'pending' },
+      { step: 2, total: 4, title: '🎨 UI 设计', status: 'pending' },
+      { step: 3, total: 4, title: '⚙️ 业务逻辑', status: 'pending' },
+      { step: 4, total: 4, title: '🔧 整合优化', status: 'pending' },
+    ];
+    setPipelineSteps(initialSteps);
+
+    // 添加用户消息
+    const userMsg: ChatMessage = {
+      role: 'user',
+      content: trimmed,
+      timestamp: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, userMsg]);
+
+    abortRef.current = new AbortController();
+
+    try {
+      const response = await fetch('/api/vibe/pipeline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: trimmed, provider, modelType }),
+        signal: abortRef.current.signal,
+      });
+
+      const reader = response.body?.getReader();
+      if (!reader) return;
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const parsed = JSON.parse(line.slice(6));
+
+            if (parsed.type === 'step') {
+              // 更新对应步骤状态
+              setPipelineSteps((prev) =>
+                prev.map((s) =>
+                  s.step === parsed.step
+                    ? { ...s, title: parsed.title, status: parsed.status, content: parsed.content }
+                    : s
+                )
+              );
+            } else if (parsed.type === 'done' && parsed.content) {
+              // 最终结果：提取代码并渲染
+              const parts = extractCodeParts(parsed.content);
+              if (parts.html || parts.css || parts.js || parts.isFullHtml) {
+                setCodeParts(parts);
+              }
+              // 添加 AI 消息（显示分析报告摘要）
+              const analysisPreview = parsed.analysis
+                ? parsed.analysis.slice(0, 300) + (parsed.analysis.length > 300 ? '...' : '')
+                : '';
+              setMessages((prev) => [
+                ...prev,
+                {
+                  role: 'assistant' as const,
+                  content: `✅ Pipeline 完成！已通过 4 个 Agent 协作生成完整应用。\n\n${analysisPreview}`,
+                  timestamp: new Date().toISOString(),
+                  provider,
+                },
+              ]);
+            } else if (parsed.type === 'error') {
+              setMessages((prev) => [
+                ...prev,
+                {
+                  role: 'assistant' as const,
+                  content: `❌ Pipeline 失败：${parsed.message}`,
+                  timestamp: new Date().toISOString(),
+                },
+              ]);
+            }
+          } catch {
+            // 忽略解析错误
+          }
+        }
+      }
+    } catch (err: any) {
+      if (err.name !== 'AbortError') {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: 'assistant' as const,
+            content: lang === 'zh' ? '❌ Pipeline 执行失败，请检查服务连接' : '❌ Pipeline failed',
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+      }
+    } finally {
+      setPipelineRunning(false);
+    }
+  };
 
   // ─── 创建或复用会话 ──────────────────────────────────────────────────────────
 
@@ -579,6 +805,8 @@ const VibeCodingPage = () => {
     setMessages((prev) => [...prev, aiMsg]);
 
     abortRef.current = new AbortController();
+    setContinuationCount(0);
+    setIsContinuing(false);
 
     try {
       const currentSession = await ensureSession();
@@ -612,16 +840,25 @@ const VibeCodingPage = () => {
           if (!line.startsWith('data: ')) continue;
           try {
             const parsed = JSON.parse(line.slice(6));
-            if (parsed.type === 'delta') {
-              fullContent += parsed.delta;
-              setMessages((prev) => {
-                const updated = [...prev];
-                updated[updated.length - 1] = {
-                  ...updated[updated.length - 1],
-                  content: fullContent,
-                };
-                return updated;
-              });
+          if (parsed.type === 'delta') {
+              // 空 delta 且非 done 表示续写开始
+              if (parsed.delta === '' || parsed.delta === undefined) {
+                setContinuationCount((c) => {
+                  const next = c + 1;
+                  setIsContinuing(next > 0);
+                  return next;
+                });
+              } else {
+                fullContent += parsed.delta;
+                setMessages((prev) => {
+                  const updated = [...prev];
+                  updated[updated.length - 1] = {
+                    ...updated[updated.length - 1],
+                    content: fullContent,
+                  };
+                  return updated;
+                });
+              }
             }
           } catch {
             // 忽略解析错误
@@ -631,7 +868,7 @@ const VibeCodingPage = () => {
 
       // 提取 HTML / CSS / JS 三段代码
       const parts = extractCodeParts(fullContent);
-      if (parts.html || parts.css || parts.js) {
+      if (parts.html || parts.css || parts.js || parts.isFullHtml) {
         setCodeParts(parts);
       }
 
@@ -658,6 +895,8 @@ const VibeCodingPage = () => {
       }
     } finally {
       setStreaming(false);
+      setIsContinuing(false);
+      setContinuationCount(0);
     }
   };
 
@@ -870,6 +1109,22 @@ const VibeCodingPage = () => {
             {modelType === 'vision' ? <Eye className="w-3 h-3" /> : <MessageSquare className="w-3 h-3" />}
             {modelType === 'vision' ? 'Vision' : 'Text'}
           </button>
+
+          {/* Pipeline 模式切换 */}
+          <button
+            className={`btn-ghost text-[10px] flex items-center gap-1 px-2 py-1.5 rounded-lg flex-shrink-0 transition-colors ${
+              pipelineMode
+                ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
+                : 'bg-gray-800/60 text-gray-500 hover:text-amber-400'
+            }`}
+            onClick={() => setPipelineMode((v) => !v)}
+            aria-label="切换 Pipeline 模式"
+            tabIndex={0}
+            title={lang === 'zh' ? 'Pipeline 模式：多 Agent 协作生成完整应用' : 'Pipeline: Multi-Agent collaboration'}
+          >
+            <Zap className="w-3 h-3" />
+            Pipeline
+          </button>
         </div>
 
         {/* 消息列表 */}
@@ -888,8 +1143,45 @@ const VibeCodingPage = () => {
                   msg={msg}
                   lang={lang}
                   isStreaming={streaming && idx === messages.length - 1 && msg.role === 'assistant'}
+                  isContinuing={isContinuing && idx === messages.length - 1 && msg.role === 'assistant'}
                 />
               ))}
+
+              {/* Pipeline 进度卡片 */}
+              {pipelineSteps.length > 0 && (
+                <div className="bg-gray-800/60 border border-amber-500/20 rounded-xl p-3 space-y-2">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Zap className="w-3.5 h-3.5 text-amber-400" />
+                    <span className="text-xs font-medium text-amber-400">
+                      {lang === 'zh' ? 'Multi-Agent Pipeline 执行中' : 'Multi-Agent Pipeline Running'}
+                    </span>
+                  </div>
+                  {pipelineSteps.map((step) => (
+                    <div key={step.step} className="flex items-center gap-2.5">
+                      <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold ${
+                        step.status === 'done'    ? 'bg-emerald-500/20 text-emerald-400' :
+                        step.status === 'running' ? 'bg-amber-500/20 text-amber-400' :
+                        step.status === 'error'   ? 'bg-red-500/20 text-red-400' :
+                        'bg-gray-700 text-gray-600'
+                      }`}>
+                        {step.status === 'done'    ? '✓' :
+                         step.status === 'running' ? <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping inline-block" /> :
+                         step.status === 'error'   ? '×' :
+                         step.step}
+                      </div>
+                      <span className={`text-xs ${
+                        step.status === 'done'    ? 'text-gray-400' :
+                        step.status === 'running' ? 'text-amber-300 font-medium' :
+                        step.status === 'error'   ? 'text-red-400' :
+                        'text-gray-600'
+                      }`}>
+                        {step.title}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <div ref={messagesEndRef} />
             </>
           )}
@@ -912,7 +1204,7 @@ const VibeCodingPage = () => {
               aria-label="输入 UI 描述"
               rows={1}
             />
-            {streaming ? (
+            {streaming || pipelineRunning ? (
               <button
                 className="flex-shrink-0 w-7 h-7 rounded-lg bg-red-600 hover:bg-red-500 flex items-center justify-center transition-colors"
                 onClick={handleStop}
@@ -920,6 +1212,17 @@ const VibeCodingPage = () => {
                 tabIndex={0}
               >
                 <span className="w-2.5 h-2.5 bg-white rounded-sm" />
+              </button>
+            ) : pipelineMode ? (
+              <button
+                className="flex-shrink-0 h-7 px-2.5 rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 transition-colors"
+                onClick={handlePipeline}
+                disabled={!input.trim()}
+                aria-label="Pipeline 生成"
+                tabIndex={0}
+              >
+                <Zap className="w-3 h-3 text-white" />
+                <span className="text-[10px] text-white font-medium">Run</span>
               </button>
             ) : (
               <button

@@ -16,6 +16,8 @@ export interface LLMResponse {
 export interface LLMStreamChunk {
   delta: string;
   done: boolean;
+  /** 'stop' = 正常结束, 'length' = token 超出, undefined = 未结束 */
+  finishReason?: 'stop' | 'length' | string;
 }
 
 // ─── Ollama 调用 ───────────────────────────────────────────────────────────────
@@ -85,8 +87,8 @@ export const streamOllama = async function* (
 
   const response = await axios.post(
     url,
-    { model, messages, stream: true },
-    { responseType: 'stream', timeout: 120_000 }
+    { model, messages, stream: true, num_predict: 16384 },
+    { responseType: 'stream', timeout: 180_000 }
   );
 
   let buffer = '';
@@ -101,7 +103,9 @@ export const streamOllama = async function* (
         const parsed = JSON.parse(line);
         const delta = parsed?.message?.content || '';
         const done = parsed?.done === true;
-        yield { delta, done };
+        // Ollama 通过 done_reason 标识结束原因（'stop' | 'length'）
+        const finishReason: string | undefined = done ? (parsed?.done_reason || 'stop') : undefined;
+        yield { delta, done, finishReason };
         if (done) return;
       } catch {
         // 忽略解析错误
@@ -121,14 +125,14 @@ export const streamCodeBuddy = async function* (
 
   const response = await axios.post(
     url,
-    { model, messages, stream: true },
+    { model, messages, stream: true, max_tokens: 16384 },
     {
       headers: {
         Authorization: `Bearer ${env.codebuddyApiKey}`,
         'Content-Type': 'application/json'
       },
       responseType: 'stream',
-      timeout: 120_000
+      timeout: 180_000
     }
   );
 
@@ -144,8 +148,10 @@ export const streamCodeBuddy = async function* (
       try {
         const parsed = JSON.parse(dataLine);
         const delta = parsed?.choices?.[0]?.delta?.content || '';
-        const done = parsed?.choices?.[0]?.finish_reason === 'stop';
-        yield { delta, done };
+        const rawFinishReason: string | null = parsed?.choices?.[0]?.finish_reason ?? null;
+        const done = rawFinishReason === 'stop' || rawFinishReason === 'length';
+        const finishReason: string | undefined = rawFinishReason ?? undefined;
+        yield { delta, done, finishReason };
         if (done) return;
       } catch {
         // 忽略解析错误
