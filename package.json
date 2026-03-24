@@ -1,0 +1,24 @@
+{
+  "name": "agency-agents-platform",
+  "private": true,
+  "version": "2.0.0",
+  "workspaces": [
+    "server",
+    "web",
+    "admin"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:web\" \"npm run dev:admin\"",
+    "dev:server": "npm --workspace @agency/server run dev",
+    "dev:web": "npm --workspace @agency/web run dev",
+    "dev:admin": "npm --workspace @agency/admin run dev",
+    "start:server": "npm --workspace @agency/server run start",
+    "build:web": "npm --workspace @agency/web run build",
+    "build:admin": "npm --workspace @agency/admin run build",
+    "import:agents": "npm --workspace @agency/server run import:agents",
+    "type-check": "concurrently \"npm --workspace @agency/server run type-check\" \"npm --workspace @agency/web run type-check\" \"npm --workspace @agency/admin run type-check\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
