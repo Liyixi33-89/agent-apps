@@ -49,11 +49,13 @@ const CDN_INJECTIONS = [
   { tag: 'script', attr: 'src', url: 'https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js', check: 'echarts' },
 ];
 
-// 向完整 HTML 的 <head> 中注入缺失的 CDN，并修复内联脚本执行时序问题
+// 向完整 HTML 的 <head> 中注入缺失的 CDN
+// 注意：不移动、不包裹任何 <script> 标签，保持原始执行顺序
+// 浏览器会按 HTML 文档顺序依次加载 CDN → 执行内联 JS，时序天然正确
 const injectCdnToFullHtml = (html: string): string => {
   let result = html;
 
-  // 1. 注入缺失的 CDN 到 </head> 前
+  // 注入缺失的 CDN 到 </head> 前（外链 CDN 在内联 script 之前，保证库先加载）
   const headInjections: string[] = [];
   for (const cdn of CDN_INJECTIONS) {
     if (!result.includes(cdn.check)) {
@@ -65,28 +67,12 @@ const injectCdnToFullHtml = (html: string): string => {
     }
   }
   if (headInjections.length > 0) {
-    result = result.replace('</head>', `${headInjections.join('\n')}\n</head>`);
-  }
-
-  // 2. 将所有内联 <script>（非外链 src）的内容提取出来，
-  //    用 DOMContentLoaded 包裹后统一放到 </body> 前执行，
-  //    避免 CDN 未加载完 / DOM 未就绪时报 null 错误
-  const inlineScriptContents: string[] = [];
-  result = result.replace(
-    /<script(?![^>]*\bsrc\b)([^>]*)>([\s\S]*?)<\/script>/gi,
-    (_match, _attrs, content) => {
-      const trimmed = content.trim();
-      if (trimmed) inlineScriptContents.push(trimmed);
-      return ''; // 移除原位置的内联 script
+    if (result.includes('</head>')) {
+      result = result.replace('</head>', `${headInjections.join('\n')}\n</head>`);
+    } else {
+      // 没有 </head> 时，插到 <body> 前
+      result = headInjections.join('\n') + '\n' + result;
     }
-  );
-
-  if (inlineScriptContents.length > 0) {
-    const wrappedScript =
-      `<script>\ndocument.addEventListener('DOMContentLoaded', function() {\n` +
-      inlineScriptContents.join('\n\n') +
-      `\n});\n<\/script>`;
-    result = result.replace('</body>', `${wrappedScript}\n</body>`);
   }
 
   return result;
@@ -334,7 +320,6 @@ const UIPreviewPanel = ({
   const [copied, setCopied] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [iframeKey, setIframeKey] = useState(0);
 
   // 本地编辑状态（与父组件同步）
   const [localParts, setLocalParts] = useState<CodeParts>({ html: '', css: '', js: '' });
@@ -362,31 +347,41 @@ const UIPreviewPanel = ({
     }
   }, [codeParts]);
 
-  // 写入 iframe
+  // 写入 iframe —— 使用 Blob URL 方式，让浏览器完整解析 HTML 文档
+  // 相比 doc.write()，Blob URL 能保证：
+  //   1. 外链 CDN script 按顺序加载完毕后，内联 script 才执行
+  //   2. DOMContentLoaded 在所有同步 script 执行完后触发
+  //   3. 不会因 doc.write() 的同步写入导致脚本执行时序混乱
   const writeToIframe = useCallback((html: string) => {
     if (!iframeRef.current) return;
-    const doc = iframeRef.current.contentDocument;
-    if (doc) {
-      doc.open();
-      doc.write(html);
-      doc.close();
+    // 释放上一个 Blob URL（避免内存泄漏）
+    const prevSrc = iframeRef.current.src;
+    if (prevSrc && prevSrc.startsWith('blob:')) {
+      URL.revokeObjectURL(prevSrc);
     }
+    const blob = new Blob([html], { type: 'text/html; charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    iframeRef.current.src = url;
   }, []);
 
+  // codeParts 变化时（新内容生成）自动渲染到 iframe
   useEffect(() => {
     if (codeParts) {
       writeToIframe(buildHtmlFromParts(codeParts));
     }
-  }, [codeParts, iframeKey, writeToIframe]);
+  }, [codeParts, writeToIframe]);
 
   const handleRun = () => {
+    // 用本地编辑后的 parts 渲染，同时同步到父组件
     onCodePartsChange(localParts);
     writeToIframe(buildHtmlFromParts(localParts));
     setActiveTab('preview');
-    setIframeKey((k) => k + 1);
   };
 
-  const handleRefresh = () => setIframeKey((k) => k + 1);
+  // 刷新：用当前 localParts 重新渲染（而非旧的 codeParts）
+  const handleRefresh = () => {
+    writeToIframe(buildHtmlFromParts(localParts));
+  };
 
   const handleCopy = async () => {
     const text = activeTab === 'preview'
@@ -495,7 +490,6 @@ const UIPreviewPanel = ({
           {hasContent ? (
             <iframe
               ref={iframeRef}
-              key={iframeKey}
               className="w-full h-full border-0 bg-white"
               title="UI Preview"
               sandbox="allow-scripts allow-same-origin"
