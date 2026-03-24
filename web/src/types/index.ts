@@ -123,3 +123,16 @@ export interface OverviewStats {
 export type Provider = 'ollama' | 'codebuddy';
 export type ModelType = 'text' | 'vision';
 export type Lang = 'zh' | 'en';
+
+export interface SystemPrompt {
+  _id: string;
+  key: string;
+  category: 'vibe' | 'pipeline';
+  name: string;
+  description: string;
+  content: string;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}

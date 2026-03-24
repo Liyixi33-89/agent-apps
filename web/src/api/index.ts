@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Agent, Category, Pipeline, ChatSession, KnowledgeBase, OverviewStats, Provider, ModelType, Lang } from '../types';
+import type { Agent, Category, Pipeline, ChatSession, KnowledgeBase, OverviewStats, Provider, ModelType, Lang, SystemPrompt } from '../types';
 
 const api = axios.create({ baseURL: '/api', timeout: 60_000 });
 
@@ -94,5 +94,62 @@ export const vibeGenerate = async (params: { prompt: string; agentSlug?: string;
 
 export const triggerIngest = async () => {
   const { data } = await api.post<{ success: boolean; data: { totalAgents: number; totalCategories: number } }>('/ingest');
+  return data.data;
+};
+
+// ─── Admin Prompts（需要 Authorization: Bearer <token>）────────────────────────
+
+const adminApi = axios.create({ baseURL: '/api/admin', timeout: 30_000 });
+
+const setAdminToken = (token: string) => {
+  adminApi.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+};
+
+export const adminLogin = async (username: string, password: string) => {
+  const { data } = await adminApi.post<{ success: boolean; data: { token: string; username: string; role: string } }>('/login', { username, password });
+  if (data.success) setAdminToken(data.data.token);
+  return data.data;
+};
+
+export const fetchAdminDashboard = async () => {
+  const { data } = await adminApi.get<{
+    success: boolean;
+    data: {
+      stats: { agentCount: number; categoryCount: number; pipelineCount: number; knowledgeCount: number; chatCount: number };
+      recentChats: Array<{ _id: string; sessionId: string; agentName?: string; updatedAt: string }>;
+      provider: { active: string; ollama: string; codebuddy: string };
+    };
+  }>('/dashboard');
+  return data.data;
+};
+
+export const initAdminToken = (token: string) => setAdminToken(token);
+
+export const fetchAdminPrompts = async (category?: 'vibe' | 'pipeline') => {
+  const { data } = await adminApi.get<{ success: boolean; data: SystemPrompt[] }>('/prompts', { params: category ? { category } : {} });
+  return data.data;
+};
+
+export const fetchAdminPrompt = async (key: string) => {
+  const { data } = await adminApi.get<{ success: boolean; data: SystemPrompt }>(`/prompts/${key}`);
+  return data.data;
+};
+
+export const createAdminPrompt = async (payload: Omit<SystemPrompt, '_id' | 'createdAt' | 'updatedAt'>) => {
+  const { data } = await adminApi.post<{ success: boolean; data: SystemPrompt }>('/prompts', payload);
+  return data.data;
+};
+
+export const updateAdminPrompt = async (key: string, payload: Partial<Omit<SystemPrompt, '_id' | 'key' | 'createdAt' | 'updatedAt'>>) => {
+  const { data } = await adminApi.put<{ success: boolean; data: SystemPrompt }>(`/prompts/${key}`, payload);
+  return data.data;
+};
+
+export const deleteAdminPrompt = async (key: string) => {
+  await adminApi.delete(`/prompts/${key}`);
+};
+
+export const seedAdminPrompts = async (force = false) => {
+  const { data } = await adminApi.post<{ success: boolean; data: Array<{ key: string; action: string }> }>('/prompts/seed', { force });
   return data.data;
 };

@@ -95,3 +95,44 @@ export const fetchSettings = async () => {
   const { data } = await api.get('/settings');
   return data.data;
 };
+
+// ─── 提示词管理 ────────────────────────────────────────────────────────────────
+
+export interface SystemPrompt {
+  _id: string;
+  key: string;
+  category: 'vibe' | 'pipeline';
+  name: string;
+  description: string;
+  content: string;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const fetchAdminPrompts = async (category?: string) => {
+  const { data } = await api.get<{ success: boolean; data: SystemPrompt[] }>('/prompts', {
+    params: category ? { category } : undefined,
+  });
+  return data.data;
+};
+
+export const createAdminPrompt = async (body: Omit<SystemPrompt, '_id' | 'createdAt' | 'updatedAt'>) => {
+  const { data } = await api.post<{ success: boolean; data: SystemPrompt }>('/prompts', body);
+  return data.data;
+};
+
+export const updateAdminPrompt = async (key: string, body: Partial<Omit<SystemPrompt, '_id' | 'key' | 'createdAt' | 'updatedAt'>>) => {
+  const { data } = await api.put<{ success: boolean; data: SystemPrompt }>(`/prompts/${key}`, body);
+  return data.data;
+};
+
+export const deleteAdminPrompt = async (key: string) => {
+  await api.delete(`/prompts/${key}`);
+};
+
+export const seedAdminPrompts = async (force = false) => {
+  const { data } = await api.post<{ success: boolean; data: Array<{ key: string; action: string }> }>('/prompts/seed', { force });
+  return data.data;
+};

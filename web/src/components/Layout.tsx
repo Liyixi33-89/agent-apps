@@ -1,16 +1,16 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Bot, Zap, MessageSquare, BookOpen, GitBranch, Home, Menu, X, Globe, Cpu } from 'lucide-react';
+import { Bot, Zap, MessageSquare, BookOpen, GitBranch, Home, Menu, X, Globe, Cpu, ShieldCheck } from 'lucide-react';
 import clsx from 'clsx';
 import { useAppStore } from '../store';
 
 const navItems = [
-  { path: '/', label: { zh: '首页', en: 'Home' }, icon: Home },
-  { path: '/agents', label: { zh: 'Agent 库', en: 'Agents' }, icon: Bot },
-  { path: '/vibe', label: { zh: 'Vibe Coding', en: 'Vibe Coding' }, icon: Zap },
-  { path: '/chat', label: { zh: '对话', en: 'Chat' }, icon: MessageSquare },
-  { path: '/knowledge', label: { zh: '知识库', en: 'Knowledge' }, icon: BookOpen },
-  { path: '/pipelines', label: { zh: '流水线', en: 'Pipelines' }, icon: GitBranch }
+  { path: '/',          label: { zh: '首页',       en: 'Home' },      icon: Home },
+  { path: '/agents',   label: { zh: 'Agent 库',   en: 'Agents' },    icon: Bot },
+  { path: '/vibe',     label: { zh: 'Vibe Coding', en: 'Vibe Coding' }, icon: Zap },
+  { path: '/chat',     label: { zh: '对话',        en: 'Chat' },      icon: MessageSquare },
+  { path: '/knowledge',label: { zh: '知识库',      en: 'Knowledge' }, icon: BookOpen },
+  { path: '/pipelines',label: { zh: '流水线',      en: 'Pipelines' }, icon: GitBranch },
 ];
 
 interface LayoutProps {
@@ -101,6 +101,19 @@ const Layout = ({ children }: LayoutProps) => {
             <Globe className="w-3.5 h-3.5" />
             <span>{lang === 'zh' ? '中文' : 'English'}</span>
           </button>
+
+          {/* 管理后台入口 */}
+          <a
+            href="http://127.0.0.1:5174/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-500 hover:text-violet-400 hover:bg-violet-900/20 transition-colors"
+            aria-label="管理后台"
+            tabIndex={0}
+          >
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span>管理后台</span>
+          </a>
         </div>
       </aside>
 

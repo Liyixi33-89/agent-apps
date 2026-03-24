@@ -8,6 +8,7 @@ import KnowledgeAdminPage from './pages/KnowledgeAdminPage';
 import PipelinesAdminPage from './pages/PipelinesAdminPage';
 import ChatsAdminPage from './pages/ChatsAdminPage';
 import SettingsPage from './pages/SettingsPage';
+import PromptsAdminPage from './pages/PromptsAdminPage';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { isAuthenticated } = useAdminStore();
@@ -30,6 +31,7 @@ const App = () => {
                 <Route path="/pipelines" element={<PipelinesAdminPage />} />
                 <Route path="/chats" element={<ChatsAdminPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/prompts" element={<PromptsAdminPage />} />
               </Routes>
             </AdminLayout>
           </ProtectedRoute>
