@@ -8,6 +8,8 @@
     "start": "node dist/index.js",
     "build": "tsc",
     "import:agents": "tsx src/scripts/importAgents.ts",
+    "seed": "tsx src/scripts/seed.ts",
+    "export": "tsx src/scripts/export.ts",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {

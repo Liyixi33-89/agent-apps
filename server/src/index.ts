@@ -1,10 +1,20 @@
 import Koa from 'koa';
 import cors from '@koa/cors';
 import bodyParser from 'koa-bodyparser';
+import path from 'node:path';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { env } from './config/env.js';
 import { connectToMongo, disconnectFromMongo } from './db/mongo.js';
 import { agentsRouter } from './routes/agents.js';
 import { adminRouter } from './routes/admin.js';
+import { Agent } from './models/Agent.js';
+import { KnowledgeBase } from './models/KnowledgeBase.js';
+import { ingestAgentsFromMarkdown, ingestKnowledgeFromAgents } from './services/agentIngestionService.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const AGENTS_JSON = path.resolve(__dirname, '..', 'seed-data', 'agents.json');
 
 const app = new Koa();
 
@@ -49,8 +59,67 @@ app.use(adminRouter.allowedMethods());
 
 // ─── 启动 ──────────────────────────────────────────────────────────────────────
 
+// ─── 自动初始化：数据库为空时自动 seed ────────────────────────────────────────
+
+const autoSeedIfEmpty = async () => {
+  const agentCount = await Agent.countDocuments();
+  if (agentCount > 0) {
+    console.log(`📦 数据库已有 ${agentCount} 个 Agent，跳过自动初始化`);
+    return;
+  }
+
+  console.log('🌱 数据库为空，开始自动初始化数据...');
+
+  try {
+    const hasJsonFile = fs.existsSync(AGENTS_JSON);
+
+    if (hasJsonFile) {
+      // 优先：从 JSON 文件导入（线上部署/他人使用）
+      console.log(`� 从 JSON 文件导入 Agent: ${AGENTS_JSON}`);
+      const rawData = fs.readFileSync(AGENTS_JSON, 'utf-8');
+      const agents: Record<string, unknown>[] = JSON.parse(rawData);
+      for (const agentData of agents) {
+        const slug = agentData.slug as string;
+        if (slug) {
+          await Agent.findOneAndUpdate(
+            { slug },
+            { $set: agentData },
+            { upsert: true, new: true, setDefaultsOnInsert: true }
+          );
+        }
+      }
+      console.log(`✅ Agent 导入完成：${agents.length} 个`);
+    } else {
+      // 回退：从 Markdown 扫描（本地开发）
+      console.log(`📁 从 Markdown 扫描 Agent: ${env.ingestRoot}`);
+      const agentResult = await ingestAgentsFromMarkdown(env.ingestRoot, true);
+      if (agentResult.totalAgents === 0) {
+        console.warn('⚠️  未找到数据源，自动初始化跳过');
+        console.warn(`   - JSON 文件路径: ${AGENTS_JSON}`);
+        console.warn(`   - Markdown 路径: ${env.ingestRoot}`);
+        return;
+      }
+      console.log(`✅ Agent 同步完成：${agentResult.totalAgents} 个（新建 ${agentResult.created}）`);
+    }
+
+    // 生成知识库
+    const knowledgeCount = await KnowledgeBase.countDocuments();
+    if (knowledgeCount === 0) {
+      const knowledgeResult = await ingestKnowledgeFromAgents();
+      console.log(`✅ 知识库生成完成：${knowledgeResult.totalChunks} 个知识块`);
+    }
+
+    console.log('🎉 自动初始化完成！');
+  } catch (err) {
+    console.error('❌ 自动初始化失败（不影响服务启动）:', err);
+  }
+};
+
 const bootstrap = async () => {
   await connectToMongo();
+
+  // 自动检测并初始化数据
+  await autoSeedIfEmpty();
 
   const server = app.listen(env.port, () => {
     console.log(`🚀 Agency Agents Platform v2.0 running on http://127.0.0.1:${env.port}`);
