@@ -32,23 +32,23 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-sky-50 via-slate-50 to-indigo-50 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="w-16 h-16 rounded-2xl bg-sky-600 flex items-center justify-center mx-auto mb-4">
+          <div className="w-16 h-16 rounded-2xl bg-sky-600 flex items-center justify-center mx-auto mb-4 shadow-lg shadow-sky-200">
             <Bot className="w-9 h-9 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-white">Agency Agents</h1>
-          <p className="text-gray-400 text-sm mt-1">管理后台</p>
+          <h1 className="text-2xl font-bold text-slate-800">Agency Agents</h1>
+          <p className="text-slate-400 text-sm mt-1">管理后台</p>
         </div>
 
         {/* 登录表单 */}
-        <form onSubmit={handleLogin} className="card space-y-4">
+        <form onSubmit={handleLogin} className="bg-white rounded-2xl border border-slate-200 shadow-xl shadow-slate-100 p-6 space-y-4">
           <div>
-            <label className="text-xs text-gray-400 mb-1.5 block">用户名</label>
+            <label className="text-xs font-medium text-slate-500 mb-1.5 block">用户名</label>
             <div className="relative">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 type="text"
                 className="input pl-9"
@@ -62,9 +62,9 @@ const LoginPage = () => {
           </div>
 
           <div>
-            <label className="text-xs text-gray-400 mb-1.5 block">密码</label>
+            <label className="text-xs font-medium text-slate-500 mb-1.5 block">密码</label>
             <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 type={showPassword ? 'text' : 'password'}
                 className="input pl-9 pr-9"
@@ -76,7 +76,7 @@ const LoginPage = () => {
               />
               <button
                 type="button"
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
                 onClick={() => setShowPassword(!showPassword)}
                 aria-label={showPassword ? '隐藏密码' : '显示密码'}
               >
@@ -86,7 +86,7 @@ const LoginPage = () => {
           </div>
 
           {error && (
-            <div className="text-xs text-red-400 bg-red-900/20 border border-red-800/50 rounded-lg px-3 py-2">
+            <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
               {error}
             </div>
           )}
@@ -104,7 +104,7 @@ const LoginPage = () => {
             {loading ? '登录中...' : '登录'}
           </button>
 
-          <p className="text-xs text-gray-600 text-center">
+          <p className="text-xs text-slate-400 text-center">
             首次登录将自动创建管理员账号
           </p>
         </form>

@@ -6,20 +6,20 @@ import { useAppStore } from '../store';
 import type { Agent, Category } from '../types';
 
 const colorMap: Record<string, string> = {
-  sky: 'bg-sky-600/20 text-sky-400 border-sky-600/30',
-  violet: 'bg-violet-600/20 text-violet-400 border-violet-600/30',
-  emerald: 'bg-emerald-600/20 text-emerald-400 border-emerald-600/30',
-  rose: 'bg-rose-600/20 text-rose-400 border-rose-600/30',
-  amber: 'bg-amber-600/20 text-amber-400 border-amber-600/30',
-  pink: 'bg-pink-600/20 text-pink-400 border-pink-600/30',
-  cyan: 'bg-cyan-600/20 text-cyan-400 border-cyan-600/30',
-  orange: 'bg-orange-600/20 text-orange-400 border-orange-600/30',
-  lime: 'bg-lime-600/20 text-lime-400 border-lime-600/30',
-  indigo: 'bg-indigo-600/20 text-indigo-400 border-indigo-600/30',
-  teal: 'bg-teal-600/20 text-teal-400 border-teal-600/30',
-  blue: 'bg-blue-600/20 text-blue-400 border-blue-600/30',
-  fuchsia: 'bg-fuchsia-600/20 text-fuchsia-400 border-fuchsia-600/30',
-  slate: 'bg-slate-600/20 text-slate-400 border-slate-600/30'
+  sky: 'bg-sky-50 text-sky-600 border-sky-200',
+  violet: 'bg-violet-50 text-violet-600 border-violet-200',
+  emerald: 'bg-emerald-50 text-emerald-600 border-emerald-200',
+  rose: 'bg-rose-50 text-rose-600 border-rose-200',
+  amber: 'bg-amber-50 text-amber-600 border-amber-200',
+  pink: 'bg-pink-50 text-pink-600 border-pink-200',
+  cyan: 'bg-cyan-50 text-cyan-600 border-cyan-200',
+  orange: 'bg-orange-50 text-orange-600 border-orange-200',
+  lime: 'bg-lime-50 text-lime-600 border-lime-200',
+  indigo: 'bg-indigo-50 text-indigo-600 border-indigo-200',
+  teal: 'bg-teal-50 text-teal-600 border-teal-200',
+  blue: 'bg-blue-50 text-blue-600 border-blue-200',
+  fuchsia: 'bg-fuchsia-50 text-fuchsia-600 border-fuchsia-200',
+  slate: 'bg-slate-100 text-slate-600 border-slate-200'
 };
 
 const AgentCard = ({ agent, lang }: { agent: Agent; lang: 'zh' | 'en' }) => {
@@ -29,15 +29,15 @@ const AgentCard = ({ agent, lang }: { agent: Agent; lang: 'zh' | 'en' }) => {
       to={`/agents/${agent.slug}`}
       className="card-hover group animate-fade-in"
     >
-      <div className="flex items-start gap-3">
+        <div className="flex items-start gap-3">
         <div className={`w-10 h-10 rounded-lg border flex items-center justify-center text-xl flex-shrink-0 ${colorClass}`}>
           {agent.emoji}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="font-semibold text-gray-100 text-sm truncate group-hover:text-sky-400 transition-colors">
+          <div className="font-semibold text-slate-800 text-sm truncate group-hover:text-sky-600 transition-colors">
             {lang === 'zh' ? agent.name.zh : agent.name.en}
           </div>
-          <div className="text-xs text-gray-500 mt-0.5 line-clamp-2">
+          <div className="text-xs text-slate-500 mt-0.5 line-clamp-2">
             {lang === 'zh' ? agent.description.zh : agent.description.en}
           </div>
         </div>
@@ -46,7 +46,7 @@ const AgentCard = ({ agent, lang }: { agent: Agent; lang: 'zh' | 'en' }) => {
         <span className={`badge border ${colorClass} text-xs`}>
           {agent.categoryKey}
         </span>
-        <span className="badge bg-gray-800 text-gray-500 text-xs">
+        <span className="badge bg-slate-100 text-slate-500 text-xs">
           {agent.modelPreferences.primary === 'vision' ? '👁️ Vision' : '💬 Text'}
         </span>
       </div>
@@ -64,13 +64,13 @@ const CategoryCard = ({ category, lang }: { category: Category; lang: 'zh' | 'en
       <div className={`w-10 h-10 rounded-lg border flex items-center justify-center text-xl flex-shrink-0 ${colorClass}`}>
         {category.icon}
       </div>
-      <div className="flex-1 min-w-0">
-        <div className="font-medium text-gray-100 text-sm">
+        <div className="flex-1 min-w-0">
+        <div className="font-medium text-slate-800 text-sm">
           {lang === 'zh' ? category.name.zh : category.name.en}
         </div>
-        <div className="text-xs text-gray-500">{category.stats.agentCount} agents</div>
+        <div className="text-xs text-slate-400">{category.stats.agentCount} agents</div>
       </div>
-      <ArrowRight className="w-4 h-4 text-gray-600 flex-shrink-0" />
+              <ArrowRight className="w-4 h-4 text-slate-400 flex-shrink-0" />
     </Link>
   );
 };
@@ -122,7 +122,7 @@ const HomePage = () => {
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
           <div className="w-12 h-12 border-2 border-sky-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-400 text-sm">加载中...</p>
+            <p className="text-slate-400 text-sm">加载中...</p>
         </div>
       </div>
     );
@@ -133,10 +133,10 @@ const HomePage = () => {
       {/* 头部 */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">
+          <h1 className="text-2xl font-bold text-slate-800">
             {lang === 'zh' ? '🤖 Agency Agents 平台' : '🤖 Agency Agents Platform'}
           </h1>
-          <p className="text-gray-400 mt-1 text-sm">
+          <p className="text-slate-400 mt-1 text-sm">
             {lang === 'zh'
               ? '探索、构建和部署 AI Agent，支持 Vibe Coding 与知识库问答'
               : 'Explore, build and deploy AI Agents with Vibe Coding and RAG knowledge base'}
@@ -155,7 +155,7 @@ const HomePage = () => {
 
       {/* 同步结果提示 */}
       {ingestResult && (
-        <div className="bg-emerald-900/30 border border-emerald-700/50 rounded-lg px-4 py-3 text-sm text-emerald-400">
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-700">
           ✅ 同步完成：导入 {ingestResult.totalAgents} 个 Agent，{ingestResult.totalCategories} 个分类
         </div>
       )}
@@ -164,15 +164,15 @@ const HomePage = () => {
       {overview && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {[
-            { label: { zh: 'Agent 总数', en: 'Total Agents' }, value: overview.stats.agentCount, icon: '🤖', color: 'text-sky-400' },
-            { label: { zh: '分类数量', en: 'Categories' }, value: overview.stats.categoryCount, icon: '📂', color: 'text-violet-400' },
-            { label: { zh: '流水线', en: 'Pipelines' }, value: overview.stats.pipelineCount, icon: '⚡', color: 'text-amber-400' },
-            { label: { zh: '知识库', en: 'Knowledge' }, value: overview.stats.knowledgeCount, icon: '📚', color: 'text-emerald-400' }
+            { label: { zh: 'Agent 总数', en: 'Total Agents' }, value: overview.stats.agentCount, icon: '🤖', color: 'text-sky-600' },
+            { label: { zh: '分类数量', en: 'Categories' }, value: overview.stats.categoryCount, icon: '📂', color: 'text-violet-600' },
+            { label: { zh: '流水线', en: 'Pipelines' }, value: overview.stats.pipelineCount, icon: '⚡', color: 'text-amber-600' },
+            { label: { zh: '知识库', en: 'Knowledge' }, value: overview.stats.knowledgeCount, icon: '📚', color: 'text-emerald-600' }
           ].map((stat) => (
             <div key={stat.label.zh} className="card">
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-xl">{stat.icon}</span>
-                <span className="text-xs text-gray-500">{lang === 'zh' ? stat.label.zh : stat.label.en}</span>
+                <span className="text-xs text-slate-400">{lang === 'zh' ? stat.label.zh : stat.label.en}</span>
               </div>
               <div className={`text-3xl font-bold ${stat.color}`}>{stat.value}</div>
             </div>
@@ -181,37 +181,37 @@ const HomePage = () => {
       )}
 
       {/* Provider 状态 */}
-      <div className="card flex items-center gap-4">
-        <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="text-sm text-gray-300">
-            {lang === 'zh' ? '当前提供商' : 'Active Provider'}：
-            <span className="text-white font-medium ml-1">
-              {activeProvider === 'ollama' ? '🦙 Ollama' : '🤖 CodeBuddy'}
+        <div className="card flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-sm text-slate-600">
+              {lang === 'zh' ? '当前提供商' : 'Active Provider'}：
+              <span className="text-slate-800 font-semibold ml-1">
+                {activeProvider === 'ollama' ? '🦙 Ollama' : '🤖 CodeBuddy'}
+              </span>
             </span>
-          </span>
-        </div>
-        {overview && (
-          <div className="text-xs text-gray-500">
-            Text: {activeProvider === 'ollama' ? overview.providers.ollama.textModel : overview.providers.codebuddy.textModel}
-            {' · '}
-            Vision: {activeProvider === 'ollama' ? overview.providers.ollama.visionModel : overview.providers.codebuddy.visionModel}
           </div>
-        )}
-      </div>
+          {overview && (
+            <div className="text-xs text-slate-400">
+              Text: {activeProvider === 'ollama' ? overview.providers.ollama.textModel : overview.providers.codebuddy.textModel}
+              {' · '}
+              Vision: {activeProvider === 'ollama' ? overview.providers.ollama.visionModel : overview.providers.codebuddy.visionModel}
+            </div>
+          )}
+        </div>
 
       {/* 快捷入口 */}
       <div>
-        <h2 className="text-base font-semibold text-gray-200 mb-3 flex items-center gap-2">
-          <TrendingUp className="w-4 h-4 text-sky-400" />
-          {lang === 'zh' ? '快捷入口' : 'Quick Access'}
-        </h2>
+          <h2 className="text-base font-semibold text-slate-700 mb-3 flex items-center gap-2">
+            <TrendingUp className="w-4 h-4 text-sky-600" />
+            {lang === 'zh' ? '快捷入口' : 'Quick Access'}
+          </h2>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {quickLinks.map(({ to, icon: Icon, label, desc, color }) => (
             <Link key={to} to={to} className="card-hover">
               <Icon className={`w-6 h-6 ${color} mb-2`} />
-              <div className="font-medium text-gray-100 text-sm">{lang === 'zh' ? label.zh : label.en}</div>
-              <div className="text-xs text-gray-500 mt-0.5">{lang === 'zh' ? desc.zh : desc.en}</div>
+              <div className="font-medium text-slate-800 text-sm">{lang === 'zh' ? label.zh : label.en}</div>
+              <div className="text-xs text-slate-400 mt-0.5">{lang === 'zh' ? desc.zh : desc.en}</div>
             </Link>
           ))}
         </div>
@@ -221,11 +221,11 @@ const HomePage = () => {
       {overview && overview.featuredAgents.length > 0 && (
         <div>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-base font-semibold text-gray-200 flex items-center gap-2">
-              <Bot className="w-4 h-4 text-sky-400" />
+            <h2 className="text-base font-semibold text-slate-700 flex items-center gap-2">
+              <Bot className="w-4 h-4 text-sky-600" />
               {lang === 'zh' ? '精选 Agent' : 'Featured Agents'}
             </h2>
-            <Link to="/agents" className="text-xs text-sky-400 hover:text-sky-300 flex items-center gap-1">
+            <Link to="/agents" className="text-xs text-sky-600 hover:text-sky-500 flex items-center gap-1">
               {lang === 'zh' ? '查看全部' : 'View all'} <ArrowRight className="w-3 h-3" />
             </Link>
           </div>
@@ -240,7 +240,7 @@ const HomePage = () => {
       {/* 分类 */}
       {overview && overview.categories.length > 0 && (
         <div>
-          <h2 className="text-base font-semibold text-gray-200 mb-3 flex items-center gap-2">
+          <h2 className="text-base font-semibold text-slate-700 mb-3 flex items-center gap-2">
             <span>📂</span>
             {lang === 'zh' ? '所有分类' : 'All Categories'}
           </h2>

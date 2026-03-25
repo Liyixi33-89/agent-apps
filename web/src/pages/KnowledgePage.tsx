@@ -57,21 +57,21 @@ const KnowledgePage = () => {
     <div className="p-6 max-w-5xl mx-auto">
       {/* 头部 */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-          <BookOpen className="w-6 h-6 text-emerald-400" />
+        <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+          <BookOpen className="w-6 h-6 text-emerald-600" />
           {lang === 'zh' ? '知识库' : 'Knowledge Base'}
         </h1>
-        <p className="text-gray-400 text-sm mt-1">
+        <p className="text-slate-400 text-sm mt-1">
           {lang === 'zh' ? `共 ${total} 条知识条目，支持语义搜索和 RAG 问答` : `${total} knowledge entries with semantic search and RAG Q&A`}
         </p>
       </div>
 
       {/* Tab 切换 */}
-      <div className="flex gap-1 mb-6 bg-gray-900 rounded-lg p-1 border border-gray-800">
+      <div className="flex gap-1 mb-6 bg-slate-100 rounded-lg p-1">
         {(['browse', 'search', 'rag'] as const).map((tab) => (
           <button
             key={tab}
-            className={`flex-1 py-2 text-sm rounded-md transition-colors ${activeTab === tab ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-gray-200'}`}
+            className={`flex-1 py-2 text-sm rounded-md transition-colors font-medium ${activeTab === tab ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             onClick={() => setActiveTab(tab)}
           >
             {tab === 'browse' ? (lang === 'zh' ? '📚 浏览' : '📚 Browse') : tab === 'search' ? (lang === 'zh' ? '🔍 搜索' : '🔍 Search') : '🤖 RAG 问答'}
@@ -84,10 +84,10 @@ const KnowledgePage = () => {
         <div>
           {loading ? (
             <div className="flex justify-center py-12">
-              <Loader2 className="w-8 h-8 text-sky-400 animate-spin" />
+            <Loader2 className="w-8 h-8 text-sky-500 animate-spin" />
             </div>
           ) : knowledge.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">
+            <div className="text-center py-12 text-slate-400">
               <BookOpen className="w-12 h-12 mx-auto mb-3 opacity-30" />
               <p>{lang === 'zh' ? '暂无知识库条目，请先同步 Agent 数据' : 'No knowledge entries yet. Please sync agent data first.'}</p>
             </div>
@@ -97,22 +97,22 @@ const KnowledgePage = () => {
                 <div key={kb._id} className="card">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-gray-100 text-sm">
+                      <h3 className="font-semibold text-slate-800 text-sm">
                         {lang === 'zh' ? kb.title.zh : kb.title.en}
                       </h3>
-                      <p className="text-xs text-gray-500 mt-1">
+                      <p className="text-xs text-slate-500 mt-1">
                         {lang === 'zh' ? kb.description.zh : kb.description.en}
                       </p>
                     </div>
                     <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                      <span className="badge bg-gray-800 text-gray-500 text-xs">{kb.sourceType}</span>
-                      <span className="text-xs text-gray-600">{kb.stats.chunkCount} chunks</span>
+                      <span className="badge bg-slate-100 text-slate-500 text-xs">{kb.sourceType}</span>
+                      <span className="text-xs text-slate-400">{kb.stats.chunkCount} chunks</span>
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-1.5 mt-3">
-                    {kb.categoryKey && <span className="badge bg-sky-600/20 text-sky-400 border border-sky-600/30 text-xs">{kb.categoryKey}</span>}
+                    {kb.categoryKey && <span className="badge bg-sky-50 text-sky-600 border border-sky-200 text-xs">{kb.categoryKey}</span>}
                     {kb.tags.slice(0, 5).map((tag) => (
-                      <span key={tag} className="badge bg-gray-800 text-gray-500 text-xs">{tag}</span>
+                      <span key={tag} className="badge bg-slate-100 text-slate-500 text-xs">{tag}</span>
                     ))}
                   </div>
                 </div>
@@ -127,7 +127,7 @@ const KnowledgePage = () => {
         <div className="space-y-4">
           <div className="flex gap-2">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 type="text"
                 className="input pl-9"
@@ -146,13 +146,13 @@ const KnowledgePage = () => {
 
           {searchResults.length > 0 && (
             <div className="space-y-3">
-              <p className="text-xs text-gray-500">{lang === 'zh' ? `找到 ${searchResults.length} 条相关内容` : `Found ${searchResults.length} relevant results`}</p>
+              <p className="text-xs text-slate-400">{lang === 'zh' ? `找到 ${searchResults.length} 条相关内容` : `Found ${searchResults.length} relevant results`}</p>
               {searchResults.map((result) => (
                 <div key={result.chunkId} className="card">
-                  <div className="font-medium text-gray-200 text-sm mb-2">
+                  <div className="font-medium text-slate-700 text-sm mb-2">
                     {lang === 'zh' ? result.title.zh : result.title.en}
                   </div>
-                  <p className="text-xs text-gray-400 line-clamp-4">
+                  <p className="text-xs text-slate-500 line-clamp-4">
                     {lang === 'zh' ? result.content.zh : result.content.en}
                   </p>
                 </div>
@@ -166,7 +166,7 @@ const KnowledgePage = () => {
       {activeTab === 'rag' && (
         <div className="space-y-4">
           <div className="card">
-            <label className="text-xs text-gray-500 mb-2 block">
+            <label className="text-xs text-slate-500 mb-2 block">
               {lang === 'zh' ? '基于知识库提问' : 'Ask questions based on knowledge base'}
             </label>
             <textarea
@@ -188,14 +188,14 @@ const KnowledgePage = () => {
           </div>
 
           {ragAnswer && (
-            <div className="card border-emerald-700/30">
+            <div className="card border-emerald-200 bg-emerald-50">
               <div className="flex items-center gap-2 mb-3">
-                <div className="w-6 h-6 rounded-full bg-emerald-600/20 flex items-center justify-center">
-                  <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
+                <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center">
+                  <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
                 </div>
-                <span className="text-xs text-emerald-400 font-medium">RAG 回答</span>
+                <span className="text-xs text-emerald-700 font-medium">RAG 回答</span>
               </div>
-              <p className="text-sm text-gray-300 whitespace-pre-wrap">{ragAnswer}</p>
+              <p className="text-sm text-slate-700 whitespace-pre-wrap">{ragAnswer}</p>
             </div>
           )}
         </div>

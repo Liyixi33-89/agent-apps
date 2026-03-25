@@ -180,15 +180,14 @@ const PromptCategoryList = ({
 
   return (
     <div className="flex flex-col gap-2 pt-1">
-      <p className="text-xs text-gray-600 font-medium px-1 mb-1">
+      <p className="text-xs text-gray-400 font-medium px-1 mb-1">
         {lang === 'zh' ? '选择场景快速开始' : 'Choose a scene to start'}
-      </p>
-      {categories.map((cat, idx) => (
+      </p>      {categories.map((cat, idx) => (
         <div key={idx} className="rounded-xl border border-gray-800/80 overflow-hidden">
           {/* 分类标题 */}
           <button
-            className={`w-full flex items-center justify-between px-3 py-2.5 text-xs font-medium transition-all hover:bg-gray-800/60 ${
-              openCategory === idx ? 'bg-gray-800/60' : 'bg-gray-900/40'
+            className={`w-full flex items-center justify-between px-3 py-2.5 text-xs font-medium transition-all hover:bg-gray-800 ${
+              openCategory === idx ? 'bg-gray-800' : 'bg-gray-900/60'
             }`}
             onClick={() => handleToggle(idx)}
             aria-label={`展开 ${lang === 'zh' ? cat.label.zh : cat.label.en}`}
@@ -199,7 +198,7 @@ const PromptCategoryList = ({
               {lang === 'zh' ? cat.label.zh : cat.label.en}
             </span>
             <span
-              className={`text-gray-600 transition-transform duration-200 ${
+              className={`text-gray-400 transition-transform duration-200 ${
                 openCategory === idx ? 'rotate-180' : ''
               }`}
             >
@@ -213,13 +212,13 @@ const PromptCategoryList = ({
               {cat.prompts.map((p, pIdx) => (
                 <button
                   key={pIdx}
-                  className="text-left text-xs text-gray-500 hover:text-gray-200 hover:bg-gray-800/80 px-3 py-2.5 transition-all flex items-start gap-2"
+                  className="text-left text-xs text-gray-400 hover:text-gray-100 hover:bg-gray-800 px-3 py-2.5 transition-all flex items-start gap-2"
                   onClick={() => onSelect(lang === 'zh' ? p.zh : p.en)}
                   aria-label={lang === 'zh' ? p.zh : p.en}
                   tabIndex={0}
                   onKeyDown={(e) => e.key === 'Enter' && onSelect(lang === 'zh' ? p.zh : p.en)}
                 >
-                  <span className="text-gray-700 flex-shrink-0 mt-0.5">›</span>
+                  <span className="text-gray-500 flex-shrink-0 mt-0.5">›</span>
                   <span className="leading-relaxed">{lang === 'zh' ? p.zh : p.en}</span>
                 </button>
               ))}
@@ -265,15 +264,15 @@ const MessageBubble = ({
           className={`rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
             isUser
               ? 'bg-sky-600 text-white rounded-tr-sm'
-              : 'bg-gray-800/80 text-gray-200 rounded-tl-sm border border-gray-700/60'
+          : 'bg-gray-800 text-gray-200 rounded-tl-sm border border-gray-700/50'
           }`}
         >
           {displayContent ? (
             <p className="whitespace-pre-wrap">{displayContent}</p>
           ) : isStreaming ? (
-            <span className="text-gray-500 text-xs">{lang === 'zh' ? '正在生成 UI...' : 'Generating UI...'}</span>
+            <span className="text-gray-400 text-xs">{lang === 'zh' ? '正在生成 UI...' : 'Generating UI...'}</span>
           ) : (
-            <span className="text-gray-500 text-xs">{lang === 'zh' ? 'UI 已生成，请查看右侧预览' : 'UI generated, check preview on the right'}</span>
+            <span className="text-gray-400 text-xs">{lang === 'zh' ? 'UI 已生成，请查看右侧预览' : 'UI generated, check preview on the right'}</span>
           )}
           {isStreaming && !isUser && (
             <span className="inline-block w-1 h-3.5 bg-violet-400 ml-1 animate-pulse rounded-sm align-middle" />
@@ -285,9 +284,9 @@ const MessageBubble = ({
             </span>
           )}
         </div>
-        <span className="text-[10px] text-gray-600 px-1">
+        <span className="text-[10px] text-gray-500 px-1">
           {msg.provider && !isUser && (
-            <span className="text-gray-600">{msg.provider} · </span>
+            <span className="text-gray-500">{msg.provider} · </span>
           )}
           {new Date(msg.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
         </span>
@@ -401,17 +400,17 @@ const UIPreviewPanel = ({
 
   return (
     <div
-      className={`flex flex-col bg-gray-950 ${
+      className={`flex flex-col bg-gray-950 border-l border-gray-800 ${
         isFullscreen ? 'fixed inset-0 z-50' : 'flex-1 min-w-0'
       }`}
     >
       {/* 顶栏 */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-800 flex-shrink-0 bg-gray-900/60">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-800 flex-shrink-0 bg-gray-900">
         {/* 主 Tab */}
         <div className="flex items-center gap-1 bg-gray-800/80 rounded-lg p-0.5">
           <button
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-              activeTab === 'preview' ? 'bg-violet-600 text-white shadow' : 'text-gray-500 hover:text-gray-300'
+              activeTab === 'preview' ? 'bg-violet-600 text-white shadow-sm' : 'text-gray-400 hover:text-gray-200'
             }`}
             onClick={() => setActiveTab('preview')}
             aria-label="预览 UI"
@@ -422,7 +421,7 @@ const UIPreviewPanel = ({
           </button>
           <button
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-              activeTab === 'code' ? 'bg-gray-700 text-white shadow' : 'text-gray-500 hover:text-gray-300'
+              activeTab === 'code' ? 'bg-gray-700 text-white shadow-sm' : 'text-gray-400 hover:text-gray-200'
             }`}
             onClick={() => setActiveTab('code')}
             aria-label="查看代码"
@@ -454,7 +453,7 @@ const UIPreviewPanel = ({
           )}
           {activeTab === 'preview' && hasContent && (
             <button
-              className="btn-ghost p-1.5 text-gray-500 hover:text-gray-300 rounded-lg hover:bg-gray-800"
+              className="btn-ghost p-1.5 text-gray-400 hover:text-gray-100 rounded-lg hover:bg-gray-800"
               onClick={handleRefresh}
               aria-label="刷新预览"
               tabIndex={0}
@@ -464,7 +463,7 @@ const UIPreviewPanel = ({
           )}
           {hasContent && (
             <button
-              className="btn-ghost p-1.5 text-gray-500 hover:text-gray-300 rounded-lg hover:bg-gray-800"
+              className="btn-ghost p-1.5 text-gray-400 hover:text-gray-100 rounded-lg hover:bg-gray-800"
               onClick={handleCopy}
               aria-label="复制"
               tabIndex={0}
@@ -473,7 +472,7 @@ const UIPreviewPanel = ({
             </button>
           )}
           <button
-            className="btn-ghost p-1.5 text-gray-500 hover:text-gray-300 rounded-lg hover:bg-gray-800"
+            className="btn-ghost p-1.5 text-gray-400 hover:text-gray-100 rounded-lg hover:bg-gray-800"
             onClick={() => setIsFullscreen((f) => !f)}
             aria-label={isFullscreen ? '退出全屏' : '全屏预览'}
             tabIndex={0}
@@ -500,16 +499,16 @@ const UIPreviewPanel = ({
                 <Monitor className="w-10 h-10 text-violet-500/40" />
               </div>
               <div className="text-center">
-                <p className="text-base font-semibold text-gray-500 mb-2">
+                <p className="text-base font-semibold text-gray-400 mb-2">
                   {lang === 'zh' ? 'UI 实时预览' : 'Live UI Preview'}
                 </p>
-                <p className="text-sm text-gray-600 max-w-xs">
+                <p className="text-sm text-gray-500 max-w-xs">
                   {lang === 'zh'
                     ? '在左侧描述你想要的界面，AI 将生成可交互的 UI 并在此处实时渲染'
                     : 'Describe your UI on the left, AI will generate and render it here'}
                 </p>
               </div>
-              <div className="flex items-center gap-6 text-xs text-gray-700 mt-2">
+              <div className="flex items-center gap-6 text-xs text-gray-500 mt-2">
                 <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 bg-orange-500/50 rounded-full" />HTML</span>
                 <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 bg-sky-500/50 rounded-full" />CSS</span>
                 <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 bg-yellow-500/50 rounded-full" />JavaScript</span>
@@ -521,14 +520,14 @@ const UIPreviewPanel = ({
         {/* 代码 Tab */}
         <div className={`flex-1 overflow-hidden flex flex-col ${activeTab === 'code' ? 'flex' : 'hidden'}`}>
           {/* 代码子 Tab */}
-          <div className="flex items-center gap-0 border-b border-gray-800 bg-gray-900/40 flex-shrink-0 px-3">
+          <div className="flex items-center gap-0 border-b border-gray-800 bg-gray-900 flex-shrink-0 px-3">
             {CODE_TABS.map((tab) => (
               <button
                 key={tab.key}
                 className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-b-2 transition-all ${
                   activeCodeTab === tab.key
                     ? `border-current ${tab.color} bg-gray-800/40`
-                    : 'border-transparent text-gray-600 hover:text-gray-400'
+                    : 'border-transparent text-gray-500 hover:text-gray-300'
                 }`}
                 onClick={() => setActiveCodeTab(tab.key)}
                 aria-label={`${tab.label} 代码`}
@@ -544,7 +543,7 @@ const UIPreviewPanel = ({
                 )}
               </button>
             ))}
-            <div className="ml-auto text-[10px] text-gray-700 py-2">
+            <div className="ml-auto text-[10px] text-gray-500 py-2">
               {lang === 'zh' ? '编辑后点击「运行」刷新预览' : 'Edit then click "Run" to refresh'}
             </div>
           </div>
@@ -1021,12 +1020,12 @@ const VibeCodingPage = () => {
             </div>
             <div>
               <h1 className="text-sm font-bold text-white leading-none">Vibe Coding</h1>
-              <p className="text-[10px] text-gray-600 mt-0.5">{lang === 'zh' ? 'UI 生成器' : 'UI Generator'}</p>
+              <p className="text-[10px] text-gray-400 mt-0.5">{lang === 'zh' ? 'UI 生成器' : 'UI Generator'}</p>
             </div>
           </div>
           {hasMessages && (
             <button
-              className="btn-ghost p-1.5 text-gray-500 hover:text-white rounded-lg hover:bg-gray-800"
+              className="btn-ghost p-1.5 text-gray-400 hover:text-white rounded-lg hover:bg-gray-800"
               onClick={handleNewSession}
               aria-label="新建会话"
               tabIndex={0}
@@ -1037,29 +1036,29 @@ const VibeCodingPage = () => {
         </div>
 
         {/* 配置栏 */}
-        <div className="flex items-center gap-1.5 px-4 py-2 border-b border-gray-800/60 flex-shrink-0">
+        <div className="flex items-center gap-1.5 px-4 py-2 border-b border-gray-800 flex-shrink-0">
           {/* Agent 选择 */}
           <div className="relative flex-1">
             <button
-              className="w-full btn-ghost text-xs flex items-center gap-1.5 justify-between bg-gray-800/60 rounded-lg px-2.5 py-1.5"
+              className="w-full btn-ghost text-xs flex items-center gap-1.5 justify-between bg-gray-800 rounded-lg px-2.5 py-1.5 border border-gray-700/50"
               onClick={() => setShowAgentPicker(!showAgentPicker)}
               aria-label="选择 Agent"
               tabIndex={0}
             >
               <div className="flex items-center gap-1.5 min-w-0">
-                <Bot className="w-3.5 h-3.5 flex-shrink-0 text-gray-500" />
-                <span className="truncate text-gray-400">
+                <Bot className="w-3.5 h-3.5 flex-shrink-0 text-gray-400" />
+                <span className="truncate text-gray-300">
                   {selectedAgentObj
                     ? (lang === 'zh' ? selectedAgentObj.name.zh : selectedAgentObj.name.en)
                     : (lang === 'zh' ? '默认 Agent' : 'Default Agent')}
                 </span>
               </div>
-              <ChevronDown className="w-3 h-3 flex-shrink-0 text-gray-600" />
+                <ChevronDown className="w-3 h-3 flex-shrink-0 text-gray-400" />
             </button>
             {showAgentPicker && (
-              <div className="absolute left-0 top-full mt-1 w-56 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-20 max-h-52 overflow-y-auto">
+              <div className="absolute left-0 top-full mt-1 w-56 bg-gray-800 border border-gray-700/80 rounded-lg shadow-2xl z-20 max-h-52 overflow-y-auto">
                 <button
-                  className="w-full text-left px-3 py-2 text-xs text-gray-400 hover:bg-gray-700 hover:text-gray-100"
+                  className="w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-gray-700 hover:text-white"
                   onClick={() => { setSelectedAgent(''); setShowAgentPicker(false); }}
                 >
                   {lang === 'zh' ? '不使用 Agent' : 'No Agent'}
@@ -1080,7 +1079,7 @@ const VibeCodingPage = () => {
 
           {/* Provider */}
           <button
-            className={`btn-ghost text-[10px] flex items-center gap-1 px-2 py-1.5 rounded-lg bg-gray-800/60 flex-shrink-0 ${
+            className={`btn-ghost text-[10px] flex items-center gap-1 px-2 py-1.5 rounded-lg bg-gray-800 border border-gray-700/50 flex-shrink-0 ${
               provider === 'ollama' ? 'text-emerald-400' : 'text-sky-400'
             }`}
             onClick={() => setProvider(provider === 'ollama' ? 'codebuddy' : 'ollama')}
@@ -1093,8 +1092,8 @@ const VibeCodingPage = () => {
 
           {/* 模型类型 */}
           <button
-            className={`btn-ghost text-[10px] flex items-center gap-1 px-2 py-1.5 rounded-lg bg-gray-800/60 flex-shrink-0 ${
-              modelType === 'vision' ? 'text-violet-400' : 'text-gray-500'
+            className={`btn-ghost text-[10px] flex items-center gap-1 px-2 py-1.5 rounded-lg bg-gray-800 border border-gray-700/50 flex-shrink-0 ${
+              modelType === 'vision' ? 'text-violet-400' : 'text-gray-400'
             }`}
             onClick={() => setModelType(modelType === 'text' ? 'vision' : 'text')}
             aria-label="切换模型类型"
@@ -1109,7 +1108,7 @@ const VibeCodingPage = () => {
             className={`btn-ghost text-[10px] flex items-center gap-1 px-2 py-1.5 rounded-lg flex-shrink-0 transition-colors ${
               pipelineMode
                 ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
-                : 'bg-gray-800/60 text-gray-500 hover:text-amber-400'
+                : 'bg-gray-800 border border-gray-700/50 text-gray-400 hover:text-amber-400'
             }`}
             onClick={() => setPipelineMode((v) => !v)}
             aria-label="切换 Pipeline 模式"
@@ -1143,7 +1142,7 @@ const VibeCodingPage = () => {
 
               {/* Pipeline 进度卡片 */}
               {pipelineSteps.length > 0 && (
-                <div className="bg-gray-800/60 border border-amber-500/20 rounded-xl p-3 space-y-2">
+                <div className="bg-gray-800 border border-amber-500/30 rounded-xl p-3 space-y-2">
                   <div className="flex items-center gap-2 mb-2">
                     <Zap className="w-3.5 h-3.5 text-amber-400" />
                     <span className="text-xs font-medium text-amber-400">
@@ -1156,7 +1155,7 @@ const VibeCodingPage = () => {
                         step.status === 'done'    ? 'bg-emerald-500/20 text-emerald-400' :
                         step.status === 'running' ? 'bg-amber-500/20 text-amber-400' :
                         step.status === 'error'   ? 'bg-red-500/20 text-red-400' :
-                        'bg-gray-700 text-gray-600'
+                        'bg-gray-700/80 text-gray-500'
                       }`}>
                         {step.status === 'done'    ? '✓' :
                          step.status === 'running' ? <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping inline-block" /> :
@@ -1167,7 +1166,7 @@ const VibeCodingPage = () => {
                         step.status === 'done'    ? 'text-gray-400' :
                         step.status === 'running' ? 'text-amber-300 font-medium' :
                         step.status === 'error'   ? 'text-red-400' :
-                        'text-gray-600'
+                        'text-gray-500'
                       }`}>
                         {step.title}
                       </span>
@@ -1183,10 +1182,10 @@ const VibeCodingPage = () => {
 
         {/* 输入区 */}
         <div className="px-4 py-3 border-t border-gray-800 flex-shrink-0">
-          <div className="flex gap-2 items-end bg-gray-800/80 rounded-xl border border-gray-700/80 focus-within:border-violet-500/50 px-3 py-2.5 transition-colors">
+          <div className="flex gap-2 items-end bg-gray-800 rounded-xl border border-gray-700 focus-within:border-violet-500/60 px-3 py-2.5 transition-colors">
             <textarea
               ref={textareaRef}
-              className="flex-1 bg-transparent text-gray-100 text-sm resize-none outline-none placeholder-gray-600 min-h-[22px] max-h-32"
+              className="flex-1 bg-transparent text-gray-100 text-sm resize-none outline-none placeholder-gray-500 min-h-[22px] max-h-32"
               placeholder={
                 hasMessages
                   ? (lang === 'zh' ? '继续修改...' : 'Continue editing...')
@@ -1230,7 +1229,7 @@ const VibeCodingPage = () => {
               </button>
             )}
           </div>
-          <p className="text-[10px] text-gray-700 mt-1.5 text-center">
+          <p className="text-[10px] text-gray-500 mt-1.5 text-center">
             Enter {lang === 'zh' ? '发送' : 'to send'} · Shift+Enter {lang === 'zh' ? '换行' : 'newline'}
           </p>
         </div>

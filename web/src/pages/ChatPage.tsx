@@ -15,11 +15,11 @@ const MessageBubble = ({ message, lang }: { message: ChatMessage; lang: 'zh' | '
 
   return (
     <div className={`flex gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'} animate-slide-up`}>
-      <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${isUser ? 'bg-sky-600' : 'bg-gray-700'}`}>
-        {isUser ? <User className="w-4 h-4 text-white" /> : <Bot className="w-4 h-4 text-gray-300" />}
+      <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${isUser ? 'bg-sky-600' : 'bg-slate-200'}`}>
+        {isUser ? <User className="w-4 h-4 text-white" /> : <Bot className="w-4 h-4 text-slate-600" />}
       </div>
       <div className={`max-w-[75%] ${isUser ? 'items-end' : 'items-start'} flex flex-col gap-1`}>
-        <div className={`rounded-2xl px-4 py-3 text-sm ${isUser ? 'bg-sky-600 text-white rounded-tr-sm' : 'bg-gray-800 text-gray-200 rounded-tl-sm'}`}>
+        <div className={`rounded-2xl px-4 py-3 text-sm ${isUser ? 'bg-sky-600 text-white rounded-tr-sm shadow-sm' : 'bg-white text-slate-700 rounded-tl-sm border border-slate-200 shadow-sm'}`}>
           {isUser ? (
             <p className="whitespace-pre-wrap">{message.content}</p>
           ) : (
@@ -28,7 +28,7 @@ const MessageBubble = ({ message, lang }: { message: ChatMessage; lang: 'zh' | '
             </div>
           )}
         </div>
-        <div className="flex items-center gap-2 text-xs text-gray-600">
+        <div className="flex items-center gap-2 text-xs text-slate-400">
           <span>{new Date(message.timestamp).toLocaleTimeString()}</span>
           {message.provider && <span>{message.provider}</span>}
         </div>
@@ -164,8 +164,8 @@ const ChatPage = () => {
   return (
     <div className="flex h-full">
       {/* 会话列表 */}
-      <aside className="hidden lg:flex flex-col w-56 bg-gray-900 border-r border-gray-800">
-        <div className="p-3 border-b border-gray-800">
+      <aside className="hidden lg:flex flex-col w-56 bg-white border-r border-slate-200">
+        <div className="p-3 border-b border-slate-100">
           <button
             className="btn-primary w-full text-sm justify-center"
             onClick={handleNewSession}
@@ -177,8 +177,8 @@ const ChatPage = () => {
         </div>
 
         {/* Agent 选择 */}
-        <div className="p-3 border-b border-gray-800">
-          <label className="text-xs text-gray-500 mb-1 block">Agent</label>
+        <div className="p-3 border-b border-slate-100">
+          <label className="text-xs text-slate-400 mb-1 block">Agent</label>
           <select
             className="input text-xs py-1.5"
             value={selectedAgent}
@@ -195,15 +195,15 @@ const ChatPage = () => {
         </div>
 
         {/* Provider 和模型类型 */}
-        <div className="p-3 border-b border-gray-800 flex gap-2">
+        <div className="p-3 border-b border-slate-100 flex gap-2">
           <button
-            className={`flex-1 text-xs py-1.5 rounded-lg transition-colors ${provider === 'ollama' ? 'bg-emerald-600/20 text-emerald-400' : 'bg-gray-800 text-gray-400'}`}
+            className={`flex-1 text-xs py-1.5 rounded-lg transition-colors ${provider === 'ollama' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-slate-50 text-slate-500 border border-slate-200'}`}
             onClick={() => setProvider('ollama')}
           >
             🦙 Ollama
           </button>
           <button
-            className={`flex-1 text-xs py-1.5 rounded-lg transition-colors ${provider === 'codebuddy' ? 'bg-sky-600/20 text-sky-400' : 'bg-gray-800 text-gray-400'}`}
+            className={`flex-1 text-xs py-1.5 rounded-lg transition-colors ${provider === 'codebuddy' ? 'bg-sky-50 text-sky-600 border border-sky-200' : 'bg-slate-50 text-slate-500 border border-slate-200'}`}
             onClick={() => setProvider('codebuddy')}
           >
             🤖 CB
@@ -211,15 +211,15 @@ const ChatPage = () => {
         </div>
 
         {/* 会话列表 */}
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+        <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
           {sessions.map((session) => (
             <button
               key={session._id}
-              className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-colors ${currentSession?.sessionId === session.sessionId ? 'bg-sky-600/20 text-sky-400' : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'}`}
+              className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-colors ${currentSession?.sessionId === session.sessionId ? 'bg-sky-50 text-sky-600 border border-sky-100' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'}`}
               onClick={() => navigate(`/chat/${session.sessionId}`)}
             >
               <div className="font-medium truncate">{session.agentName || 'AI Assistant'}</div>
-              <div className="text-gray-600 truncate mt-0.5">
+              <div className="text-slate-400 truncate mt-0.5">
                 {new Date(session.updatedAt).toLocaleDateString()}
               </div>
             </button>
@@ -231,12 +231,14 @@ const ChatPage = () => {
       <div className="flex-1 flex flex-col min-w-0">
         {!currentSession ? (
           <div className="flex-1 flex flex-col items-center justify-center gap-4 p-6">
-            <MessageSquare className="w-16 h-16 text-gray-700" />
+            <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center">
+              <MessageSquare className="w-8 h-8 text-slate-400" />
+            </div>
             <div className="text-center">
-              <h2 className="text-lg font-semibold text-gray-300 mb-1">
+              <h2 className="text-lg font-semibold text-slate-700 mb-1">
                 {lang === 'zh' ? '开始一个新对话' : 'Start a new conversation'}
               </h2>
-              <p className="text-gray-500 text-sm mb-4">
+              <p className="text-slate-400 text-sm mb-4">
                 {lang === 'zh' ? '选择一个 Agent 或直接开始对话' : 'Select an agent or start chatting'}
               </p>
               <button className="btn-primary" onClick={handleNewSession}>
@@ -248,11 +250,13 @@ const ChatPage = () => {
         ) : (
           <>
             {/* 对话头部 */}
-            <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-800 bg-gray-900">
-              <Bot className="w-5 h-5 text-sky-400" />
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-200 bg-white shadow-sm">
+              <div className="w-8 h-8 rounded-full bg-sky-100 flex items-center justify-center">
+                <Bot className="w-4 h-4 text-sky-600" />
+              </div>
               <div>
-                <div className="text-sm font-medium text-gray-200">{currentSession.agentName || 'AI Assistant'}</div>
-                <div className="text-xs text-gray-500 flex items-center gap-2">
+                <div className="text-sm font-medium text-slate-800">{currentSession.agentName || 'AI Assistant'}</div>
+                <div className="text-xs text-slate-400 flex items-center gap-2">
                   <Cpu className="w-3 h-3" />
                   {currentSession.provider}
                   {currentSession.modelType === 'vision' && <><Eye className="w-3 h-3" /> Vision</>}
@@ -261,7 +265,7 @@ const ChatPage = () => {
             </div>
 
             {/* 消息列表 */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50">
               {messages.map((msg, i) => (
                 <MessageBubble key={i} message={msg} lang={lang} />
               ))}
@@ -269,10 +273,10 @@ const ChatPage = () => {
               {/* 流式输出 */}
               {streamingContent && (
                 <div className="flex gap-3 animate-slide-up">
-                  <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center flex-shrink-0">
-                    <Bot className="w-4 h-4 text-gray-300" />
+                  <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center flex-shrink-0">
+                    <Bot className="w-4 h-4 text-slate-600" />
                   </div>
-                  <div className="max-w-[75%] bg-gray-800 rounded-2xl rounded-tl-sm px-4 py-3 text-sm text-gray-200">
+                  <div className="max-w-[75%] bg-white rounded-2xl rounded-tl-sm px-4 py-3 text-sm text-slate-700 border border-slate-200 shadow-sm">
                     <div className="prose-dark">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamingContent}</ReactMarkdown>
                     </div>
@@ -283,13 +287,13 @@ const ChatPage = () => {
 
               {streaming && !streamingContent && (
                 <div className="flex gap-3">
-                  <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center">
-                    <Bot className="w-4 h-4 text-gray-300" />
+                  <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center">
+                    <Bot className="w-4 h-4 text-slate-600" />
                   </div>
-                  <div className="bg-gray-800 rounded-2xl rounded-tl-sm px-4 py-3">
+                  <div className="bg-white rounded-2xl rounded-tl-sm px-4 py-3 border border-slate-200 shadow-sm">
                     <div className="flex gap-1">
                       {[0, 1, 2].map((i) => (
-                        <div key={i} className="w-2 h-2 rounded-full bg-gray-500 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
+                        <div key={i} className="w-2 h-2 rounded-full bg-slate-300 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
                       ))}
                     </div>
                   </div>
@@ -300,7 +304,7 @@ const ChatPage = () => {
             </div>
 
             {/* 输入区 */}
-            <div className="p-4 border-t border-gray-800 bg-gray-900">
+            <div className="p-4 border-t border-slate-200 bg-white">
               <div className="flex gap-2 items-end">
                 <textarea
                   className="input flex-1 resize-none min-h-10 max-h-32 text-sm"

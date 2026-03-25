@@ -4,8 +4,8 @@
 
 @layer base {
   :root {
-    --scrollbar-width: 6px;
-    --scrollbar-color: #334155;
+    --scrollbar-width: 5px;
+    --scrollbar-color: #cbd5e1;
   }
 
   * {
@@ -28,34 +28,34 @@
   }
 
   body {
-    @apply bg-gray-950 text-gray-100 antialiased;
+    @apply bg-slate-50 text-slate-800 antialiased;
     font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
   }
 }
 
 @layer components {
   .btn-primary {
-    @apply inline-flex items-center gap-2 px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-lg font-medium transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center gap-2 px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-lg font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md;
   }
 
   .btn-secondary {
-    @apply inline-flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-100 rounded-lg font-medium transition-colors duration-200;
+    @apply inline-flex items-center gap-2 px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg font-medium transition-all duration-200 shadow-sm hover:shadow;
   }
 
   .btn-ghost {
-    @apply inline-flex items-center gap-2 px-3 py-2 text-gray-400 hover:text-gray-100 hover:bg-gray-800 rounded-lg transition-colors duration-200;
+    @apply inline-flex items-center gap-2 px-3 py-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors duration-200;
   }
 
   .card {
-    @apply bg-gray-900 border border-gray-800 rounded-xl p-5;
+    @apply bg-white border border-slate-200 rounded-xl p-5 shadow-sm;
   }
 
   .card-hover {
-    @apply card hover:border-gray-700 hover:bg-gray-800/80 transition-all duration-200 cursor-pointer;
+    @apply card hover:border-sky-200 hover:shadow-md transition-all duration-200 cursor-pointer;
   }
 
   .input {
-    @apply w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent transition-all duration-200;
+    @apply w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-all duration-200 shadow-sm;
   }
 
   .badge {
@@ -63,14 +63,14 @@
   }
 
   .prose-dark {
-    @apply prose prose-invert prose-sm max-w-none
-      prose-headings:text-gray-100
-      prose-p:text-gray-300
-      prose-code:text-sky-300
-      prose-pre:bg-gray-800
-      prose-a:text-sky-400
-      prose-strong:text-gray-100
-      prose-li:text-gray-300;
+    @apply prose prose-slate prose-sm max-w-none
+      prose-headings:text-slate-800
+      prose-p:text-slate-600
+      prose-code:text-sky-600
+      prose-pre:bg-slate-100
+      prose-a:text-sky-600
+      prose-strong:text-slate-800
+      prose-li:text-slate-600;
   }
 }
 
@@ -82,10 +82,28 @@
 /* 打字机光标 */
 .typing-cursor::after {
   content: '▋';
-  @apply animate-pulse text-sky-400;
+  @apply animate-pulse text-sky-500;
 }
 
 /* 渐变背景 */
 .gradient-bg {
-  background: radial-gradient(ellipse at top, #0f172a 0%, #020617 100%);
+  background: radial-gradient(ellipse at top, #f0f9ff 0%, #f8fafc 100%);
+}
+
+/* 淡入动画 */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in {
+  animation: fadeIn 0.25s ease-out both;
+}
+
+/* 消息滑入动画 */
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-slide-up {
+  animation: slideUp 0.2s ease-out both;
 }

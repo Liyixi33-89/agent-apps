@@ -13,8 +13,8 @@ import {
 // ─── 常量 ──────────────────────────────────────────────────────────────────────
 
 const CATEGORY_LABELS: Record<SystemPrompt['category'], { label: string; color: string }> = {
-  vibe:     { label: 'Vibe Coding', color: 'bg-violet-600/20 text-violet-400 border-violet-600/30' },
-  pipeline: { label: 'Pipeline',    color: 'bg-sky-600/20 text-sky-400 border-sky-600/30' },
+  vibe:     { label: 'Vibe Coding', color: 'bg-violet-50 text-violet-600 border-violet-200' },
+  pipeline: { label: 'Pipeline',    color: 'bg-sky-50 text-sky-600 border-sky-200' },
 };
 
 // ─── 子组件：提示词编辑器 ──────────────────────────────────────────────────────
@@ -59,20 +59,20 @@ const PromptEditor = ({ initial, onSave, onCancel }: PromptEditorProps) => {
   };
 
   return (
-    <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 space-y-4">
-      <h3 className="text-sm font-semibold text-white">
+    <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-sm">
+      <h3 className="text-sm font-semibold text-slate-800">
         {isEdit ? '✏️ 编辑提示词' : '➕ 新建提示词'}
       </h3>
 
       {error && (
-        <div className="text-xs text-red-400 bg-red-900/20 border border-red-800/40 rounded-lg px-3 py-2">
+        <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
           {error}
         </div>
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
-          <label className="text-xs text-gray-500 mb-1 block">Key（唯一标识）</label>
+          <label className="text-xs text-slate-500 mb-1 block">Key（唯一标识）</label>
           <input
             type="text"
             className="input w-full font-mono text-sm"
@@ -86,7 +86,7 @@ const PromptEditor = ({ initial, onSave, onCancel }: PromptEditorProps) => {
         </div>
 
         <div>
-          <label className="text-xs text-gray-500 mb-1 block">分类</label>
+          <label className="text-xs text-slate-500 mb-1 block">分类</label>
           <select
             className="input w-full"
             value={category}
@@ -100,7 +100,7 @@ const PromptEditor = ({ initial, onSave, onCancel }: PromptEditorProps) => {
         </div>
 
         <div>
-          <label className="text-xs text-gray-500 mb-1 block">名称</label>
+          <label className="text-xs text-slate-500 mb-1 block">名称</label>
           <input
             type="text"
             className="input w-full"
@@ -113,7 +113,7 @@ const PromptEditor = ({ initial, onSave, onCancel }: PromptEditorProps) => {
         </div>
 
         <div>
-          <label className="text-xs text-gray-500 mb-1 block">排序权重</label>
+          <label className="text-xs text-slate-500 mb-1 block">排序权重</label>
           <input
             type="number"
             className="input w-full"
@@ -126,7 +126,7 @@ const PromptEditor = ({ initial, onSave, onCancel }: PromptEditorProps) => {
       </div>
 
       <div>
-        <label className="text-xs text-gray-500 mb-1 block">描述说明</label>
+        <label className="text-xs text-slate-500 mb-1 block">描述说明</label>
         <input
           type="text"
           className="input w-full"
@@ -139,9 +139,9 @@ const PromptEditor = ({ initial, onSave, onCancel }: PromptEditorProps) => {
       </div>
 
       <div>
-        <label className="text-xs text-gray-500 mb-1 block">
+        <label className="text-xs text-slate-500 mb-1 block">
           提示词内容
-          <span className="text-gray-600 ml-2 font-normal">（Ctrl+Enter 快速保存）</span>
+          <span className="text-slate-300 ml-2 font-normal">（Ctrl+Enter 快速保存）</span>
         </label>
         <textarea
           className="input w-full font-mono text-xs resize-y min-h-48"
@@ -162,7 +162,7 @@ const PromptEditor = ({ initial, onSave, onCancel }: PromptEditorProps) => {
           onChange={(e) => setIsActive(e.target.checked)}
           aria-label="是否启用"
         />
-        <span className="text-sm text-gray-300">启用此提示词</span>
+        <span className="text-sm text-slate-600">启用此提示词</span>
       </label>
 
       <div className="flex gap-2 pt-1">
@@ -212,20 +212,20 @@ const PromptCard = ({ prompt, onEdit, onDelete }: PromptCardProps) => {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className={clsx('badge border text-xs', cat.color)}>{cat.label}</span>
-            <code className="text-xs text-gray-500 font-mono">{prompt.key}</code>
+            <code className="text-xs text-slate-400 font-mono bg-slate-50 px-1.5 py-0.5 rounded">{prompt.key}</code>
             {!prompt.isActive && (
-              <span className="badge bg-gray-800 text-gray-600 text-xs border border-gray-700">已禁用</span>
+              <span className="badge bg-slate-100 text-slate-400 text-xs border border-slate-200">已禁用</span>
             )}
           </div>
-          <h3 className="font-semibold text-gray-100 text-sm mt-1.5">{prompt.name}</h3>
+          <h3 className="font-semibold text-slate-800 text-sm mt-1.5">{prompt.name}</h3>
           {prompt.description && (
-            <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{prompt.description}</p>
+            <p className="text-xs text-slate-400 mt-0.5 line-clamp-1">{prompt.description}</p>
           )}
         </div>
 
         <div className="flex items-center gap-1 flex-shrink-0">
           <button
-            className="p-1.5 rounded-lg text-gray-500 hover:text-sky-400 hover:bg-sky-900/20 transition-colors"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-sky-600 hover:bg-sky-50 transition-colors"
             onClick={handleToggleExpand}
             onKeyDown={(e) => e.key === 'Enter' && handleToggleExpand()}
             aria-label={expanded ? '收起内容' : '展开内容'}
@@ -234,7 +234,7 @@ const PromptCard = ({ prompt, onEdit, onDelete }: PromptCardProps) => {
             {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>
           <button
-            className="p-1.5 rounded-lg text-gray-500 hover:text-amber-400 hover:bg-amber-900/20 transition-colors"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
             onClick={handleEdit}
             onKeyDown={(e) => e.key === 'Enter' && handleEdit()}
             aria-label="编辑"
@@ -243,7 +243,7 @@ const PromptCard = ({ prompt, onEdit, onDelete }: PromptCardProps) => {
             <Pencil className="w-4 h-4" />
           </button>
           <button
-            className="p-1.5 rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-900/20 transition-colors"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
             onClick={handleDelete}
             onKeyDown={(e) => e.key === 'Enter' && handleDelete()}
             aria-label="删除"
@@ -255,7 +255,7 @@ const PromptCard = ({ prompt, onEdit, onDelete }: PromptCardProps) => {
       </div>
 
       {expanded && (
-        <pre className="mt-3 p-3 bg-gray-950 rounded-lg text-xs text-gray-400 font-mono whitespace-pre-wrap overflow-x-auto border border-gray-800 max-h-64 overflow-y-auto">
+        <pre className="mt-3 p-3 bg-slate-50 rounded-lg text-xs text-slate-600 font-mono whitespace-pre-wrap overflow-x-auto border border-slate-200 max-h-64 overflow-y-auto">
           {prompt.content}
         </pre>
       )}
@@ -352,11 +352,11 @@ const PromptsAdminPage = () => {
       {/* 头部 */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <Sparkles className="w-6 h-6 text-sky-400" />
+          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+            <Sparkles className="w-6 h-6 text-sky-600" />
             系统提示词管理
           </h1>
-          <p className="text-gray-400 text-sm mt-1">
+          <p className="text-slate-400 text-sm mt-1">
             管理 Vibe Coding 和 Pipeline 各步骤的系统提示词，修改后实时生效
           </p>
         </div>
@@ -365,13 +365,13 @@ const PromptsAdminPage = () => {
       {/* 工具栏 */}
       <div className="flex items-center gap-3 flex-wrap">
         {/* 分类过滤 */}
-        <div className="flex gap-1 bg-gray-900 rounded-lg p-1 border border-gray-800">
+        <div className="flex gap-1 bg-slate-100 rounded-lg p-1">
           {(['all', 'vibe', 'pipeline'] as const).map((cat) => (
             <button
               key={cat}
               className={clsx(
-                'px-3 py-1.5 text-xs rounded-md transition-colors',
-                filterCat === cat ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-gray-200'
+                'px-3 py-1.5 text-xs rounded-md transition-colors font-medium',
+                filterCat === cat ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
               )}
               onClick={() => setFilterCat(cat)}
               onKeyDown={(e) => e.key === 'Enter' && setFilterCat(cat)}
@@ -398,7 +398,7 @@ const PromptsAdminPage = () => {
             初始化默认
           </button>
           <button
-            className="btn-ghost text-xs text-amber-400 hover:text-amber-300"
+            className="btn-ghost text-xs text-amber-600 hover:text-amber-700 hover:bg-amber-50"
             onClick={() => handleSeed(true)}
             disabled={seeding}
             aria-label="强制重置所有提示词"
@@ -424,7 +424,7 @@ const PromptsAdminPage = () => {
 
       {/* 种子消息 */}
       {seedMsg && (
-        <div className="text-xs text-gray-300 bg-gray-900 border border-gray-700 rounded-lg px-4 py-2">
+        <div className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-4 py-2">
           {seedMsg}
         </div>
       )}
@@ -441,10 +441,10 @@ const PromptsAdminPage = () => {
       {/* 列表 */}
       {loading ? (
         <div className="flex justify-center py-16">
-          <Loader2 className="w-8 h-8 text-sky-400 animate-spin" />
+          <Loader2 className="w-8 h-8 text-sky-500 animate-spin" />
         </div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-16 text-gray-500">
+        <div className="text-center py-16 text-slate-400">
           <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
           <p className="text-sm">暂无提示词</p>
           <p className="text-xs mt-1">点击「初始化默认」导入内置提示词，或点击「新建」手动创建</p>

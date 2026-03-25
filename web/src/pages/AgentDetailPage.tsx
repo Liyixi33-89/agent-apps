@@ -8,20 +8,20 @@ import { useAppStore } from '../store';
 import type { Agent } from '../types';
 
 const colorMap: Record<string, string> = {
-  sky: 'bg-sky-600/20 text-sky-400 border-sky-600/30',
-  violet: 'bg-violet-600/20 text-violet-400 border-violet-600/30',
-  emerald: 'bg-emerald-600/20 text-emerald-400 border-emerald-600/30',
-  rose: 'bg-rose-600/20 text-rose-400 border-rose-600/30',
-  amber: 'bg-amber-600/20 text-amber-400 border-amber-600/30',
-  pink: 'bg-pink-600/20 text-pink-400 border-pink-600/30',
-  cyan: 'bg-cyan-600/20 text-cyan-400 border-cyan-600/30',
-  orange: 'bg-orange-600/20 text-orange-400 border-orange-600/30',
-  lime: 'bg-lime-600/20 text-lime-400 border-lime-600/30',
-  indigo: 'bg-indigo-600/20 text-indigo-400 border-indigo-600/30',
-  teal: 'bg-teal-600/20 text-teal-400 border-teal-600/30',
-  blue: 'bg-blue-600/20 text-blue-400 border-blue-600/30',
-  fuchsia: 'bg-fuchsia-600/20 text-fuchsia-400 border-fuchsia-600/30',
-  slate: 'bg-slate-600/20 text-slate-400 border-slate-600/30'
+  sky: 'bg-sky-50 text-sky-600 border-sky-200',
+  violet: 'bg-violet-50 text-violet-600 border-violet-200',
+  emerald: 'bg-emerald-50 text-emerald-600 border-emerald-200',
+  rose: 'bg-rose-50 text-rose-600 border-rose-200',
+  amber: 'bg-amber-50 text-amber-600 border-amber-200',
+  pink: 'bg-pink-50 text-pink-600 border-pink-200',
+  cyan: 'bg-cyan-50 text-cyan-600 border-cyan-200',
+  orange: 'bg-orange-50 text-orange-600 border-orange-200',
+  lime: 'bg-lime-50 text-lime-600 border-lime-200',
+  indigo: 'bg-indigo-50 text-indigo-600 border-indigo-200',
+  teal: 'bg-teal-50 text-teal-600 border-teal-200',
+  blue: 'bg-blue-50 text-blue-600 border-blue-200',
+  fuchsia: 'bg-fuchsia-50 text-fuchsia-600 border-fuchsia-200',
+  slate: 'bg-slate-100 text-slate-600 border-slate-200'
 };
 
 const AgentDetailPage = () => {
@@ -62,7 +62,7 @@ const AgentDetailPage = () => {
   if (!agent) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4">
-        <p className="text-gray-400">Agent 不存在</p>
+      <p className="text-slate-400">Agent 不存在</p>
         <Link to="/agents" className="btn-secondary text-sm">返回列表</Link>
       </div>
     );
@@ -89,26 +89,26 @@ const AgentDetailPage = () => {
             {agent.emoji}
           </div>
           <div className="flex-1 min-w-0">
-            <h1 className="text-xl font-bold text-white">
+            <h1 className="text-xl font-bold text-slate-800">
               {lang === 'zh' ? agent.name.zh : agent.name.en}
             </h1>
-            <p className="text-gray-400 text-sm mt-1">
+            <p className="text-slate-500 text-sm mt-1">
               {lang === 'zh' ? agent.description.zh : agent.description.en}
             </p>
             {agent.vibe.en && (
-              <p className="text-xs text-gray-600 italic mt-2">
+              <p className="text-xs text-slate-400 italic mt-2">
                 "{lang === 'zh' ? agent.vibe.zh : agent.vibe.en}"
               </p>
             )}
             <div className="flex flex-wrap gap-2 mt-3">
               <span className={`badge border ${colorClass}`}>{agent.categoryKey}</span>
-              <span className="badge bg-gray-800 text-gray-400">
+              <span className="badge bg-slate-100 text-slate-500">
                 {agent.modelPreferences.primary === 'vision' ? '👁️ Vision' : '💬 Text'}
               </span>
-              <span className="badge bg-gray-800 text-gray-400">
+              <span className="badge bg-slate-100 text-slate-500">
                 {agent.modelPreferences.recommendedProvider}
               </span>
-              <span className="badge bg-gray-800 text-gray-500">
+              <span className="badge bg-slate-50 text-slate-400">
                 {agent.stats.wordCount.toLocaleString()} words
               </span>
             </div>
@@ -116,7 +116,7 @@ const AgentDetailPage = () => {
         </div>
 
         {/* 操作按钮 */}
-        <div className="flex gap-2 mt-4 pt-4 border-t border-gray-800">
+        <div className="flex gap-2 mt-4 pt-4 border-t border-slate-100">
           <Link
             to={`/chat?agent=${agent.slug}`}
             className="btn-primary text-sm"
@@ -144,19 +144,19 @@ const AgentDetailPage = () => {
       {/* 标签 */}
       {agent.tags.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-6">
-          <Tag className="w-3.5 h-3.5 text-gray-500 mt-0.5" />
+          <Tag className="w-3.5 h-3.5 text-slate-400 mt-0.5" />
           {agent.tags.slice(0, 15).map((tag) => (
-            <span key={tag} className="badge bg-gray-800 text-gray-500 text-xs">{tag}</span>
+            <span key={tag} className="badge bg-slate-100 text-slate-500 text-xs">{tag}</span>
           ))}
         </div>
       )}
 
       {/* Tab 切换 */}
-      <div className="flex gap-1 mb-4 bg-gray-900 rounded-lg p-1 border border-gray-800">
+      <div className="flex gap-1 mb-4 bg-slate-100 rounded-lg p-1">
         {(['overview', 'workflow', 'raw'] as const).map((tab) => (
           <button
             key={tab}
-            className={`flex-1 py-2 text-sm rounded-md transition-colors ${activeTab === tab ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-gray-200'}`}
+            className={`flex-1 py-2 text-sm rounded-md transition-colors font-medium ${activeTab === tab ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             onClick={() => setActiveTab(tab)}
           >
             {tab === 'overview' ? (lang === 'zh' ? '概览' : 'Overview') : tab === 'workflow' ? (lang === 'zh' ? '工作流' : 'Workflow') : (lang === 'zh' ? '原始文档' : 'Raw')}
@@ -170,13 +170,13 @@ const AgentDetailPage = () => {
           {/* 能力列表 */}
           {agent.capabilities.length > 0 && (
             <div className="card">
-              <h3 className="text-sm font-semibold text-gray-200 mb-3">
+              <h3 className="text-sm font-semibold text-slate-700 mb-3">
                 {lang === 'zh' ? '核心能力' : 'Core Capabilities'}
               </h3>
               <ul className="space-y-1.5">
                 {agent.capabilities.map((cap, i) => (
-                  <li key={i} className="flex items-start gap-2 text-sm text-gray-400">
-                    <span className="text-sky-400 mt-0.5">•</span>
+                  <li key={i} className="flex items-start gap-2 text-sm text-slate-600">
+                    <span className="text-sky-500 mt-0.5">•</span>
                     {lang === 'zh' ? cap.zh : cap.en}
                   </li>
                 ))}
@@ -192,12 +192,12 @@ const AgentDetailPage = () => {
                 onClick={() => handleToggleSection(section.key)}
                 aria-expanded={expandedSections.has(section.key)}
               >
-                <h3 className="text-sm font-semibold text-gray-200">
+                <h3 className="text-sm font-semibold text-slate-700">
                   {lang === 'zh' ? section.heading.zh : section.heading.en}
                 </h3>
                 {expandedSections.has(section.key)
-                  ? <ChevronUp className="w-4 h-4 text-gray-500" />
-                  : <ChevronDown className="w-4 h-4 text-gray-500" />
+                  ? <ChevronUp className="w-4 h-4 text-slate-400" />
+                  : <ChevronDown className="w-4 h-4 text-slate-400" />
                 }
               </button>
               {expandedSections.has(section.key) && (
@@ -215,34 +215,34 @@ const AgentDetailPage = () => {
       {/* 工作流 Tab */}
       {activeTab === 'workflow' && (
         <div className="card">
-          <h3 className="text-sm font-semibold text-gray-200 mb-4">
+          <h3 className="text-sm font-semibold text-slate-700 mb-4">
             {lang === 'zh' ? agent.workflow.summary.zh : agent.workflow.summary.en}
           </h3>
           {agent.workflow.nodes.length === 0 ? (
-            <p className="text-gray-500 text-sm">暂无工作流节点</p>
+            <p className="text-slate-400 text-sm">暂无工作流节点</p>
           ) : (
             <div className="space-y-3">
               {agent.workflow.nodes.map((node, i) => (
                 <div key={node.nodeId} className="flex items-start gap-3">
-                  <div className="w-7 h-7 rounded-full bg-sky-600/20 border border-sky-600/30 flex items-center justify-center text-xs text-sky-400 font-bold flex-shrink-0">
+                  <div className="w-7 h-7 rounded-full bg-sky-50 border border-sky-200 flex items-center justify-center text-xs text-sky-600 font-bold flex-shrink-0">
                     {i + 1}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium text-gray-200 text-sm">
+                    <div className="font-medium text-slate-700 text-sm">
                       {lang === 'zh' ? node.label.zh : node.label.en}
                     </div>
-                    <div className="text-xs text-gray-500 mt-0.5">
+                    <div className="text-xs text-slate-400 mt-0.5">
                       {lang === 'zh' ? node.promptHint.zh : node.promptHint.en}
                     </div>
                     <div className="flex gap-2 mt-1">
-                      <span className="badge bg-gray-800 text-gray-500 text-xs">{node.type}</span>
-                      <span className="badge bg-gray-800 text-gray-500 text-xs">
+                      <span className="badge bg-slate-100 text-slate-500 text-xs">{node.type}</span>
+                      <span className="badge bg-slate-100 text-slate-500 text-xs">
                         {node.modelType === 'vision' ? '👁️ Vision' : '💬 Text'}
                       </span>
                     </div>
                   </div>
                   {i < agent.workflow.nodes.length - 1 && (
-                    <div className="absolute left-3.5 mt-7 w-px h-3 bg-gray-700" />
+                    <div className="absolute left-3.5 mt-7 w-px h-3 bg-slate-200" />
                   )}
                 </div>
               ))}

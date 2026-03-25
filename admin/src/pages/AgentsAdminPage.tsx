@@ -124,10 +124,10 @@ const AgentsAdminPage = () => {
   return (
     <div className="p-6 max-w-6xl mx-auto">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-          <Bot className="w-6 h-6 text-sky-400" />
+        <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+          <Bot className="w-6 h-6 text-sky-600" />
           Agent 管理
-          <span className="text-sm font-normal text-gray-500 ml-2">共 {total} 个</span>
+          <span className="text-sm font-normal text-slate-400 ml-2">共 {total} 个</span>
         </h1>
         <div className="flex items-center gap-3">
           {/* 翻译开关 */}
@@ -139,8 +139,8 @@ const AgentsAdminPage = () => {
               role="switch"
               aria-checked={translateOnIngest}
               tabIndex={0}
-              className={`relative w-9 h-5 rounded-full transition-colors ${
-                translateOnIngest ? 'bg-sky-600' : 'bg-gray-700'
+            className={`relative w-9 h-5 rounded-full transition-colors ${
+                translateOnIngest ? 'bg-sky-500' : 'bg-slate-200'
               }`}
               onClick={() => setTranslateOnIngest((v) => !v)}
               onKeyDown={(e) => e.key === 'Enter' || e.key === ' ' ? setTranslateOnIngest((v) => !v) : null}
@@ -151,8 +151,8 @@ const AgentsAdminPage = () => {
                 }`}
               />
             </div>
-            <Languages className="w-3.5 h-3.5 text-gray-400" />
-            <span className="text-xs text-gray-400">翻译为中文</span>
+            <Languages className="w-3.5 h-3.5 text-slate-400" />
+            <span className="text-xs text-slate-500">翻译为中文</span>
           </label>
 
           <button
@@ -171,22 +171,22 @@ const AgentsAdminPage = () => {
 
       {/* 导入结果 */}
       {ingestResult && (
-        <div className="mb-4 p-4 rounded-lg bg-emerald-900/20 border border-emerald-700/40 flex items-start gap-3">
-          <CheckCircle className="w-5 h-5 text-emerald-400 mt-0.5 shrink-0" />
+        <div className="mb-4 p-4 rounded-lg bg-emerald-50 border border-emerald-200 flex items-start gap-3">
+          <CheckCircle className="w-5 h-5 text-emerald-500 mt-0.5 shrink-0" />
           <div className="text-sm">
-            <p className="text-emerald-300 font-medium">导入完成</p>
-            <p className="text-gray-400 mt-1">
-              共处理 <span className="text-white">{ingestResult.totalAgents}</span> 个 Agent，
-              新建 <span className="text-emerald-400">{ingestResult.created}</span>，
-              更新 <span className="text-sky-400">{ingestResult.updated}</span>，
-              分类 <span className="text-white">{ingestResult.totalCategories}</span> 个
+            <p className="text-emerald-700 font-medium">导入完成</p>
+            <p className="text-slate-500 mt-1">
+              共处理 <span className="text-slate-800 font-medium">{ingestResult.totalAgents}</span> 个 Agent，
+              新建 <span className="text-emerald-600 font-medium">{ingestResult.created}</span>，
+              更新 <span className="text-sky-600 font-medium">{ingestResult.updated}</span>，
+              分类 <span className="text-slate-800 font-medium">{ingestResult.totalCategories}</span> 个
               {ingestResult.errors.length > 0 && (
-                <span className="text-yellow-400">，{ingestResult.errors.length} 个文件失败</span>
+                <span className="text-amber-600">，{ingestResult.errors.length} 个文件失败</span>
               )}
             </p>
           </div>
           <button
-            className="ml-auto text-gray-600 hover:text-gray-400 text-xs"
+            className="ml-auto text-slate-400 hover:text-slate-600 text-xs"
             onClick={() => setIngestResult(null)}
             aria-label="关闭导入结果"
           >
@@ -197,14 +197,14 @@ const AgentsAdminPage = () => {
 
       {/* 导入错误 */}
       {ingestError && (
-        <div className="mb-4 p-4 rounded-lg bg-red-900/20 border border-red-700/40 flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-red-400 mt-0.5 shrink-0" />
+        <div className="mb-4 p-4 rounded-lg bg-red-50 border border-red-200 flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-red-500 mt-0.5 shrink-0" />
           <div className="text-sm">
-            <p className="text-red-300 font-medium">导入失败</p>
-            <p className="text-gray-400 mt-1">{ingestError}</p>
+            <p className="text-red-600 font-medium">导入失败</p>
+            <p className="text-slate-500 mt-1">{ingestError}</p>
           </div>
           <button
-            className="ml-auto text-gray-600 hover:text-gray-400 text-xs"
+            className="ml-auto text-slate-400 hover:text-slate-600 text-xs"
             onClick={() => setIngestError(null)}
             aria-label="关闭错误提示"
           >
@@ -215,7 +215,7 @@ const AgentsAdminPage = () => {
 
       {/* 搜索 */}
       <div className="relative mb-4">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
         <input
           type="text"
           className="input pl-9 max-w-sm"
@@ -231,21 +231,21 @@ const AgentsAdminPage = () => {
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-gray-800">
-                <th className="text-left px-4 py-3 text-xs text-gray-500 font-medium">Agent</th>
-                <th className="text-left px-4 py-3 text-xs text-gray-500 font-medium">分类</th>
-                <th className="text-left px-4 py-3 text-xs text-gray-500 font-medium">模型</th>
-                <th className="text-left px-4 py-3 text-xs text-gray-500 font-medium">字数</th>
-                <th className="text-right px-4 py-3 text-xs text-gray-500 font-medium">操作</th>
+              <tr className="border-b border-slate-100 bg-slate-50">
+                <th className="text-left px-4 py-3 text-xs text-slate-500 font-semibold">Agent</th>
+                <th className="text-left px-4 py-3 text-xs text-slate-500 font-semibold">分类</th>
+                <th className="text-left px-4 py-3 text-xs text-slate-500 font-semibold">模型</th>
+                <th className="text-left px-4 py-3 text-xs text-slate-500 font-semibold">字数</th>
+                <th className="text-right px-4 py-3 text-xs text-slate-500 font-semibold">操作</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 Array.from({ length: 10 }).map((_, i) => (
-                  <tr key={i} className="border-b border-gray-800">
+                  <tr key={i} className="border-b border-slate-100">
                     {Array.from({ length: 5 }).map((_, j) => (
                       <td key={j} className="px-4 py-3">
-                        <div className="h-4 bg-gray-800 rounded animate-pulse" />
+                        <div className="h-4 bg-slate-100 rounded animate-pulse" />
                       </td>
                     ))}
                   </tr>
@@ -256,26 +256,26 @@ const AgentsAdminPage = () => {
                     <div className="flex items-center gap-2">
                       <span className="text-lg">{agent.emoji}</span>
                       <div>
-                        <div className="text-sm text-gray-200 font-medium">{agent.name.zh || agent.name.en}</div>
-                        <div className="text-xs text-gray-600 truncate max-w-48">{agent.slug}</div>
+                        <div className="text-sm text-slate-700 font-medium">{agent.name.zh || agent.name.en}</div>
+                        <div className="text-xs text-slate-400 truncate max-w-48">{agent.slug}</div>
                       </div>
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <span className="badge bg-gray-800 text-gray-400">{agent.categoryKey}</span>
+                    <span className="badge bg-slate-100 text-slate-500">{agent.categoryKey}</span>
                   </td>
                   <td className="px-4 py-3">
-                    <span className="text-xs text-gray-400">
+                    <span className="text-xs text-slate-500">
                       {agent.modelPreferences.primary === 'vision' ? '👁️ Vision' : '💬 Text'}
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <span className="text-xs text-gray-500">{agent.stats.wordCount.toLocaleString()}</span>
+                    <span className="text-xs text-slate-400">{agent.stats.wordCount.toLocaleString()}</span>
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
                       <button
-                        className="p-1.5 rounded-lg text-gray-500 hover:text-amber-400 hover:bg-amber-900/20 transition-colors"
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
                         onClick={() => handleOpenEdit(agent)}
                         onKeyDown={(e) => e.key === 'Enter' && handleOpenEdit(agent)}
                         aria-label="编辑 Agent"
@@ -284,7 +284,7 @@ const AgentsAdminPage = () => {
                         <Pencil className="w-3.5 h-3.5" />
                       </button>
                       <button
-                        className="p-1.5 rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-900/20 transition-colors"
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
                         onClick={() => handleDelete(agent._id)}
                         disabled={deletingId === agent._id}
                         aria-label="删除 Agent"
@@ -304,8 +304,8 @@ const AgentsAdminPage = () => {
 
         {/* 分页 */}
         {totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-800">
-            <span className="text-xs text-gray-500">第 {page} / {totalPages} 页</span>
+          <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-slate-50">
+            <span className="text-xs text-slate-400">第 {page} / {totalPages} 页</span>
             <div className="flex gap-2">
               <button className="btn-ghost text-xs px-2 py-1" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>
                 <ChevronLeft className="w-4 h-4" />
@@ -320,15 +320,15 @@ const AgentsAdminPage = () => {
 
       {/* 编辑 Agent 弹窗 */}
       {editAgent && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
-          <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-md">
-            <div className="flex items-center justify-between p-4 border-b border-gray-800">
-              <h2 className="font-semibold text-gray-100 text-sm flex items-center gap-2">
-                <Pencil className="w-4 h-4 text-amber-400" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-md shadow-2xl shadow-slate-200">
+            <div className="flex items-center justify-between p-4 border-b border-slate-100">
+              <h2 className="font-semibold text-slate-800 text-sm flex items-center gap-2">
+                <Pencil className="w-4 h-4 text-amber-500" />
                 编辑 Agent
               </h2>
               <button
-                className="p-1.5 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-gray-800 transition-colors"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
                 onClick={() => setEditAgent(null)}
                 aria-label="关闭"
                 tabIndex={0}
@@ -339,7 +339,7 @@ const AgentsAdminPage = () => {
             <div className="p-4 space-y-3">
               <div className="flex items-center gap-3">
                 <div>
-                  <label className="text-xs text-gray-400 mb-1 block">Emoji</label>
+                  <label className="text-xs text-slate-500 mb-1 block">Emoji</label>
                   <input
                     type="text"
                     className="input w-16 text-center text-xl"
@@ -350,13 +350,13 @@ const AgentsAdminPage = () => {
                   />
                 </div>
                 <div className="flex-1">
-                  <label className="text-xs text-gray-400 mb-1 block">Slug</label>
-                  <div className="input bg-gray-800/50 text-gray-500 text-xs font-mono cursor-not-allowed">{editAgent.slug}</div>
+                  <label className="text-xs text-slate-500 mb-1 block">Slug</label>
+                  <div className="input bg-slate-50 text-slate-400 text-xs font-mono cursor-not-allowed">{editAgent.slug}</div>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-gray-400 mb-1 block">名称（中文）</label>
+                  <label className="text-xs text-slate-500 mb-1 block">名称（中文）</label>
                   <input
                     type="text"
                     className="input"
@@ -367,7 +367,7 @@ const AgentsAdminPage = () => {
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-400 mb-1 block">名称（英文）</label>
+                  <label className="text-xs text-slate-500 mb-1 block">名称（英文）</label>
                   <input
                     type="text"
                     className="input"
@@ -379,7 +379,7 @@ const AgentsAdminPage = () => {
                 </div>
               </div>
               <div>
-                <label className="text-xs text-gray-400 mb-1 block">描述（中文）</label>
+                <label className="text-xs text-slate-500 mb-1 block">描述（中文）</label>
                 <textarea
                   className="input resize-none min-h-16 text-xs"
                   value={editForm.descZh}
@@ -389,7 +389,7 @@ const AgentsAdminPage = () => {
                 />
               </div>
               <div>
-                <label className="text-xs text-gray-400 mb-1 block">描述（英文）</label>
+                <label className="text-xs text-slate-500 mb-1 block">描述（英文）</label>
                 <textarea
                   className="input resize-none min-h-16 text-xs"
                   value={editForm.descEn}

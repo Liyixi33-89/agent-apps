@@ -26,11 +26,11 @@ const Layout = ({ children }: LayoutProps) => {
   const handleToggleProvider = () => setActiveProvider(activeProvider === 'ollama' ? 'codebuddy' : 'ollama');
 
   return (
-    <div className="flex h-screen bg-gray-950 overflow-hidden">
+    <div className="flex h-screen bg-slate-50 overflow-hidden">
       {/* 移动端遮罩 */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-20 bg-black/60 lg:hidden"
+          className="fixed inset-0 z-20 bg-slate-900/40 backdrop-blur-sm lg:hidden"
           onClick={() => setSidebarOpen(false)}
           role="button"
           tabIndex={0}
@@ -42,32 +42,32 @@ const Layout = ({ children }: LayoutProps) => {
       {/* 侧边栏 */}
       <aside
         className={clsx(
-          'fixed lg:static inset-y-0 left-0 z-30 w-60 flex flex-col bg-gray-900 border-r border-gray-800 transition-transform duration-300',
+          'fixed lg:static inset-y-0 left-0 z-30 w-60 flex flex-col bg-white border-r border-slate-200 shadow-sm transition-transform duration-300',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         )}
       >
         {/* Logo */}
-        <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-800">
-          <div className="w-8 h-8 rounded-lg bg-sky-600 flex items-center justify-center">
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100">
+          <div className="w-8 h-8 rounded-lg bg-sky-600 flex items-center justify-center shadow-sm">
             <Bot className="w-5 h-5 text-white" />
           </div>
           <div>
-            <div className="text-sm font-bold text-white">Agency Agents</div>
-            <div className="text-xs text-gray-500">AI 开发平台</div>
+            <div className="text-sm font-bold text-slate-800">Agency Agents</div>
+            <div className="text-xs text-slate-400">AI 开发平台</div>
           </div>
         </div>
 
         {/* 导航 */}
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
           {navItems.map(({ path, label, icon: Icon }) => (
             <Link
               key={path}
               to={path}
               className={clsx(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors duration-150',
+                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150',
                 location.pathname === path || (path !== '/' && location.pathname.startsWith(path))
-                  ? 'bg-sky-600/20 text-sky-400 border border-sky-600/30'
-                  : 'text-gray-400 hover:text-gray-100 hover:bg-gray-800'
+                  ? 'bg-sky-50 text-sky-600 border border-sky-100 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
               )}
               onClick={() => setSidebarOpen(false)}
             >
@@ -78,10 +78,10 @@ const Layout = ({ children }: LayoutProps) => {
         </nav>
 
         {/* 底部工具栏 */}
-        <div className="px-3 py-4 border-t border-gray-800 space-y-2">
+        <div className="px-3 py-4 border-t border-slate-100 space-y-0.5">
           {/* Provider 切换 */}
           <button
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-400 hover:text-gray-100 hover:bg-gray-800 transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-slate-500 hover:text-slate-800 hover:bg-slate-50 transition-colors"
             onClick={handleToggleProvider}
             aria-label="切换 AI 提供商"
           >
@@ -89,12 +89,12 @@ const Layout = ({ children }: LayoutProps) => {
             <span className="flex-1 text-left">
               {activeProvider === 'ollama' ? '🦙 Ollama' : '🤖 CodeBuddy'}
             </span>
-            <span className="text-gray-600">切换</span>
+            <span className="text-slate-300 text-xs">切换</span>
           </button>
 
           {/* 语言切换 */}
           <button
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-400 hover:text-gray-100 hover:bg-gray-800 transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-slate-500 hover:text-slate-800 hover:bg-slate-50 transition-colors"
             onClick={handleToggleLang}
             aria-label="切换语言"
           >
@@ -107,7 +107,7 @@ const Layout = ({ children }: LayoutProps) => {
             href="http://127.0.0.1:5174/"
             target="_blank"
             rel="noopener noreferrer"
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-500 hover:text-violet-400 hover:bg-violet-900/20 transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-slate-400 hover:text-violet-600 hover:bg-violet-50 transition-colors"
             aria-label="管理后台"
             tabIndex={0}
           >
@@ -120,17 +120,17 @@ const Layout = ({ children }: LayoutProps) => {
       {/* 主内容区 */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* 顶部栏（移动端） */}
-        <header className="lg:hidden flex items-center gap-3 px-4 py-3 bg-gray-900 border-b border-gray-800">
+        <header className="lg:hidden flex items-center gap-3 px-4 py-3 bg-white border-b border-slate-200 shadow-sm">
           <button
-            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-100 hover:bg-gray-800"
+            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors"
             onClick={() => setSidebarOpen(true)}
             aria-label="打开菜单"
           >
             <Menu className="w-5 h-5" />
           </button>
-          <span className="text-sm font-semibold text-white">Agency Agents</span>
+          <span className="text-sm font-semibold text-slate-800">Agency Agents</span>
           <button
-            className="ml-auto p-1.5 rounded-lg text-gray-400 hover:text-gray-100 hover:bg-gray-800"
+            className="ml-auto p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors"
             onClick={() => setSidebarOpen(false)}
             aria-label="关闭菜单"
           >
@@ -139,7 +139,7 @@ const Layout = ({ children }: LayoutProps) => {
         </header>
 
         {/* 页面内容 */}
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto bg-slate-50">
           {children}
         </main>
       </div>

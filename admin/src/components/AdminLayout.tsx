@@ -30,10 +30,10 @@ const AdminLayout = ({ children }: AdminLayoutProps) => {
   };
 
   return (
-    <div className="flex h-screen bg-gray-950 overflow-hidden">
+    <div className="flex h-screen bg-slate-50 overflow-hidden">
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-20 bg-black/60 lg:hidden"
+          className="fixed inset-0 z-20 bg-slate-900/40 backdrop-blur-sm lg:hidden"
           onClick={() => setSidebarOpen(false)}
           role="button"
           tabIndex={0}
@@ -44,29 +44,31 @@ const AdminLayout = ({ children }: AdminLayoutProps) => {
 
       {/* 侧边栏 */}
       <aside className={clsx(
-        'fixed lg:static inset-y-0 left-0 z-30 w-56 flex flex-col bg-gray-900 border-r border-gray-800 transition-transform duration-300',
+        'fixed lg:static inset-y-0 left-0 z-30 w-56 flex flex-col bg-white border-r border-slate-200 shadow-sm transition-transform duration-300',
         sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
       )}>
-        <div className="flex items-center gap-3 px-4 py-4 border-b border-gray-800">
-          <div className="w-8 h-8 rounded-lg bg-sky-600 flex items-center justify-center">
+        {/* Logo */}
+        <div className="flex items-center gap-3 px-4 py-4 border-b border-slate-100">
+          <div className="w-8 h-8 rounded-lg bg-sky-600 flex items-center justify-center shadow-sm">
             <Bot className="w-5 h-5 text-white" />
           </div>
           <div>
-            <div className="text-sm font-bold text-white">Admin</div>
-            <div className="text-xs text-gray-500">管理后台</div>
+            <div className="text-sm font-bold text-slate-800">Admin</div>
+            <div className="text-xs text-slate-400">管理后台</div>
           </div>
         </div>
 
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        {/* 导航 */}
+        <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
           {navItems.map(({ path, label, icon: Icon }) => (
             <Link
               key={path}
               to={path}
               className={clsx(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150',
                 location.pathname === path
-                  ? 'bg-sky-600/20 text-sky-400 border border-sky-600/30'
-                  : 'text-gray-400 hover:text-gray-100 hover:bg-gray-800'
+                  ? 'bg-sky-50 text-sky-600 border border-sky-100 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
               )}
               onClick={() => setSidebarOpen(false)}
             >
@@ -76,15 +78,16 @@ const AdminLayout = ({ children }: AdminLayoutProps) => {
           ))}
         </nav>
 
-        <div className="px-3 py-4 border-t border-gray-800">
-          <div className="flex items-center gap-2 px-3 py-2 mb-2">
-            <div className="w-6 h-6 rounded-full bg-sky-600/30 flex items-center justify-center text-xs text-sky-400 font-bold">
+        {/* 底部用户区 */}
+        <div className="px-3 py-4 border-t border-slate-100">
+          <div className="flex items-center gap-2 px-3 py-2 mb-1 rounded-lg bg-slate-50">
+            <div className="w-6 h-6 rounded-full bg-sky-100 flex items-center justify-center text-xs text-sky-600 font-bold">
               {username?.[0]?.toUpperCase() || 'A'}
             </div>
-            <span className="text-sm text-gray-300 truncate">{username}</span>
+            <span className="text-sm text-slate-600 truncate">{username}</span>
           </div>
           <button
-            className="w-full btn-ghost text-sm text-red-400 hover:text-red-300 hover:bg-red-900/20"
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors duration-150"
             onClick={handleLogout}
             aria-label="退出登录"
           >
@@ -96,13 +99,25 @@ const AdminLayout = ({ children }: AdminLayoutProps) => {
 
       {/* 主内容 */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <header className="lg:hidden flex items-center gap-3 px-4 py-3 bg-gray-900 border-b border-gray-800">
-          <button className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-800" onClick={() => setSidebarOpen(true)} aria-label="打开菜单">
+        {/* 移动端顶部栏 */}
+        <header className="lg:hidden flex items-center gap-3 px-4 py-3 bg-white border-b border-slate-200 shadow-sm">
+          <button
+            className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="打开菜单"
+          >
             <Menu className="w-5 h-5" />
           </button>
-          <span className="text-sm font-semibold text-white">Agency Admin</span>
+          <span className="text-sm font-semibold text-slate-800">Agency Admin</span>
+          <button
+            className="ml-auto p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors"
+            onClick={() => setSidebarOpen(false)}
+            aria-label="关闭菜单"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </header>
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto bg-slate-50">
           {children}
         </main>
       </div>

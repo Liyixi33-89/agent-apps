@@ -90,14 +90,14 @@ const ChatsAdminPage = () => {
   return (
     <div className="p-6 max-w-6xl mx-auto">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-          <MessageSquare className="w-6 h-6 text-amber-400" />
+        <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+          <MessageSquare className="w-6 h-6 text-amber-500" />
           对话记录
-          <span className="text-sm font-normal text-gray-500 ml-2">共 {total} 条</span>
+          <span className="text-sm font-normal text-slate-400 ml-2">共 {total} 条</span>
         </h1>
         {selected.size > 0 && (
           <button
-            className="btn-ghost text-red-400 hover:text-red-300 hover:bg-red-900/20 text-sm"
+            className="btn-ghost text-red-500 hover:text-red-600 hover:bg-red-50 text-sm"
             onClick={handleBatchDelete}
             disabled={deleting}
             aria-label="批量删除选中对话"
@@ -112,31 +112,31 @@ const ChatsAdminPage = () => {
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-gray-800">
+            <tr className="border-b border-slate-100 bg-slate-50">
                 <th className="px-4 py-3 w-10">
                   <button
                     onClick={handleSelectAll}
                     aria-label={allSelected ? '取消全选' : '全选'}
                     tabIndex={0}
                     onKeyDown={(e) => e.key === 'Enter' && handleSelectAll()}
-                    className="text-gray-500 hover:text-gray-300 transition-colors"
+                    className="text-slate-400 hover:text-slate-600 transition-colors"
                   >
-                    {allSelected ? <CheckSquare className="w-4 h-4 text-sky-400" /> : <Square className="w-4 h-4" />}
+                    {allSelected ? <CheckSquare className="w-4 h-4 text-sky-500" /> : <Square className="w-4 h-4" />}
                   </button>
                 </th>
-                <th className="text-left px-4 py-3 text-xs text-gray-500 font-medium">Agent</th>
-                <th className="text-left px-4 py-3 text-xs text-gray-500 font-medium">最后消息</th>
-                <th className="text-left px-4 py-3 text-xs text-gray-500 font-medium">提供商</th>
-                <th className="text-left px-4 py-3 text-xs text-gray-500 font-medium">更新时间</th>
-                <th className="text-right px-4 py-3 text-xs text-gray-500 font-medium">操作</th>
+                <th className="text-left px-4 py-3 text-xs text-slate-500 font-semibold">Agent</th>
+                <th className="text-left px-4 py-3 text-xs text-slate-500 font-semibold">最后消息</th>
+                <th className="text-left px-4 py-3 text-xs text-slate-500 font-semibold">提供商</th>
+                <th className="text-left px-4 py-3 text-xs text-slate-500 font-semibold">更新时间</th>
+                <th className="text-right px-4 py-3 text-xs text-slate-500 font-semibold">操作</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 Array.from({ length: 10 }).map((_, i) => (
-                  <tr key={i} className="border-b border-gray-800">
+                  <tr key={i} className="border-b border-slate-100">
                     {Array.from({ length: 6 }).map((_, j) => (
-                      <td key={j} className="px-4 py-3"><div className="h-4 bg-gray-800 rounded animate-pulse" /></td>
+                      <td key={j} className="px-4 py-3"><div className="h-4 bg-slate-100 rounded animate-pulse" /></td>
                     ))}
                   </tr>
                 ))
@@ -144,37 +144,37 @@ const ChatsAdminPage = () => {
                 const lastMsg = chat.messages?.[0];
                 const isSelected = selected.has(chat._id);
                 return (
-                  <tr key={chat._id} className={`border-b border-gray-800 transition-colors ${isSelected ? 'bg-sky-900/10' : 'hover:bg-gray-800/30'}`}>
+                  <tr key={chat._id} className={`border-b border-slate-100 transition-colors ${isSelected ? 'bg-sky-50' : 'hover:bg-slate-50'}`}>
                     <td className="px-4 py-3">
                       <button
                         onClick={() => handleToggleSelect(chat._id)}
                         aria-label={isSelected ? '取消选择' : '选择'}
                         tabIndex={0}
                         onKeyDown={(e) => e.key === 'Enter' && handleToggleSelect(chat._id)}
-                        className="text-gray-500 hover:text-gray-300 transition-colors"
+                        className="text-slate-400 hover:text-slate-600 transition-colors"
                       >
-                        {isSelected ? <CheckSquare className="w-4 h-4 text-sky-400" /> : <Square className="w-4 h-4" />}
+                        {isSelected ? <CheckSquare className="w-4 h-4 text-sky-500" /> : <Square className="w-4 h-4" />}
                       </button>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="text-sm text-gray-200">{chat.agentName || 'AI Assistant'}</div>
-                      <div className="text-xs text-gray-600 truncate max-w-32">{chat.sessionId.slice(0, 8)}...</div>
+                      <div className="text-sm text-slate-700 font-medium">{chat.agentName || 'AI Assistant'}</div>
+                      <div className="text-xs text-slate-400 truncate max-w-32">{chat.sessionId.slice(0, 8)}...</div>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="text-xs text-gray-400 truncate max-w-48">
+                      <div className="text-xs text-slate-500 truncate max-w-48">
                         {lastMsg?.content?.slice(0, 60) || '-'}
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="badge bg-gray-800 text-gray-400">{chat.provider}</span>
+                      <span className="badge bg-slate-100 text-slate-500">{chat.provider}</span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="text-xs text-gray-600">{new Date(chat.updatedAt).toLocaleString()}</span>
+                      <span className="text-xs text-slate-400">{new Date(chat.updatedAt).toLocaleString()}</span>
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <button
-                          className="p-1.5 rounded-lg text-gray-500 hover:text-sky-400 hover:bg-sky-900/20 transition-colors"
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-sky-600 hover:bg-sky-50 transition-colors"
                           onClick={() => setDetailChat(chat)}
                           onKeyDown={(e) => e.key === 'Enter' && setDetailChat(chat)}
                           aria-label="查看对话详情"
@@ -183,7 +183,7 @@ const ChatsAdminPage = () => {
                           <Eye className="w-3.5 h-3.5" />
                         </button>
                         <button
-                          className="p-1.5 rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-900/20 transition-colors"
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
                           onClick={() => handleDelete(chat._id)}
                           aria-label="删除对话"
                           tabIndex={0}
@@ -199,8 +199,8 @@ const ChatsAdminPage = () => {
           </table>
         </div>
         {totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-800">
-            <span className="text-xs text-gray-500">第 {page} / {totalPages} 页</span>
+          <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-slate-50">
+            <span className="text-xs text-slate-400">第 {page} / {totalPages} 页</span>
             <div className="flex gap-2">
               <button className="btn-ghost text-xs px-2 py-1" disabled={page === 1} onClick={() => setPage((p) => p - 1)}><ChevronLeft className="w-4 h-4" /></button>
               <button className="btn-ghost text-xs px-2 py-1" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}><ChevronRight className="w-4 h-4" /></button>
@@ -213,21 +213,21 @@ const ChatsAdminPage = () => {
       {detailChat && (
         <div className="fixed inset-0 z-50 flex">
           <div
-            className="flex-1 bg-black/60"
+            className="flex-1 bg-slate-900/40 backdrop-blur-sm"
             onClick={() => setDetailChat(null)}
             role="button"
             tabIndex={0}
             aria-label="关闭详情"
             onKeyDown={(e) => e.key === 'Escape' && setDetailChat(null)}
           />
-          <div className="w-full max-w-lg bg-gray-900 border-l border-gray-800 flex flex-col h-full">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
+          <div className="w-full max-w-lg bg-white border-l border-slate-200 flex flex-col h-full shadow-2xl">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50">
               <div>
-                <h2 className="font-semibold text-gray-100 text-sm">{detailChat.agentName || 'AI Assistant'}</h2>
-                <p className="text-xs text-gray-500 mt-0.5">{detailChat.sessionId}</p>
+                <h2 className="font-semibold text-slate-800 text-sm">{detailChat.agentName || 'AI Assistant'}</h2>
+                <p className="text-xs text-slate-400 mt-0.5">{detailChat.sessionId}</p>
               </div>
               <button
-                className="p-1.5 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-gray-800 transition-colors"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
                 onClick={() => setDetailChat(null)}
                 aria-label="关闭"
                 tabIndex={0}
@@ -235,7 +235,7 @@ const ChatsAdminPage = () => {
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50">
               {detailChat.messages
                 .filter((m) => m.role !== 'system')
                 .map((msg, i) => (
@@ -246,8 +246,8 @@ const ChatsAdminPage = () => {
                     <div
                       className={`max-w-[85%] rounded-xl px-3 py-2 text-xs leading-relaxed ${
                         msg.role === 'user'
-                          ? 'bg-sky-600/30 text-sky-100 border border-sky-600/30'
-                          : 'bg-gray-800 text-gray-300 border border-gray-700'
+                          ? 'bg-sky-600 text-white shadow-sm'
+                          : 'bg-white text-slate-700 border border-slate-200 shadow-sm'
                       }`}
                     >
                       <div className="text-xs font-medium mb-1 opacity-60">

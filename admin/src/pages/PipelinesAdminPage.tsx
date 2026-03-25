@@ -42,8 +42,8 @@ const PipelinesAdminPage = () => {
   return (
     <div className="p-6 max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-          <GitBranch className="w-6 h-6 text-violet-400" />
+        <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+          <GitBranch className="w-6 h-6 text-violet-600" />
           流水线管理
         </h1>
       </div>
@@ -52,13 +52,13 @@ const PipelinesAdminPage = () => {
         <div className="space-y-3">
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="card animate-pulse">
-              <div className="h-5 bg-gray-800 rounded w-1/3 mb-2" />
-              <div className="h-4 bg-gray-800 rounded w-2/3" />
+              <div className="h-5 bg-slate-100 rounded w-1/3 mb-2" />
+              <div className="h-4 bg-slate-100 rounded w-2/3" />
             </div>
           ))}
         </div>
       ) : pipelines.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">
+        <div className="text-center py-12 text-slate-400">
           <GitBranch className="w-12 h-12 mx-auto mb-3 opacity-30" />
           <p>暂无流水线，请先同步数据</p>
         </div>
@@ -69,23 +69,23 @@ const PipelinesAdminPage = () => {
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <GitBranch className="w-4 h-4 text-violet-400" />
-                    <h3 className="font-semibold text-gray-100">{pipeline.name.zh}</h3>
-                    <span className="badge bg-gray-800 text-gray-500 text-xs">{pipeline.key}</span>
+                    <GitBranch className="w-4 h-4 text-violet-500" />
+                    <h3 className="font-semibold text-slate-800">{pipeline.name.zh}</h3>
+                    <span className="badge bg-slate-100 text-slate-500 text-xs">{pipeline.key}</span>
                   </div>
-                  <p className="text-sm text-gray-500 mt-1 ml-6">{pipeline.description.zh}</p>
+                  <p className="text-sm text-slate-500 mt-1 ml-6">{pipeline.description.zh}</p>
                   <div className="flex flex-wrap gap-2 mt-3 ml-6">
                     {pipeline.steps.sort((a, b) => a.order - b.order).map((step, i) => (
-                      <div key={step.key} className="flex items-center gap-1.5 bg-gray-800 rounded-lg px-2 py-1">
-                        <span className="text-xs text-gray-500">{i + 1}.</span>
-                        <span className="text-xs text-gray-300">{step.title.zh}</span>
-                        <span className="text-xs text-gray-600">{step.modelType === 'vision' ? '👁️' : '💬'}</span>
+                      <div key={step.key} className="flex items-center gap-1.5 bg-slate-100 rounded-lg px-2 py-1">
+                        <span className="text-xs text-slate-400">{i + 1}.</span>
+                        <span className="text-xs text-slate-600">{step.title.zh}</span>
+                        <span className="text-xs text-slate-400">{step.modelType === 'vision' ? '👁️' : '💬'}</span>
                       </div>
                     ))}
                   </div>
                 </div>
                 <button
-                  className="btn-ghost text-red-400 hover:text-red-300 hover:bg-red-900/20 text-xs px-2 py-1 flex-shrink-0"
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0"
                   onClick={() => handleDelete(pipeline._id)}
                   aria-label="删除流水线"
                 >
