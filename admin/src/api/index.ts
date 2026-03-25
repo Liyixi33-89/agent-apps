@@ -103,6 +103,17 @@ export const triggerAdminIngest = async (translate = false) => {
   return data.data;
 };
 
+export const triggerKnowledgeIngest = async () => {
+  const { data } = await api.post('/ingest/knowledge');
+  return data.data as {
+    totalAgents: number;
+    created: number;
+    updated: number;
+    totalChunks: number;
+    errors: Array<{ slug: string; error: string }>;
+  };
+};
+
 export const fetchSettings = async () => {
   const { data } = await api.get('/settings');
   return data.data;

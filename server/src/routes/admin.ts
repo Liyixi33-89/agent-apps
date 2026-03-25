@@ -8,7 +8,7 @@ import { KnowledgeBase } from '../models/KnowledgeBase.js';
 import { Chat } from '../models/Chat.js';
 import { User } from '../models/User.js';
 import { SystemPrompt } from '../models/SystemPrompt.js';
-import { ingestAgentsFromMarkdown } from '../services/agentIngestionService.js';
+import { ingestAgentsFromMarkdown, ingestKnowledgeFromAgents } from '../services/agentIngestionService.js';
 import { createKnowledgeEntry } from '../services/knowledgeService.js';
 import { env } from '../config/env.js';
 
@@ -155,6 +155,12 @@ adminRouter.delete('/knowledge/:id', requireAdmin, async (ctx) => {
 adminRouter.post('/ingest', requireAdmin, async (ctx) => {
   const { translate = false } = (ctx.request.body as { translate?: boolean }) || {};
   const result = await ingestAgentsFromMarkdown(env.ingestRoot, Boolean(translate));
+  ctx.body = { success: true, data: result };
+});
+
+// 从已入库的 Agent 数据生成知识库（分块向量化）
+adminRouter.post('/ingest/knowledge', requireAdmin, async (ctx) => {
+  const result = await ingestKnowledgeFromAgents();
   ctx.body = { success: true, data: result };
 });
 

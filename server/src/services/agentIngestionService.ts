@@ -6,6 +6,7 @@ import { glob } from 'glob';
 import { Agent } from '../models/Agent.js';
 import { Category } from '../models/Category.js';
 import { Pipeline } from '../models/Pipeline.js';
+import { KnowledgeBase } from '../models/KnowledgeBase.js';
 // 静态翻译词典，无需网络/大模型
 
 // ─── 分类字典（中英文映射）────────────────────────────────────────────────────
@@ -880,4 +881,185 @@ export const ingestAgentsFromMarkdown = async (rootDir: string, translate = fals
   }
 
   return result;
+};
+
+// ─── 从 Agent 数据生成知识库条目 ──────────────────────────────────────────────
+
+export interface KnowledgeIngestResult {
+  totalAgents: number;
+  created: number;
+  updated: number;
+  totalChunks: number;
+  errors: Array<{ slug: string; error: string }>;
+}
+
+/**
+ * 将数据库中所有 Agent 的知识点向量化，写入 KnowledgeBase 集合。
+ * 每个 Agent 生成一条 KnowledgeBase 记录，内容来自：
+ *   - name + description + vibe（基础信息块）
+ *   - capabilities（能力列表块）
+ *   - sections（每个章节独立分块）
+ *   - rawMarkdown（全文兜底分块）
+ */
+export const ingestKnowledgeFromAgents = async (): Promise<KnowledgeIngestResult> => {
+  const result: KnowledgeIngestResult = {
+    totalAgents: 0,
+    created: 0,
+    updated: 0,
+    totalChunks: 0,
+    errors: []
+  };
+
+  const agents = await Agent.find({}).lean();
+  console.log(`📚 开始从 ${agents.length} 个 Agent 生成知识库...`);
+
+  for (const agent of agents) {
+    try {
+      const chunks: Array<{ chunkId: string; content: { zh: string; en: string }; order: number }> = [];
+      let order = 0;
+
+      // ── 块 0：基础信息（名称 + 描述 + vibe）──────────────────────────────
+      const baseZh = [
+        `# ${agent.name.zh}`,
+        agent.description.zh,
+        agent.vibe.zh,
+        agent.tags.length > 0 ? `标签：${agent.tags.join('、')}` : ''
+      ].filter(Boolean).join('\n\n');
+
+      const baseEn = [
+        `# ${agent.name.en}`,
+        agent.description.en,
+        agent.vibe.en,
+        agent.tags.length > 0 ? `Tags: ${agent.tags.join(', ')}` : ''
+      ].filter(Boolean).join('\n\n');
+
+      chunks.push({
+        chunkId: `${agent.slug}-base`,
+        content: { zh: baseZh, en: baseEn },
+        order: order++
+      });
+
+      // ── 块 1：能力列表 ────────────────────────────────────────────────────
+      if (agent.capabilities && agent.capabilities.length > 0) {
+        const capZh = `## 核心能力\n\n${agent.capabilities.map((c: any) => `- ${c.zh}`).join('\n')}`;
+        const capEn = `## Core Capabilities\n\n${agent.capabilities.map((c: any) => `- ${c.en}`).join('\n')}`;
+        chunks.push({
+          chunkId: `${agent.slug}-capabilities`,
+          content: { zh: capZh, en: capEn },
+          order: order++
+        });
+      }
+
+      // ── 块 2+：每个章节独立分块 ───────────────────────────────────────────
+      if (agent.sections && agent.sections.length > 0) {
+        for (const section of agent.sections) {
+          const sectionZh = `## ${section.heading.zh}\n\n${section.markdown.zh}`.trim();
+          const sectionEn = `## ${section.heading.en}\n\n${section.markdown.en}`.trim();
+
+          // 章节内容超过 1200 字符时进一步分块
+          if (sectionZh.length > 1200) {
+            const subChunksZh = splitLongText(sectionZh, 1000, 100);
+            const subChunksEn = splitLongText(sectionEn, 1000, 100);
+            const maxLen = Math.max(subChunksZh.length, subChunksEn.length);
+            for (let i = 0; i < maxLen; i++) {
+              chunks.push({
+                chunkId: `${agent.slug}-${section.key}-${i}`,
+                content: {
+                  zh: subChunksZh[i] ?? subChunksZh[subChunksZh.length - 1],
+                  en: subChunksEn[i] ?? subChunksEn[subChunksEn.length - 1]
+                },
+                order: order++
+              });
+            }
+          } else if (sectionZh.length > 30) {
+            chunks.push({
+              chunkId: `${agent.slug}-${section.key}`,
+              content: { zh: sectionZh, en: sectionEn },
+              order: order++
+            });
+          }
+        }
+      }
+
+      // ── 兜底：如果没有章节，对 rawMarkdown 分块 ──────────────────────────
+      if (agent.sections.length === 0 && agent.rawMarkdown) {
+        const rawChunks = splitLongText(agent.rawMarkdown, 800, 100);
+        for (let i = 0; i < rawChunks.length; i++) {
+          chunks.push({
+            chunkId: `${agent.slug}-raw-${i}`,
+            content: { zh: rawChunks[i], en: rawChunks[i] },
+            order: order++
+          });
+        }
+      }
+
+      const wordCount = agent.rawMarkdown
+        ? agent.rawMarkdown.split(/\s+/).filter(Boolean).length
+        : chunks.reduce((acc, c) => acc + c.content.zh.split(/\s+/).length, 0);
+
+      // upsert：以 agentSlug 为唯一键
+      const existing = await KnowledgeBase.findOne({ agentSlug: agent.slug });
+      await KnowledgeBase.findOneAndUpdate(
+        { agentSlug: agent.slug },
+        {
+          $set: {
+            title: agent.name,
+            description: agent.description,
+            sourceType: 'markdown' as const,
+            sourcePath: agent.sourcePath,
+            categoryKey: agent.categoryKey,
+            agentSlug: agent.slug,
+            chunks,
+            tags: agent.tags || [],
+            isActive: true,
+            stats: { chunkCount: chunks.length, wordCount }
+          }
+        },
+        { upsert: true, new: true }
+      );
+
+      if (existing) {
+        result.updated++;
+      } else {
+        result.created++;
+      }
+      result.totalChunks += chunks.length;
+      result.totalAgents++;
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      result.errors.push({ slug: agent.slug, error: message });
+      console.error(`❌ 知识库生成失败: ${agent.slug}`, message);
+    }
+  }
+
+  console.log(
+    `✅ 知识库生成完成：${result.totalAgents} 个 Agent → ${result.totalChunks} 个知识块` +
+    `（新建 ${result.created}，更新 ${result.updated}）`
+  );
+  if (result.errors.length > 0) {
+    console.warn(`⚠️  ${result.errors.length} 个 Agent 处理失败`);
+  }
+
+  return result;
+};
+
+// ─── 辅助：长文本分块（带重叠）─────────────────────────────────────────────────
+
+const splitLongText = (text: string, chunkSize = 800, overlap = 100): string[] => {
+  const paragraphs = text.split(/\n{2,}/);
+  const chunks: string[] = [];
+  let current = '';
+
+  for (const para of paragraphs) {
+    if ((current + para).length > chunkSize && current.length > 0) {
+      chunks.push(current.trim());
+      const words = current.split(' ');
+      current = words.slice(-Math.floor(overlap / 5)).join(' ') + '\n\n' + para;
+    } else {
+      current += (current ? '\n\n' : '') + para;
+    }
+  }
+
+  if (current.trim()) chunks.push(current.trim());
+  return chunks.filter((c) => c.length > 20);
 };

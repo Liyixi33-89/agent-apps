@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { BookOpen, Plus, Trash2, ChevronLeft, ChevronRight, X, RefreshCw, Loader2, Database } from 'lucide-react';
-import { fetchAdminKnowledge, createKnowledge, deleteKnowledge, triggerAdminIngest } from '../api';
+import { BookOpen, Plus, Trash2, ChevronLeft, ChevronRight, X, RefreshCw, Loader2, Database, Sparkles } from 'lucide-react';
+import { fetchAdminKnowledge, createKnowledge, deleteKnowledge, triggerAdminIngest, triggerKnowledgeIngest } from '../api';
 
 interface KnowledgeItem {
   _id: string;
@@ -21,6 +21,7 @@ const KnowledgeAdminPage = () => {
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
   const [ingestLoading, setIngestLoading] = useState(false);
+  const [knowledgeIngestLoading, setKnowledgeIngestLoading] = useState(false);
   const [ingestMsg, setIngestMsg] = useState('');
   const [form, setForm] = useState({
     titleZh: '', titleEn: '', content: '',
@@ -82,13 +83,31 @@ const KnowledgeAdminPage = () => {
     setIngestMsg('');
     try {
       const result = await triggerAdminIngest(true);
-      setIngestMsg(`✅ 同步完成，共处理 ${result?.processed ?? 0} 条数据`);
+      setIngestMsg(`✅ Agent 同步完成，共处理 ${result?.totalAgents ?? 0} 个`);
       await loadItems();
     } catch (err) {
       setIngestMsg('❌ 同步失败，请检查服务连接');
       console.error('Ingest failed', err);
     } finally {
       setIngestLoading(false);
+    }
+  };
+
+  const handleKnowledgeIngest = async () => {
+    setKnowledgeIngestLoading(true);
+    setIngestMsg('');
+    try {
+      const result = await triggerKnowledgeIngest();
+      setIngestMsg(
+        `✅ 向量化完成：${result.totalAgents} 个 Agent → ${result.totalChunks} 个知识块` +
+        `（新建 ${result.created}，更新 ${result.updated}）`
+      );
+      await loadItems();
+    } catch (err) {
+      setIngestMsg('❌ 向量化失败，请先同步 Agent 数据');
+      console.error('Knowledge ingest failed', err);
+    } finally {
+      setKnowledgeIngestLoading(false);
     }
   };
 
@@ -102,19 +121,31 @@ const KnowledgeAdminPage = () => {
           知识库管理
           <span className="text-sm font-normal text-slate-400 ml-2">共 {total} 条</span>
         </h1>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {ingestMsg && (
-            <span className="text-xs text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg">{ingestMsg}</span>
+            <span className="text-xs text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg max-w-xs truncate" title={ingestMsg}>{ingestMsg}</span>
           )}
           <button
             className="btn-secondary flex items-center gap-1.5"
             onClick={handleIngest}
-            disabled={ingestLoading}
-            aria-label="同步数据"
+            disabled={ingestLoading || knowledgeIngestLoading}
+            aria-label="同步 Agent 数据"
             tabIndex={0}
+            title="从 Markdown 文件同步 Agent 数据到数据库"
           >
             {ingestLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-            同步数据
+            同步 Agent
+          </button>
+          <button
+            className="btn-secondary flex items-center gap-1.5 text-emerald-600 border-emerald-200 hover:bg-emerald-50"
+            onClick={handleKnowledgeIngest}
+            disabled={ingestLoading || knowledgeIngestLoading}
+            aria-label="从 Agent 生成知识库"
+            tabIndex={0}
+            title="将已入库的 Agent 数据分块向量化，写入知识库"
+          >
+            {knowledgeIngestLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            生成知识库
           </button>
           <button className="btn-primary" onClick={() => setShowCreate(true)} aria-label="新建知识条目" tabIndex={0}>
             <Plus className="w-4 h-4" />
@@ -211,18 +242,30 @@ const KnowledgeAdminPage = () => {
                       </div>
                       <div className="text-center">
                         <p className="text-slate-600 font-medium mb-1">知识库暂无数据</p>
-                        <p className="text-slate-400 text-sm">可以同步 Agent 数据，或手动新建知识条目</p>
+                        <p className="text-slate-400 text-sm max-w-sm">
+                          推荐流程：先「同步 Agent」将 Markdown 导入数据库，再「生成知识库」完成分块向量化
+                        </p>
                       </div>
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 flex-wrap justify-center">
                         <button
-                          className="btn-primary flex items-center gap-1.5"
+                          className="btn-secondary flex items-center gap-1.5"
                           onClick={handleIngest}
-                          disabled={ingestLoading}
-                          aria-label="立即同步数据"
+                          disabled={ingestLoading || knowledgeIngestLoading}
+                          aria-label="同步 Agent 数据"
                           tabIndex={0}
                         >
                           {ingestLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                          {ingestLoading ? '同步中...' : '立即同步数据'}
+                          {ingestLoading ? '同步中...' : '① 同步 Agent'}
+                        </button>
+                        <button
+                          className="btn-primary flex items-center gap-1.5"
+                          onClick={handleKnowledgeIngest}
+                          disabled={ingestLoading || knowledgeIngestLoading}
+                          aria-label="生成知识库"
+                          tabIndex={0}
+                        >
+                          {knowledgeIngestLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                          {knowledgeIngestLoading ? '生成中...' : '② 生成知识库'}
                         </button>
                         <button
                           className="btn-secondary flex items-center gap-1.5"
@@ -231,7 +274,7 @@ const KnowledgeAdminPage = () => {
                           tabIndex={0}
                         >
                           <Plus className="w-4 h-4" />
-                          手动新建条目
+                          手动新建
                         </button>
                       </div>
                     </div>
