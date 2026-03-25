@@ -39,6 +39,9 @@ const VibeCodingPage = () => {
 
   // UI 预览状态
   const [codeParts, setCodeParts] = useState<CodeParts | null>(null);
+  // 上一次会话的预览快照（新建会话时保存）
+  const [prevCodeParts, setPrevCodeParts] = useState<CodeParts | null>(null);
+  const [isFromPreviousSession, setIsFromPreviousSession] = useState(false);
 
   // Pipeline 模式状态
   const [pipelineMode, setPipelineMode] = useState(false);
@@ -75,13 +78,17 @@ const VibeCodingPage = () => {
     }
     setMessages([]);
     setSession(null);
-    setCodeParts(null);
+    // 保存当前预览为历史快照，新会话开始时可切换查看
+    if (codeParts) {
+      setPrevCodeParts(codeParts);
+      setIsFromPreviousSession(true);
+    }
     setInput('');
     setContinuationCount(0);
     setIsContinuing(false);
     setPipelineSteps([]);
     setPipelineRunning(false);
-  }, [streaming]);
+  }, [streaming, codeParts]);
 
   // ─── Pipeline 多 Agent 流水线 ────────────────────────────────────────────────
 
@@ -146,9 +153,10 @@ const VibeCodingPage = () => {
                 )
               );
             } else if (parsed.type === 'done' && parsed.content) {
-              const parts = extractCodeParts(parsed.content);
+      const parts = extractCodeParts(parsed.content);
               if (parts.html || parts.css || parts.js || parts.isFullHtml) {
                 setCodeParts(parts);
+                setIsFromPreviousSession(false);
               }
               const analysisPreview = parsed.analysis
                 ? parsed.analysis.slice(0, 300) + (parsed.analysis.length > 300 ? '...' : '')
@@ -300,6 +308,7 @@ const VibeCodingPage = () => {
       const parts = extractCodeParts(fullContent);
       if (parts.html || parts.css || parts.js || parts.isFullHtml) {
         setCodeParts(parts);
+        setIsFromPreviousSession(false);
       }
 
       setMessages((prev) => {
@@ -588,9 +597,15 @@ const VibeCodingPage = () => {
       {/* 右侧：UI 预览主区域 */}
       <UIPreviewPanel
         codeParts={codeParts}
+        prevCodeParts={prevCodeParts}
         lang={lang}
         isStreaming={streaming}
+        isFromPreviousSession={isFromPreviousSession}
         onCodePartsChange={setCodeParts}
+        onClearPreview={() => {
+          setPrevCodeParts(null);
+          setIsFromPreviousSession(false);
+        }}
       />
     </div>
   );

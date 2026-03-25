@@ -9,12 +9,23 @@ import type { CodeParts, PreviewTab, CodeTab } from './types';
 
 interface UIPreviewPanelProps {
   codeParts: CodeParts | null;
+  prevCodeParts: CodeParts | null;
   lang: 'zh' | 'en';
   isStreaming: boolean;
+  isFromPreviousSession?: boolean;
   onCodePartsChange: (parts: CodeParts) => void;
+  onClearPreview?: () => void;
 }
 
-const UIPreviewPanel = ({ codeParts, lang, isStreaming, onCodePartsChange }: UIPreviewPanelProps) => {
+const UIPreviewPanel = ({
+  codeParts,
+  prevCodeParts,
+  lang,
+  isStreaming,
+  isFromPreviousSession = false,
+  onCodePartsChange,
+  onClearPreview,
+}: UIPreviewPanelProps) => {
   const [activeTab, setActiveTab] = useState<PreviewTab>('preview');
   const [activeCodeTab, setActiveCodeTab] = useState<CodeTab>('html');
   const [copied, setCopied] = useState(false);
@@ -22,6 +33,9 @@ const UIPreviewPanel = ({ codeParts, lang, isStreaming, onCodePartsChange }: UIP
   const [iframeError, setIframeError] = useState<string | null>(null);
   const [iframeLoading, setIframeLoading] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  // 历史预览的 iframe ref
+  const historyIframeRef = useRef<HTMLIFrameElement>(null);
+  const [historyIframeLoading, setHistoryIframeLoading] = useState(false);
 
   // 本地编辑状态（与父组件同步）
   const [localParts, setLocalParts] = useState<CodeParts>({ html: '', css: '', js: '' });
@@ -69,6 +83,20 @@ const UIPreviewPanel = ({ codeParts, lang, isStreaming, onCodePartsChange }: UIP
     }
   }, [codeParts, writeToIframe]);
 
+  // prevCodeParts 变化时写入历史 iframe
+  useEffect(() => {
+    if (!prevCodeParts || !historyIframeRef.current) return;
+    const blob = new Blob([buildHtmlFromParts(prevCodeParts)], { type: 'text/html; charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    setHistoryIframeLoading(true);
+    historyIframeRef.current.src = url;
+  }, [prevCodeParts]);
+
+  // 当 isFromPreviousSession 变为 true 时，自动切换到历史 Tab
+  useEffect(() => {
+    if (isFromPreviousSession) setActiveTab('history');
+  }, [isFromPreviousSession]);
+
   const handleRun = () => {
     onCodePartsChange(localParts);
     writeToIframe(buildHtmlFromParts(localParts));
@@ -80,9 +108,12 @@ const UIPreviewPanel = ({ codeParts, lang, isStreaming, onCodePartsChange }: UIP
   };
 
   const handleCopy = async () => {
-    const text = activeTab === 'preview'
-      ? (codeParts ? buildHtmlFromParts(codeParts) : '')
-      : localParts[activeCodeTab];
+    const text =
+      activeTab === 'history'
+        ? (prevCodeParts ? buildHtmlFromParts(prevCodeParts) : '')
+        : activeTab === 'preview'
+        ? (codeParts ? buildHtmlFromParts(codeParts) : '')
+        : localParts[activeCodeTab];
     if (!text) return;
     await navigator.clipboard.writeText(text);
     setCopied(true);
@@ -94,6 +125,7 @@ const UIPreviewPanel = ({ codeParts, lang, isStreaming, onCodePartsChange }: UIP
   };
 
   const hasContent = !!codeParts;
+  const hasHistory = isFromPreviousSession && !!prevCodeParts;
 
   return (
     <div
@@ -127,6 +159,43 @@ const UIPreviewPanel = ({ codeParts, lang, isStreaming, onCodePartsChange }: UIP
             <Code2 className="w-3.5 h-3.5" />
             {lang === 'zh' ? '代码' : 'Code'}
           </button>
+
+          {/* 历史预览 Tab —— 仅当有历史快照时显示 */}
+          {hasHistory && (
+            <div className={`flex items-center rounded-md transition-all ${
+              activeTab === 'history'
+                ? 'bg-amber-500/20 ring-1 ring-amber-500/30'
+                : 'hover:bg-gray-700/50'
+            }`}>
+              <button
+                className={`flex items-center gap-1.5 pl-3 pr-1.5 py-1.5 text-xs font-medium transition-all ${
+                  activeTab === 'history' ? 'text-amber-300' : 'text-amber-500/70 hover:text-amber-400'
+                }`}
+                onClick={() => setActiveTab('history')}
+                aria-label={lang === 'zh' ? '历史预览' : 'History preview'}
+                tabIndex={0}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />
+                {lang === 'zh' ? '历史' : 'History'}
+              </button>
+              {/* 关闭按鈕 */}
+              <button
+                className={`p-1 mr-0.5 rounded transition-colors ${
+                  activeTab === 'history'
+                    ? 'text-amber-400/70 hover:text-amber-200 hover:bg-amber-500/20'
+                    : 'text-amber-500/40 hover:text-amber-400 hover:bg-gray-700'
+                }`}
+                onClick={(e) => { e.stopPropagation(); onClearPreview?.(); setActiveTab('preview'); }}
+                aria-label={lang === 'zh' ? '关闭历史预览' : 'Close history preview'}
+                tabIndex={0}
+                title={lang === 'zh' ? '关闭历史预览' : 'Close history'}
+              >
+                <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="M2 2l8 8M10 2l-8 8" />
+                </svg>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* 右侧操作 */}
@@ -158,7 +227,7 @@ const UIPreviewPanel = ({ codeParts, lang, isStreaming, onCodePartsChange }: UIP
               <RefreshCw className="w-3.5 h-3.5" />
             </button>
           )}
-          {hasContent && (
+          {(hasContent || (activeTab === 'history' && hasHistory)) && (
             <button
               className="p-1.5 text-gray-400 hover:text-gray-100 rounded-lg hover:bg-gray-800 transition-colors"
               onClick={handleCopy}
@@ -179,8 +248,40 @@ const UIPreviewPanel = ({ codeParts, lang, isStreaming, onCodePartsChange }: UIP
         </div>
       </div>
 
-      {/* 内容区 */}
+        {/* 删除旧的历史预览提示条（已用 Tab 替代） */}
+
+        {/* 内容区 */}
       <div className="flex-1 overflow-hidden flex flex-col">
+        {/* 历史预览 Tab 内容 */}
+        <div className={`flex-1 overflow-hidden ${activeTab === 'history' ? 'flex' : 'hidden'}`}>
+          {hasHistory ? (
+            <div className="relative w-full h-full">
+              <iframe
+                ref={historyIframeRef}
+                className="w-full h-full border-0 bg-white"
+                title="History Preview"
+                sandbox="allow-scripts allow-same-origin"
+                onLoad={() => setHistoryIframeLoading(false)}
+              />
+              {historyIframeLoading && (
+                <div className="absolute inset-0 bg-gray-950/80 flex items-center justify-center">
+                  <div className="flex items-center gap-2 text-xs text-gray-400">
+                    <span className="w-3 h-3 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+                    {lang === 'zh' ? '渲染中...' : 'Rendering...'}
+                  </div>
+                </div>
+              )}
+              {/* 底部标注条 */}
+              <div className="absolute bottom-0 left-0 right-0 bg-gray-950/85 border-t border-amber-500/15 px-3 py-1.5 flex items-center gap-2 pointer-events-none">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400/60 flex-shrink-0" />
+                <span className="text-[10px] text-amber-400/60">
+                  {lang === 'zh' ? '上一次会话的预览（只读）' : 'Previous session preview (read-only)'}
+                </span>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
         {/* 预览 Tab */}
         <div className={`flex-1 overflow-hidden ${activeTab === 'preview' ? 'flex' : 'hidden'}`}>
           {hasContent ? (

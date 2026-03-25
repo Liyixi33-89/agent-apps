@@ -22,7 +22,7 @@ export interface CodeParts {
   isFullHtml?: boolean;
 }
 
-export type PreviewTab = 'preview' | 'code';
+export type PreviewTab = 'preview' | 'code' | 'history';
 export type CodeTab = 'html' | 'css' | 'js';
 
 export interface PromptCategory {
