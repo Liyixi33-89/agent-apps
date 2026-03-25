@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { BookOpen, Search, MessageSquare, Loader2 } from 'lucide-react';
+import { BookOpen, Search, MessageSquare, Loader2, Database } from 'lucide-react';
 import { fetchKnowledge, searchKnowledge, ragQuery } from '../api';
 import { useAppStore } from '../store';
 import type { KnowledgeBase } from '../types';
@@ -87,9 +87,31 @@ const KnowledgePage = () => {
             <Loader2 className="w-8 h-8 text-sky-500 animate-spin" />
             </div>
           ) : knowledge.length === 0 ? (
-            <div className="text-center py-12 text-slate-400">
-              <BookOpen className="w-12 h-12 mx-auto mb-3 opacity-30" />
-              <p>{lang === 'zh' ? '暂无知识库条目，请先同步 Agent 数据' : 'No knowledge entries yet. Please sync agent data first.'}</p>
+            <div className="flex flex-col items-center justify-center py-16 gap-4 text-center">
+              <div className="w-16 h-16 rounded-2xl bg-emerald-50 flex items-center justify-center">
+                <Database className="w-8 h-8 text-emerald-400" />
+              </div>
+              <div>
+                <p className="text-slate-600 font-medium mb-1">
+                  {lang === 'zh' ? '知识库暂无数据' : 'No knowledge data yet'}
+                </p>
+                <p className="text-slate-400 text-sm max-w-xs">
+                  {lang === 'zh'
+                    ? '请前往管理后台同步 Agent 数据，或手动添加知识条目'
+                    : 'Please go to the admin panel to sync agent data or add knowledge entries manually'}
+                </p>
+              </div>
+              <a
+                href="http://127.0.0.1:5174/knowledge"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors"
+                aria-label="前往管理后台"
+                tabIndex={0}
+              >
+                <BookOpen className="w-4 h-4" />
+                {lang === 'zh' ? '前往管理后台' : 'Go to Admin Panel'}
+              </a>
             </div>
           ) : (
             <div className="space-y-3">

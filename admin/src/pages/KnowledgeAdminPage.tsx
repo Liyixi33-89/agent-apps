@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { BookOpen, Plus, Trash2, ChevronLeft, ChevronRight, X } from 'lucide-react';
-import { fetchAdminKnowledge, createKnowledge, deleteKnowledge } from '../api';
+import { BookOpen, Plus, Trash2, ChevronLeft, ChevronRight, X, RefreshCw, Loader2, Database } from 'lucide-react';
+import { fetchAdminKnowledge, createKnowledge, deleteKnowledge, triggerAdminIngest } from '../api';
 
 interface KnowledgeItem {
   _id: string;
@@ -20,6 +20,8 @@ const KnowledgeAdminPage = () => {
   const [page, setPage] = useState(1);
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [ingestLoading, setIngestLoading] = useState(false);
+  const [ingestMsg, setIngestMsg] = useState('');
   const [form, setForm] = useState({
     titleZh: '', titleEn: '', content: '',
     sourceType: 'text' as 'markdown' | 'text' | 'url',
@@ -75,6 +77,21 @@ const KnowledgeAdminPage = () => {
     }
   };
 
+  const handleIngest = async () => {
+    setIngestLoading(true);
+    setIngestMsg('');
+    try {
+      const result = await triggerAdminIngest(true);
+      setIngestMsg(`✅ 同步完成，共处理 ${result?.processed ?? 0} 条数据`);
+      await loadItems();
+    } catch (err) {
+      setIngestMsg('❌ 同步失败，请检查服务连接');
+      console.error('Ingest failed', err);
+    } finally {
+      setIngestLoading(false);
+    }
+  };
+
   const totalPages = Math.ceil(total / 20);
 
   return (
@@ -85,10 +102,25 @@ const KnowledgeAdminPage = () => {
           知识库管理
           <span className="text-sm font-normal text-slate-400 ml-2">共 {total} 条</span>
         </h1>
-        <button className="btn-primary" onClick={() => setShowCreate(true)} aria-label="新建知识条目">
-          <Plus className="w-4 h-4" />
-          新建条目
-        </button>
+        <div className="flex items-center gap-2">
+          {ingestMsg && (
+            <span className="text-xs text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg">{ingestMsg}</span>
+          )}
+          <button
+            className="btn-secondary flex items-center gap-1.5"
+            onClick={handleIngest}
+            disabled={ingestLoading}
+            aria-label="同步数据"
+            tabIndex={0}
+          >
+            {ingestLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            同步数据
+          </button>
+          <button className="btn-primary" onClick={() => setShowCreate(true)} aria-label="新建知识条目" tabIndex={0}>
+            <Plus className="w-4 h-4" />
+            新建条目
+          </button>
+        </div>
       </div>
 
       {/* 创建弹窗 */}
@@ -170,6 +202,41 @@ const KnowledgeAdminPage = () => {
                     ))}
                   </tr>
                 ))
+              ) : items.length === 0 ? (
+                <tr>
+                  <td colSpan={6}>
+                    <div className="flex flex-col items-center justify-center py-16 gap-4">
+                      <div className="w-16 h-16 rounded-2xl bg-emerald-50 flex items-center justify-center">
+                        <Database className="w-8 h-8 text-emerald-400" />
+                      </div>
+                      <div className="text-center">
+                        <p className="text-slate-600 font-medium mb-1">知识库暂无数据</p>
+                        <p className="text-slate-400 text-sm">可以同步 Agent 数据，或手动新建知识条目</p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <button
+                          className="btn-primary flex items-center gap-1.5"
+                          onClick={handleIngest}
+                          disabled={ingestLoading}
+                          aria-label="立即同步数据"
+                          tabIndex={0}
+                        >
+                          {ingestLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                          {ingestLoading ? '同步中...' : '立即同步数据'}
+                        </button>
+                        <button
+                          className="btn-secondary flex items-center gap-1.5"
+                          onClick={() => setShowCreate(true)}
+                          aria-label="手动新建条目"
+                          tabIndex={0}
+                        >
+                          <Plus className="w-4 h-4" />
+                          手动新建条目
+                        </button>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
               ) : items.map((item) => (
                 <tr key={item._id} className="table-row">
                   <td className="px-4 py-3">

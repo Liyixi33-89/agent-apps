@@ -68,7 +68,7 @@ export const sendChatMessage = async (sessionId: string, message: string) => {
 
 // ─── 知识库 ────────────────────────────────────────────────────────────────────
 
-export const fetchKnowledge = async (params?: { categoryKey?: string; agentSlug?: string; search?: string; page?: number }) => {
+export const fetchKnowledge = async (params?: { categoryKey?: string; agentSlug?: string; search?: string; page?: number; limit?: number }) => {
   const { data } = await api.get<{ success: boolean; data: KnowledgeBase[]; pagination: { total: number } }>('/knowledge', { params });
   return data;
 };
