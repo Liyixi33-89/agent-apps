@@ -1,6 +1,15 @@
 export { default as PromptCategoryList } from './PromptCategoryList';
 export { default as MessageBubble } from './MessageBubble';
 export { default as UIPreviewPanel } from './UIPreviewPanel';
+export { default as HistoryPanel } from './HistoryPanel';
+export { default as TemplateMarket } from './TemplateMarket';
+export { default as PublishModal } from './PublishModal';
 export { extractCodeParts, buildHtmlFromParts, stripCodeBlocks } from './utils';
 export { PROMPT_CATEGORIES, CODE_TABS } from './constants';
-export type { PipelineStep, VibeSession, CodeParts, PreviewTab, CodeTab, PromptCategory } from './types';
+export { useVibeHistory } from './useVibeHistory';
+export { useFavoritePrompts } from './useFavoritePrompts';
+export { historyDB, favoriteDB } from './db';
+export type {
+  PipelineStep, VibeSession, CodeParts, PreviewTab, CodeTab,
+  PromptCategory, VibeHistoryItem, FavoritePrompt,
+} from './types';

@@ -1,16 +1,17 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Bot, Zap, MessageSquare, BookOpen, GitBranch, Home, Menu, X, Globe, Cpu, ShieldCheck } from 'lucide-react';
+import { Bot, Zap, MessageSquare, BookOpen, GitBranch, Home, Menu, X, Globe, Cpu, ShieldCheck, Store } from 'lucide-react';
 import clsx from 'clsx';
 import { useAppStore } from '../store';
 
 const navItems = [
-  { path: '/',          label: { zh: '首页',       en: 'Home' },      icon: Home },
-  { path: '/agents',   label: { zh: 'Agent 库',   en: 'Agents' },    icon: Bot },
-  { path: '/vibe',     label: { zh: 'Vibe Coding', en: 'Vibe Coding' }, icon: Zap },
-  { path: '/chat',     label: { zh: '对话',        en: 'Chat' },      icon: MessageSquare },
-  { path: '/knowledge',label: { zh: '知识库',      en: 'Knowledge' }, icon: BookOpen },
-  { path: '/pipelines',label: { zh: '流水线',      en: 'Pipelines' }, icon: GitBranch },
+  { path: '/',             label: { zh: '首页',        en: 'Home' },            icon: Home,         exact: true  },
+  { path: '/agents',      label: { zh: 'Agent 库',    en: 'Agents' },          icon: Bot,          exact: false },
+  { path: '/vibe',        label: { zh: 'Vibe Coding', en: 'Vibe Coding' },     icon: Zap,          exact: true  },
+  { path: '/market', label: { zh: '模板市场',     en: 'Template Market' }, icon: Store,        exact: false },
+  { path: '/chat',        label: { zh: '对话',         en: 'Chat' },            icon: MessageSquare,exact: false },
+  { path: '/knowledge',   label: { zh: '知识库',       en: 'Knowledge' },       icon: BookOpen,     exact: false },
+  { path: '/pipelines',   label: { zh: '流水线',       en: 'Pipelines' },       icon: GitBranch,    exact: false },
 ];
 
 interface LayoutProps {
@@ -59,13 +60,13 @@ const Layout = ({ children }: LayoutProps) => {
 
         {/* 导航 */}
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-          {navItems.map(({ path, label, icon: Icon }) => (
+          {navItems.map(({ path, label, icon: Icon, exact }) => (
             <Link
               key={path}
               to={path}
               className={clsx(
                 'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150',
-                location.pathname === path || (path !== '/' && location.pathname.startsWith(path))
+              exact ? location.pathname === path : location.pathname === path || location.pathname.startsWith(path + '/')
                   ? 'bg-sky-50 text-sky-600 border border-sky-100 shadow-sm'
                   : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
               )}

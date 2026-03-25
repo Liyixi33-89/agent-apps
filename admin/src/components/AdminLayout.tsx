@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Bot, LayoutDashboard, BookOpen, GitBranch, MessageSquare, Settings, LogOut, Menu, X, Sparkles } from 'lucide-react';
+import { Bot, LayoutDashboard, BookOpen, GitBranch, MessageSquare, Settings, LogOut, Menu, X, Sparkles, LayoutTemplate } from 'lucide-react';
 import clsx from 'clsx';
 import { useAdminStore } from '../store';
 
@@ -11,6 +11,7 @@ const navItems = [
   { path: '/pipelines', label: '流水线管理', icon: GitBranch },
   { path: '/chats', label: '对话记录', icon: MessageSquare },
   { path: '/prompts',  label: '提示词管理', icon: Sparkles },
+  { path: '/vibe-templates', label: '模板市场', icon: LayoutTemplate },
   { path: '/settings', label: '系统设置', icon: Settings }
 ];
 

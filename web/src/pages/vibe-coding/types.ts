@@ -31,3 +31,22 @@ export interface PromptCategory {
   color: string;
   prompts: { zh: string; en: string }[];
 }
+
+// ─── 历史版本 ────────────────────────────────────────────────────────────────
+
+export interface VibeHistoryItem {
+  id: string;
+  label: string;          // 用户输入的前 40 字
+  codeParts: CodeParts;
+  createdAt: string;      // ISO 时间
+  thumbnail?: string;     // base64 截图（可选）
+}
+
+// ─── 收藏提示词 ──────────────────────────────────────────────────────────────
+
+export interface FavoritePrompt {
+  id: string;
+  text: string;
+  createdAt: string;
+}
+

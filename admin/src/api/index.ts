@@ -164,3 +164,35 @@ export const seedAdminPrompts = async (force = false) => {
   const { data } = await api.post<{ success: boolean; data: Array<{ key: string; action: string }> }>('/prompts/seed', { force });
   return data.data;
 };
+
+// ─── Vibe 模板市场管理 ─────────────────────────────────────────────────────────
+
+export interface VibeTemplateAdmin {
+  _id: string;
+  title: string;
+  description: string;
+  category: string;
+  author: string;
+  thumbnail?: string;
+  publishedAt: string;
+  viewCount: number;
+  likeCount: number;
+  tags: string[];
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const fetchAdminVibeTemplates = async (params?: { page?: number; limit?: number; category?: string; search?: string }) => {
+  const { data } = await api.get<{ success: boolean; data: VibeTemplateAdmin[]; pagination: { page: number; limit: number; total: number } }>('/vibe-templates', { params });
+  return data;
+};
+
+export const updateAdminVibeTemplate = async (id: string, body: Partial<Omit<VibeTemplateAdmin, '_id' | 'createdAt' | 'updatedAt'>>) => {
+  const { data } = await api.put<{ success: boolean; data: VibeTemplateAdmin }>(`/vibe-templates/${id}`, body);
+  return data.data;
+};
+
+export const deleteAdminVibeTemplate = async (id: string) => {
+  await api.delete(`/vibe-templates/${id}`);
+};

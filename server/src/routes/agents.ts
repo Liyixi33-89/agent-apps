@@ -1,4 +1,8 @@
 import Router from '@koa/router';
+import multer from '@koa/multer';
+import path from 'node:path';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { Agent } from '../models/Agent.js';
 import { Category } from '../models/Category.js';
 import { Pipeline } from '../models/Pipeline.js';
@@ -6,12 +10,29 @@ import { Chat } from '../models/Chat.js';
 import { KnowledgeBase } from '../models/KnowledgeBase.js';
 import { SystemPrompt } from '../models/SystemPrompt.js';
 import type { ISystemPrompt } from '../models/SystemPrompt.js';
+import { VibeTemplate } from '../models/VibeTemplate.js';
 import { ingestAgentsFromMarkdown } from '../services/agentIngestionService.js';
 import type { IAgent } from '../models/Agent.js';
 import { callLLM, streamLLM } from '../services/llmService.js';
 import { searchKnowledge, ragQuery } from '../services/knowledgeService.js';
 import { env } from '../config/env.js';
 import { v4 as uuidv4 } from 'uuid';
+
+// ─── 文件上传配置 ───────────────────────────────────────────────────────────────
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const UPLOADS_DIR = path.resolve(__dirname, '..', '..', 'uploads');
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
+const upload = multer({
+  dest: UPLOADS_DIR,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) cb(null, true);
+    else cb(new Error('只支持图片文件'));
+  },
+});
 
 // ─── Prompt 读取工具 ───────────────────────────────────────────────────────────
 
@@ -596,4 +617,78 @@ agentsRouter.post('/vibe/pipeline', async (ctx) => {
   } finally {
     res.end();
   }
+});
+
+// ─── 图片上传接口 ─────────────────────────────────────────────────────────────
+// POST /api/upload/image  → 上传图片，返回可访问的 URL
+// ─────────────────────────────────────────────────────────────────────────────
+
+agentsRouter.post('/upload/image', upload.single('image'), async (ctx) => {
+  const file = (ctx as any).file as Express.Multer.File | undefined;
+  if (!file) {
+    ctx.status = 400;
+    ctx.body = { success: false, message: '未收到图片文件' };
+    return;
+  }
+  // 重命名为带扩展名的文件
+  const ext = file.originalname.split('.').pop()?.toLowerCase() ?? 'jpg';
+  const newName = `${uuidv4()}.${ext}`;
+  const newPath = path.join(UPLOADS_DIR, newName);
+  fs.renameSync(file.path, newPath);
+
+  const baseUrl = `http://localhost:${env.port}`;
+  ctx.body = { success: true, url: `${baseUrl}/uploads/${newName}` };
+});
+
+// ─── Vibe 模板市场（前端公开接口）────────────────────────────────────────────
+//
+// GET  /api/vibe/templates          → 获取模板列表（分页 + 分类过滤）
+// GET  /api/vibe/templates/:id      → 获取单个模板（含代码）
+// POST /api/vibe/templates          → 发布新模板
+// ─────────────────────────────────────────────────────────────────────────────
+
+agentsRouter.get('/vibe/templates', async (ctx) => {
+  const { page = '1', limit = '20', category } = ctx.query as Record<string, string>;
+  const pageNum = Math.max(1, parseInt(page));
+  const limitNum = Math.min(50, parseInt(limit));
+
+  const filter: Record<string, unknown> = { isActive: true };
+  if (category) filter.category = category;
+
+  const [templates, total] = await Promise.all([
+    VibeTemplate.find(filter, { 'codeParts.html': 0, 'codeParts.css': 0, 'codeParts.js': 0 })
+      .sort({ publishedAt: -1 })
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum)
+      .lean(),
+    VibeTemplate.countDocuments(filter),
+  ]);
+
+  ctx.body = { success: true, data: templates, pagination: { page: pageNum, limit: limitNum, total } };
+});
+
+agentsRouter.get('/vibe/templates/:id', async (ctx) => {
+  const template = await VibeTemplate.findById(ctx.params.id).lean();
+  if (!template || !template.isActive) {
+    ctx.status = 404;
+    ctx.body = { success: false, message: '模板不存在' };
+    return;
+  }
+  // 增加浏览次数
+  await VibeTemplate.findByIdAndUpdate(ctx.params.id, { $inc: { viewCount: 1 } });
+  ctx.body = { success: true, data: template };
+});
+
+agentsRouter.post('/vibe/templates', async (ctx) => {
+  const body = ctx.request.body as {
+    title: string; description?: string; category?: string;
+    author?: string; codeParts: object; thumbnail?: string; tags?: string[];
+  };
+  if (!body.title || !body.codeParts) {
+    ctx.status = 400;
+    ctx.body = { success: false, message: 'title 和 codeParts 为必填项' };
+    return;
+  }
+  const template = await VibeTemplate.create({ ...body, publishedAt: new Date() });
+  ctx.body = { success: true, data: template };
 });

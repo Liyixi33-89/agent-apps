@@ -1,11 +1,26 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react';
 import {
   Monitor, RefreshCw, Maximize2, Minimize2, Play, Code2,
-  Copy, Check, Sparkles,
+  Copy, Check, Sparkles, Smartphone, Download,
+  ImagePlus, X, Globe,
 } from 'lucide-react';
 import { buildHtmlFromParts } from './utils';
 import { CODE_TABS } from './constants';
 import type { CodeParts, PreviewTab, CodeTab } from './types';
+
+// 懒加载 Monaco Editor，避免影响首屏
+const MonacoEditor = lazy(() => import('@monaco-editor/react'));
+
+// 移动端预览宽度
+const MOBILE_WIDTH = 390;
+
+const MONACO_LANG: Record<CodeTab, string> = {
+  html: 'html',
+  css:  'css',
+  js:   'javascript',
+};
+
+// ─── Props ────────────────────────────────────────────────────────────────────
 
 interface UIPreviewPanelProps {
   codeParts: CodeParts | null;
@@ -13,9 +28,15 @@ interface UIPreviewPanelProps {
   lang: 'zh' | 'en';
   isStreaming: boolean;
   isFromPreviousSession?: boolean;
+  uploadedImage?: string | null;       // base64 图片（来自父组件）
   onCodePartsChange: (parts: CodeParts) => void;
   onClearPreview?: () => void;
+  onImageUpload?: (base64: string) => void;
+  onImageClear?: () => void;
+  onPublish?: () => void;              // 发布到模板市场
 }
+
+// ─── 组件 ─────────────────────────────────────────────────────────────────────
 
 const UIPreviewPanel = ({
   codeParts,
@@ -23,8 +44,12 @@ const UIPreviewPanel = ({
   lang,
   isStreaming,
   isFromPreviousSession = false,
+  uploadedImage,
   onCodePartsChange,
   onClearPreview,
+  onImageUpload,
+  onImageClear,
+  onPublish,
 }: UIPreviewPanelProps) => {
   const [activeTab, setActiveTab] = useState<PreviewTab>('preview');
   const [activeCodeTab, setActiveCodeTab] = useState<CodeTab>('html');
@@ -32,17 +57,17 @@ const UIPreviewPanel = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [iframeError, setIframeError] = useState<string | null>(null);
   const [iframeLoading, setIframeLoading] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  // 历史预览的 iframe ref
   const historyIframeRef = useRef<HTMLIFrameElement>(null);
   const [historyIframeLoading, setHistoryIframeLoading] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   // 本地编辑状态（与父组件同步）
   const [localParts, setLocalParts] = useState<CodeParts>({ html: '', css: '', js: '' });
 
   useEffect(() => {
     if (!codeParts) return;
-    // isFullHtml 模式：从完整 HTML 中拆分 css/js 供代码面板展示
     if (codeParts.isFullHtml && codeParts.html) {
       const styleMatch = codeParts.html.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
       const scriptContents: string[] = [];
@@ -62,40 +87,36 @@ const UIPreviewPanel = ({
     }
   }, [codeParts]);
 
-  // 写入 iframe —— 使用 Blob URL 方式，让浏览器完整解析 HTML 文档
+  // 写入 iframe —— Blob URL 方式
   const writeToIframe = useCallback((html: string) => {
     if (!iframeRef.current) return;
     const prevSrc = iframeRef.current.src;
-    if (prevSrc && prevSrc.startsWith('blob:')) {
-      URL.revokeObjectURL(prevSrc);
-    }
+    if (prevSrc?.startsWith('blob:')) URL.revokeObjectURL(prevSrc);
     setIframeError(null);
     setIframeLoading(true);
     const blob = new Blob([html], { type: 'text/html; charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    iframeRef.current.src = url;
+    iframeRef.current.src = URL.createObjectURL(blob);
   }, []);
 
-  // codeParts 变化时自动渲染到 iframe
+  // codeParts 变化时自动渲染
   useEffect(() => {
-    if (codeParts) {
-      writeToIframe(buildHtmlFromParts(codeParts));
-    }
+    if (codeParts) writeToIframe(buildHtmlFromParts(codeParts));
   }, [codeParts, writeToIframe]);
 
   // prevCodeParts 变化时写入历史 iframe
   useEffect(() => {
     if (!prevCodeParts || !historyIframeRef.current) return;
     const blob = new Blob([buildHtmlFromParts(prevCodeParts)], { type: 'text/html; charset=utf-8' });
-    const url = URL.createObjectURL(blob);
     setHistoryIframeLoading(true);
-    historyIframeRef.current.src = url;
+    historyIframeRef.current.src = URL.createObjectURL(blob);
   }, [prevCodeParts]);
 
-  // 当 isFromPreviousSession 变为 true 时，自动切换到历史 Tab
+  // isFromPreviousSession 变为 true 时自动切换到历史 Tab
   useEffect(() => {
     if (isFromPreviousSession) setActiveTab('history');
   }, [isFromPreviousSession]);
+
+  // ─── 操作 ──────────────────────────────────────────────────────────────────
 
   const handleRun = () => {
     onCodePartsChange(localParts);
@@ -103,9 +124,7 @@ const UIPreviewPanel = ({
     setActiveTab('preview');
   };
 
-  const handleRefresh = () => {
-    writeToIframe(buildHtmlFromParts(localParts));
-  };
+  const handleRefresh = () => writeToIframe(buildHtmlFromParts(localParts));
 
   const handleCopy = async () => {
     const text =
@@ -120,8 +139,52 @@ const UIPreviewPanel = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleDownload = () => {
+    const html =
+      activeTab === 'history' && prevCodeParts
+        ? buildHtmlFromParts(prevCodeParts)
+        : codeParts
+        ? buildHtmlFromParts(codeParts)
+        : null;
+    if (!html) return;
+    const blob = new Blob([html], { type: 'text/html; charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `vibe-ui-${Date.now()}.html`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+  };
+
+  const handleOpenExternal = () => {
+    const html =
+      activeTab === 'history' && prevCodeParts
+        ? buildHtmlFromParts(prevCodeParts)
+        : codeParts
+        ? buildHtmlFromParts(codeParts)
+        : null;
+    if (!html) return;
+    const blob = new Blob([html], { type: 'text/html; charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  };
+
   const handleCodeChange = (tab: CodeTab, value: string) => {
     setLocalParts((prev) => ({ ...prev, [tab]: value }));
+  };
+
+  // 图片上传处理
+  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const base64 = ev.target?.result as string;
+      onImageUpload?.(base64);
+    };
+    reader.readAsDataURL(file);
+    // 重置 input，允许重复上传同一文件
+    e.target.value = '';
   };
 
   const hasContent = !!codeParts;
@@ -133,7 +196,7 @@ const UIPreviewPanel = ({
         isFullscreen ? 'fixed inset-0 z-50' : 'flex-1 min-w-0'
       }`}
     >
-      {/* 顶栏 */}
+      {/* ── 顶栏 ─────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-gray-800 flex-shrink-0 bg-gray-900">
         {/* 主 Tab */}
         <div className="flex items-center gap-1 bg-gray-800/80 rounded-lg p-0.5">
@@ -160,7 +223,7 @@ const UIPreviewPanel = ({
             {lang === 'zh' ? '代码' : 'Code'}
           </button>
 
-          {/* 历史预览 Tab —— 仅当有历史快照时显示 */}
+          {/* 历史预览 Tab */}
           {hasHistory && (
             <div className={`flex items-center rounded-md transition-all ${
               activeTab === 'history'
@@ -178,7 +241,6 @@ const UIPreviewPanel = ({
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />
                 {lang === 'zh' ? '历史' : 'History'}
               </button>
-              {/* 关闭按鈕 */}
               <button
                 className={`p-1 mr-0.5 rounded transition-colors ${
                   activeTab === 'history'
@@ -186,7 +248,7 @@ const UIPreviewPanel = ({
                     : 'text-amber-500/40 hover:text-amber-400 hover:bg-gray-700'
                 }`}
                 onClick={(e) => { e.stopPropagation(); onClearPreview?.(); setActiveTab('preview'); }}
-                aria-label={lang === 'zh' ? '关闭历史预览' : 'Close history preview'}
+                aria-label={lang === 'zh' ? '关闭历史预览' : 'Close history'}
                 tabIndex={0}
                 title={lang === 'zh' ? '关闭历史预览' : 'Close history'}
               >
@@ -198,7 +260,7 @@ const UIPreviewPanel = ({
           )}
         </div>
 
-        {/* 右侧操作 */}
+        {/* 右侧操作区 */}
         <div className="flex items-center gap-1">
           {isStreaming && (
             <span className="text-xs text-violet-400 flex items-center gap-1.5 bg-violet-500/10 px-2 py-0.5 rounded-full border border-violet-500/20 mr-1">
@@ -206,6 +268,74 @@ const UIPreviewPanel = ({
               {lang === 'zh' ? '生成中...' : 'Generating...'}
             </span>
           )}
+
+          {/* Mobile / Desktop 切换（仅预览 Tab 显示） */}
+          {activeTab === 'preview' && hasContent && (
+            <div className="flex items-center gap-0.5 bg-gray-800/60 rounded-lg p-0.5 mr-1">
+              <button
+                className={`p-1.5 rounded-md transition-all ${
+                  !isMobile ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'
+                }`}
+                onClick={() => setIsMobile(false)}
+                tabIndex={0}
+                aria-label="Desktop"
+                title="Desktop"
+              >
+                <Monitor className="w-3.5 h-3.5" />
+              </button>
+              <button
+                className={`p-1.5 rounded-md transition-all ${
+                  isMobile ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'
+                }`}
+                onClick={() => setIsMobile(true)}
+                tabIndex={0}
+                aria-label="Mobile (390px)"
+                title="Mobile (390px)"
+              >
+                <Smartphone className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* 图片上传按钮（Vision 参考图） */}
+          {onImageUpload && (
+            <>
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleImageFileChange}
+                aria-label="上传参考图"
+              />
+              <button
+                className={`p-1.5 rounded-lg transition-colors ${
+                  uploadedImage
+                    ? 'text-violet-400 bg-violet-500/15 border border-violet-500/30'
+                    : 'text-gray-400 hover:text-gray-100 hover:bg-gray-800'
+                }`}
+                onClick={() => imageInputRef.current?.click()}
+                tabIndex={0}
+                aria-label={lang === 'zh' ? '上传参考图' : 'Upload reference image'}
+                title={lang === 'zh' ? '上传参考图（Vision 模式）' : 'Upload reference image (Vision mode)'}
+              >
+                <ImagePlus className="w-3.5 h-3.5" />
+              </button>
+              {uploadedImage && onImageClear && (
+                <button
+                  className="p-1.5 text-gray-500 hover:text-red-400 rounded-lg hover:bg-red-500/10 transition-colors"
+                  onClick={onImageClear}
+                  tabIndex={0}
+                  aria-label={lang === 'zh' ? '清除参考图' : 'Clear image'}
+                  title={lang === 'zh' ? '清除参考图' : 'Clear image'}
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </>
+          )}
+
+          {/* 代码 Tab 运行按钮 */}
           {activeTab === 'code' && hasContent && (
             <button
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium transition-colors"
@@ -217,6 +347,8 @@ const UIPreviewPanel = ({
               {lang === 'zh' ? '运行' : 'Run'}
             </button>
           )}
+
+          {/* 刷新 */}
           {activeTab === 'preview' && hasContent && (
             <button
               className="p-1.5 text-gray-400 hover:text-gray-100 rounded-lg hover:bg-gray-800 transition-colors"
@@ -227,6 +359,8 @@ const UIPreviewPanel = ({
               <RefreshCw className="w-3.5 h-3.5" />
             </button>
           )}
+
+          {/* 复制 */}
           {(hasContent || (activeTab === 'history' && hasHistory)) && (
             <button
               className="p-1.5 text-gray-400 hover:text-gray-100 rounded-lg hover:bg-gray-800 transition-colors"
@@ -237,6 +371,35 @@ const UIPreviewPanel = ({
               {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
             </button>
           )}
+
+          {/* 下载 HTML */}
+          {(hasContent || (activeTab === 'history' && hasHistory)) && (
+            <button
+              className="p-1.5 text-gray-400 hover:text-gray-100 rounded-lg hover:bg-gray-800 transition-colors"
+              onClick={handleDownload}
+              aria-label={lang === 'zh' ? '下载 HTML' : 'Download HTML'}
+              title={lang === 'zh' ? '下载 HTML 文件' : 'Download HTML'}
+              tabIndex={0}
+            >
+              <Download className="w-3.5 h-3.5" />
+            </button>
+          )}
+
+          {/* 发布到模板市场 */}
+          {hasContent && onPublish && (
+            <button
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-400 hover:text-white text-xs font-medium transition-all border border-emerald-500/30 hover:border-emerald-500"
+              onClick={onPublish}
+              tabIndex={0}
+              aria-label={lang === 'zh' ? '发布到模板市场' : 'Publish to market'}
+              title={lang === 'zh' ? '发布到模板市场' : 'Publish to market'}
+            >
+              <Globe className="w-3.5 h-3.5" />
+              {lang === 'zh' ? '发布' : 'Publish'}
+            </button>
+          )}
+
+          {/* 全屏 */}
           <button
             className="p-1.5 text-gray-400 hover:text-gray-100 rounded-lg hover:bg-gray-800 transition-colors"
             onClick={() => setIsFullscreen((f) => !f)}
@@ -248,11 +411,30 @@ const UIPreviewPanel = ({
         </div>
       </div>
 
-        {/* 删除旧的历史预览提示条（已用 Tab 替代） */}
+      {/* ── 参考图预览条 ──────────────────────────────────────────────────── */}
+      {uploadedImage && (
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-violet-500/8 border-b border-violet-500/15 flex-shrink-0">
+          <img src={uploadedImage} alt="参考图" className="w-8 h-8 rounded-md object-cover border border-violet-500/20" />
+          <span className="text-[11px] text-violet-400/80 flex-1">
+            {lang === 'zh' ? '已上传参考图，AI 将参考此图生成 UI' : 'Reference image uploaded, AI will use it'}
+          </span>
+          {onImageClear && (
+            <button
+              className="text-[11px] text-violet-400/60 hover:text-violet-300 transition-colors px-1.5 py-0.5 rounded hover:bg-violet-500/10"
+              onClick={onImageClear}
+              tabIndex={0}
+              aria-label="清除参考图"
+            >
+              {lang === 'zh' ? '清除' : 'Clear'}
+            </button>
+          )}
+        </div>
+      )}
 
-        {/* 内容区 */}
+      {/* ── 内容区 ────────────────────────────────────────────────────────── */}
       <div className="flex-1 overflow-hidden flex flex-col">
-        {/* 历史预览 Tab 内容 */}
+
+        {/* 历史预览 Tab */}
         <div className={`flex-1 overflow-hidden ${activeTab === 'history' ? 'flex' : 'hidden'}`}>
           {hasHistory ? (
             <div className="relative w-full h-full">
@@ -271,7 +453,6 @@ const UIPreviewPanel = ({
                   </div>
                 </div>
               )}
-              {/* 底部标注条 */}
               <div className="absolute bottom-0 left-0 right-0 bg-gray-950/85 border-t border-amber-500/15 px-3 py-1.5 flex items-center gap-2 pointer-events-none">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400/60 flex-shrink-0" />
                 <span className="text-[10px] text-amber-400/60">
@@ -285,18 +466,55 @@ const UIPreviewPanel = ({
         {/* 预览 Tab */}
         <div className={`flex-1 overflow-hidden ${activeTab === 'preview' ? 'flex' : 'hidden'}`}>
           {hasContent ? (
-            <div className="relative w-full h-full">
-              <iframe
-                ref={iframeRef}
-                className="w-full h-full border-0 bg-white"
-                title="UI Preview"
-                sandbox="allow-scripts allow-same-origin"
-                onLoad={() => setIframeLoading(false)}
-                onError={() => {
-                  setIframeLoading(false);
-                  setIframeError(lang === 'zh' ? '预览加载失败' : 'Preview failed to load');
-                }}
-              />
+            <div className="relative w-full h-full flex items-center justify-center bg-gray-950 overflow-auto">
+              {/* 设备容器 */}
+              {isMobile ? (
+                /* 手机外框 */
+                <div className="flex-shrink-0 flex flex-col items-center py-6 h-full">
+                  <div
+                    className="relative flex flex-col bg-gray-900 rounded-[2.5rem] shadow-2xl border-2 border-gray-700/80 overflow-hidden"
+                    style={{ width: MOBILE_WIDTH, height: '100%', maxHeight: 780 }}
+                  >
+                    {/* 刘海 */}
+                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-24 h-5 bg-gray-900 rounded-b-2xl z-10 flex items-center justify-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-gray-700" />
+                      <span className="w-8 h-1 rounded-full bg-gray-700" />
+                    </div>
+                    <iframe
+                      ref={iframeRef}
+                      className="flex-1 border-0 bg-white mt-5"
+                      title="UI Preview Mobile"
+                      sandbox="allow-scripts allow-same-origin"
+                      onLoad={() => setIframeLoading(false)}
+                      onError={() => {
+                        setIframeLoading(false);
+                        setIframeError(lang === 'zh' ? '预览加载失败' : 'Preview failed to load');
+                      }}
+                    />
+                    {/* 底部 Home 条 */}
+                    <div className="flex-shrink-0 h-6 flex items-center justify-center bg-gray-900">
+                      <span className="w-24 h-1 rounded-full bg-gray-700" />
+                    </div>
+                  </div>
+                  <p className="mt-2 text-[10px] text-gray-600">Mobile · {MOBILE_WIDTH}px</p>
+                </div>
+              ) : (
+                /* 桌面全宽 */
+                <div className="w-full h-full">
+                  <iframe
+                    ref={iframeRef}
+                    className="w-full h-full border-0 bg-white"
+                    title="UI Preview"
+                    sandbox="allow-scripts allow-same-origin"
+                    onLoad={() => setIframeLoading(false)}
+                    onError={() => {
+                      setIframeLoading(false);
+                      setIframeError(lang === 'zh' ? '预览加载失败' : 'Preview failed to load');
+                    }}
+                  />
+                </div>
+              )}
+
               {/* 加载遮罩 */}
               {iframeLoading && (
                 <div className="absolute inset-0 bg-gray-950/80 flex items-center justify-center">
@@ -306,7 +524,18 @@ const UIPreviewPanel = ({
                   </div>
                 </div>
               )}
-              {/* 错误提示条 —— 仅当 iframe 本身加载失败时显示（AI 代码运行时错误由注入的 onerror 处理）*/}
+
+              {/* 加载遮罩 */}
+              {iframeLoading && (
+                <div className="absolute inset-0 bg-gray-950/80 flex items-center justify-center pointer-events-none">
+                  <div className="flex items-center gap-2 text-xs text-gray-400">
+                    <span className="w-3 h-3 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
+                    {lang === 'zh' ? '渲染中...' : 'Rendering...'}
+                  </div>
+                </div>
+              )}
+
+              {/* 错误提示条 */}
               {iframeError && (
                 <div className="absolute bottom-0 left-0 right-0 bg-red-950/90 border-t border-red-800/60 px-3 py-2 flex items-center gap-2">
                   <span className="text-red-400 text-xs">⚠ {iframeError}</span>
@@ -322,6 +551,7 @@ const UIPreviewPanel = ({
               )}
             </div>
           ) : (
+            /* 空状态 */
             <div className="flex flex-col items-center justify-center w-full h-full gap-6 p-8">
               <div className="relative">
                 <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-violet-500/10 to-sky-500/10 flex items-center justify-center border border-violet-500/15">
@@ -352,7 +582,7 @@ const UIPreviewPanel = ({
           )}
         </div>
 
-        {/* 代码 Tab */}
+        {/* 代码 Tab —— Monaco Editor */}
         <div className={`flex-1 overflow-hidden flex flex-col ${activeTab === 'code' ? 'flex' : 'hidden'}`}>
           {/* 代码子 Tab */}
           <div className="flex items-center gap-0 border-b border-gray-800 bg-gray-900 flex-shrink-0 px-3">
@@ -383,21 +613,37 @@ const UIPreviewPanel = ({
             </div>
           </div>
 
-          {/* 代码编辑区 */}
+          {/* Monaco 编辑器 */}
           {CODE_TABS.map((tab) => (
             <div
               key={tab.key}
               className={`flex-1 overflow-hidden ${activeCodeTab === tab.key ? 'flex' : 'hidden'}`}
             >
-              <textarea
-                className="w-full h-full bg-gray-950 text-gray-200 text-xs font-mono p-4 resize-none outline-none border-0 leading-relaxed"
-                value={localParts[tab.key]}
-                onChange={(e) => handleCodeChange(tab.key, e.target.value)}
-                placeholder={tab.placeholder}
-                spellCheck={false}
-                aria-label={`编辑 ${tab.label} 代码`}
-                tabIndex={0}
-              />
+              <Suspense fallback={
+                <div className="w-full h-full flex items-center justify-center bg-gray-950">
+                  <span className="text-xs text-gray-500">{lang === 'zh' ? '加载编辑器...' : 'Loading editor...'}</span>
+                </div>
+              }>
+                <MonacoEditor
+                  height="100%"
+                  language={MONACO_LANG[tab.key]}
+                  value={localParts[tab.key]}
+                  onChange={(val) => handleCodeChange(tab.key, val ?? '')}
+                  theme="vs-dark"
+                  options={{
+                    fontSize: 13,
+                    minimap: { enabled: false },
+                    scrollBeyondLastLine: false,
+                    wordWrap: 'on',
+                    lineNumbers: 'on',
+                    folding: true,
+                    automaticLayout: true,
+                    tabSize: 2,
+                    formatOnPaste: true,
+                    padding: { top: 12, bottom: 12 },
+                  }}
+                />
+              </Suspense>
             </div>
           ))}
         </div>

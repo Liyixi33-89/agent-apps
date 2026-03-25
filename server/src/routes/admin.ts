@@ -8,6 +8,7 @@ import { KnowledgeBase } from '../models/KnowledgeBase.js';
 import { Chat } from '../models/Chat.js';
 import { User } from '../models/User.js';
 import { SystemPrompt } from '../models/SystemPrompt.js';
+import { VibeTemplate } from '../models/VibeTemplate.js';
 import { ingestAgentsFromMarkdown, ingestKnowledgeFromAgents } from '../services/agentIngestionService.js';
 import { createKnowledgeEntry } from '../services/knowledgeService.js';
 import { env } from '../config/env.js';
@@ -466,3 +467,62 @@ adminRouter.delete('/prompts/:key', requireAdmin, async (ctx) => {
 });
 
 // ⚠️ /prompts/seed 已移至 /prompts 路由之前注册（见上方），此处已删除重复定义
+
+// ─── Vibe 模板市场管理 ─────────────────────────────────────────────────────────
+//
+// GET    /api/admin/vibe-templates          → 获取模板列表（分页 + 搜索 + 分类过滤）
+// POST   /api/admin/vibe-templates          → 新建模板
+// PUT    /api/admin/vibe-templates/:id      → 更新模板
+// DELETE /api/admin/vibe-templates/:id      → 删除模板
+// ─────────────────────────────────────────────────────────────────────────────
+
+adminRouter.get('/vibe-templates', requireAdmin, async (ctx) => {
+  const { page = '1', limit = '20', category, search } = ctx.query as Record<string, string>;
+  const pageNum = Math.max(1, parseInt(page));
+  const limitNum = Math.min(100, parseInt(limit));
+
+  const filter: Record<string, unknown> = {};
+  if (category) filter.category = category;
+  if (search) filter.$or = [
+    { title: { $regex: search, $options: 'i' } },
+    { description: { $regex: search, $options: 'i' } },
+    { tags: { $regex: search, $options: 'i' } },
+  ];
+
+  const [templates, total] = await Promise.all([
+    VibeTemplate.find(filter, { 'codeParts.html': 0, 'codeParts.css': 0, 'codeParts.js': 0 })
+      .sort({ publishedAt: -1 })
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum)
+      .lean(),
+    VibeTemplate.countDocuments(filter),
+  ]);
+
+  ctx.body = { success: true, data: templates, pagination: { page: pageNum, limit: limitNum, total } };
+});
+
+adminRouter.post('/vibe-templates', requireAdmin, async (ctx) => {
+  const body = ctx.request.body as {
+    title: string; description?: string; category?: string;
+    author?: string; codeParts: object; thumbnail?: string;
+    tags?: string[]; isActive?: boolean;
+  };
+  const template = await VibeTemplate.create({ ...body, publishedAt: new Date() });
+  ctx.body = { success: true, data: template };
+});
+
+adminRouter.put('/vibe-templates/:id', requireAdmin, async (ctx) => {
+  const update = ctx.request.body as Record<string, unknown>;
+  const template = await VibeTemplate.findByIdAndUpdate(
+    ctx.params.id,
+    { $set: update },
+    { new: true }
+  );
+  if (!template) { ctx.status = 404; ctx.body = { success: false, message: '模板不存在' }; return; }
+  ctx.body = { success: true, data: template };
+});
+
+adminRouter.delete('/vibe-templates/:id', requireAdmin, async (ctx) => {
+  await VibeTemplate.findByIdAndDelete(ctx.params.id);
+  ctx.body = { success: true, message: '模板已删除' };
+});

@@ -1,6 +1,7 @@
 import Koa from 'koa';
 import cors from '@koa/cors';
 import bodyParser from 'koa-bodyparser';
+import koaStatic from 'koa-static';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -34,6 +35,12 @@ app.use(
 // ─── Body Parser ───────────────────────────────────────────────────────────────
 
 app.use(bodyParser({ jsonLimit: '10mb' }));
+
+// ─── 静态文件服务（uploads 目录）──────────────────────────────────────────────
+
+const UPLOADS_DIR = path.resolve(__dirname, '..', 'uploads');
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+app.use(koaStatic(UPLOADS_DIR, { prefix: '/uploads' }));
 
 // ─── 全局错误处理 ──────────────────────────────────────────────────────────────
 

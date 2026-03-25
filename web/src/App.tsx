@@ -4,6 +4,7 @@ import HomePage from './pages/HomePage';
 import AgentsPage from './pages/AgentsPage';
 import AgentDetailPage from './pages/AgentDetailPage';
 import VibeCodingPage from './pages/VibeCodingPage';
+import TemplateMarketPage from './pages/TemplateMarketPage';
 import ChatPage from './pages/ChatPage';
 import KnowledgePage from './pages/KnowledgePage';
 import PipelinesPage from './pages/PipelinesPage';
@@ -16,6 +17,7 @@ const MainRoutes = () => (
       <Route path="/agents" element={<AgentsPage />} />
       <Route path="/agents/:slug" element={<AgentDetailPage />} />
       <Route path="/vibe" element={<VibeCodingPage />} />
+      <Route path="/market" element={<TemplateMarketPage />} />
       <Route path="/chat" element={<ChatPage />} />
       <Route path="/chat/:sessionId" element={<ChatPage />} />
       <Route path="/knowledge" element={<KnowledgePage />} />
