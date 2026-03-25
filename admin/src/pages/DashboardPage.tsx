@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { LayoutDashboard, Bot, BookOpen, GitBranch, MessageSquare, RefreshCw, Cpu } from 'lucide-react';
-import { fetchDashboard, triggerAdminIngest } from '../api';
+import { LayoutDashboard, Bot, BookOpen, GitBranch, MessageSquare, RefreshCw, Cpu, Sparkles } from 'lucide-react';
+import { fetchDashboard, triggerAdminIngest, fetchAdminPrompts } from '../api';
 
 interface DashboardData {
   stats: { agentCount: number; categoryCount: number; pipelineCount: number; knowledgeCount: number; chatCount: number };
@@ -10,14 +10,19 @@ interface DashboardData {
 
 const DashboardPage = () => {
   const [data, setData] = useState<DashboardData | null>(null);
+  const [promptCount, setPromptCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [ingesting, setIngesting] = useState(false);
   const [ingestMsg, setIngestMsg] = useState('');
 
   const loadDashboard = async () => {
     try {
-      const result = await fetchDashboard();
+      const [result, prompts] = await Promise.all([
+        fetchDashboard(),
+        fetchAdminPrompts().catch(() => []),
+      ]);
       setData(result);
+      setPromptCount(prompts.length);
     } catch (err) {
       console.error('Failed to load dashboard', err);
     } finally {
@@ -45,7 +50,8 @@ const DashboardPage = () => {
     { label: 'Agent 总数', value: data.stats.agentCount, icon: Bot, color: 'text-sky-400' },
     { label: '知识库条目', value: data.stats.knowledgeCount, icon: BookOpen, color: 'text-emerald-400' },
     { label: '流水线', value: data.stats.pipelineCount, icon: GitBranch, color: 'text-violet-400' },
-    { label: '对话记录', value: data.stats.chatCount, icon: MessageSquare, color: 'text-amber-400' }
+    { label: '对话记录', value: data.stats.chatCount, icon: MessageSquare, color: 'text-amber-400' },
+    { label: '系统提示词', value: promptCount, icon: Sparkles, color: 'text-pink-400' },
   ] : [];
 
   return (
@@ -100,7 +106,7 @@ const DashboardPage = () => {
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
           {statCards.map(({ label, value, icon: Icon, color }) => (
             <div key={label} className="card">
               <div className="flex items-center gap-2 mb-2">

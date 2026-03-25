@@ -1,27 +1,44 @@
 import { create } from 'zustand';
+import { initAdminToken } from '../api';
+
+// 安全访问 localStorage（防止 SSR 或隐私模式崩溃）
+const safeGet = (key: string): string | null => {
+  try { return localStorage.getItem(key); } catch { return null; }
+};
+const safeSet = (key: string, value: string) => {
+  try { localStorage.setItem(key, value); } catch { /* ignore */ }
+};
+const safeRemove = (key: string) => {
+  try { localStorage.removeItem(key); } catch { /* ignore */ }
+};
 
 interface AdminState {
   token: string | null;
   username: string | null;
+  isAuthenticated: boolean;
   setAuth: (token: string, username: string) => void;
   logout: () => void;
-  isAuthenticated: boolean;
 }
 
+const storedToken = safeGet('admin_token');
+// 应用启动时恢复 token 到 axios 请求头
+if (storedToken) initAdminToken(storedToken);
+
 export const useAdminStore = create<AdminState>((set) => ({
-  token: localStorage.getItem('admin_token'),
-  username: localStorage.getItem('admin_username'),
-  isAuthenticated: !!localStorage.getItem('admin_token'),
+  token: storedToken,
+  username: safeGet('admin_username'),
+  isAuthenticated: !!storedToken,
 
   setAuth: (token, username) => {
-    localStorage.setItem('admin_token', token);
-    localStorage.setItem('admin_username', username);
+    safeSet('admin_token', token);
+    safeSet('admin_username', username);
+    initAdminToken(token);
     set({ token, username, isAuthenticated: true });
   },
 
   logout: () => {
-    localStorage.removeItem('admin_token');
-    localStorage.removeItem('admin_username');
+    safeRemove('admin_token');
+    safeRemove('admin_username');
     set({ token: null, username: null, isAuthenticated: false });
-  }
+  },
 }));

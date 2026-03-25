@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Bot, Search, Trash2, ChevronLeft, ChevronRight, Download, CheckCircle, AlertCircle, Loader2, Languages } from 'lucide-react';
-import { fetchAdminAgents, deleteAgent, triggerAdminIngest } from '../api';
+import { Bot, Search, Trash2, ChevronLeft, ChevronRight, Download, CheckCircle, AlertCircle, Loader2, Languages, Pencil, X, Save } from 'lucide-react';
+import { fetchAdminAgents, deleteAgent, triggerAdminIngest, updateAgent } from '../api';
 
 interface IngestResult {
   totalAgents: number;
@@ -22,6 +22,14 @@ interface Agent {
   stats: { wordCount: number };
 }
 
+interface EditForm {
+  nameZh: string;
+  nameEn: string;
+  descZh: string;
+  descEn: string;
+  emoji: string;
+}
+
 const AgentsAdminPage = () => {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -33,6 +41,9 @@ const AgentsAdminPage = () => {
   const [translateOnIngest, setTranslateOnIngest] = useState(false);
   const [ingestResult, setIngestResult] = useState<IngestResult | null>(null);
   const [ingestError, setIngestError] = useState<string | null>(null);
+  const [editAgent, setEditAgent] = useState<Agent | null>(null);
+  const [editForm, setEditForm] = useState<EditForm>({ nameZh: '', nameEn: '', descZh: '', descEn: '', emoji: '' });
+  const [saving, setSaving] = useState(false);
 
   const loadAgents = useCallback(async () => {
     setLoading(true);
@@ -48,6 +59,35 @@ const AgentsAdminPage = () => {
   }, [page, search]);
 
   useEffect(() => { loadAgents(); }, [loadAgents]);
+
+  const handleOpenEdit = (agent: Agent) => {
+    setEditAgent(agent);
+    setEditForm({
+      nameZh: agent.name.zh,
+      nameEn: agent.name.en,
+      descZh: agent.description.zh,
+      descEn: agent.description.en,
+      emoji: agent.emoji,
+    });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editAgent) return;
+    setSaving(true);
+    try {
+      await updateAgent(editAgent._id, {
+        name: { zh: editForm.nameZh, en: editForm.nameEn },
+        description: { zh: editForm.descZh, en: editForm.descEn },
+        emoji: editForm.emoji,
+      });
+      setEditAgent(null);
+      await loadAgents();
+    } catch (err) {
+      console.error('Update failed', err);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleDelete = async (id: string) => {
     if (!confirm('确认删除此 Agent？')) return;
@@ -233,15 +273,28 @@ const AgentsAdminPage = () => {
                     <span className="text-xs text-gray-500">{agent.stats.wordCount.toLocaleString()}</span>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <button
-                      className="btn-ghost text-red-400 hover:text-red-300 hover:bg-red-900/20 text-xs px-2 py-1"
-                      onClick={() => handleDelete(agent._id)}
-                      disabled={deletingId === agent._id}
-                      aria-label="删除 Agent"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      {deletingId === agent._id ? '删除中...' : '删除'}
-                    </button>
+                    <div className="flex items-center justify-end gap-1">
+                      <button
+                        className="p-1.5 rounded-lg text-gray-500 hover:text-amber-400 hover:bg-amber-900/20 transition-colors"
+                        onClick={() => handleOpenEdit(agent)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleOpenEdit(agent)}
+                        aria-label="编辑 Agent"
+                        tabIndex={0}
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        className="p-1.5 rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-900/20 transition-colors"
+                        onClick={() => handleDelete(agent._id)}
+                        disabled={deletingId === agent._id}
+                        aria-label="删除 Agent"
+                        tabIndex={0}
+                      >
+                        {deletingId === agent._id
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          : <Trash2 className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -264,6 +317,111 @@ const AgentsAdminPage = () => {
           </div>
         )}
       </div>
+
+      {/* 编辑 Agent 弹窗 */}
+      {editAgent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-md">
+            <div className="flex items-center justify-between p-4 border-b border-gray-800">
+              <h2 className="font-semibold text-gray-100 text-sm flex items-center gap-2">
+                <Pencil className="w-4 h-4 text-amber-400" />
+                编辑 Agent
+              </h2>
+              <button
+                className="p-1.5 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-gray-800 transition-colors"
+                onClick={() => setEditAgent(null)}
+                aria-label="关闭"
+                tabIndex={0}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div className="flex items-center gap-3">
+                <div>
+                  <label className="text-xs text-gray-400 mb-1 block">Emoji</label>
+                  <input
+                    type="text"
+                    className="input w-16 text-center text-xl"
+                    value={editForm.emoji}
+                    onChange={(e) => setEditForm({ ...editForm, emoji: e.target.value })}
+                    aria-label="Emoji"
+                    tabIndex={0}
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="text-xs text-gray-400 mb-1 block">Slug</label>
+                  <div className="input bg-gray-800/50 text-gray-500 text-xs font-mono cursor-not-allowed">{editAgent.slug}</div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-gray-400 mb-1 block">名称（中文）</label>
+                  <input
+                    type="text"
+                    className="input"
+                    value={editForm.nameZh}
+                    onChange={(e) => setEditForm({ ...editForm, nameZh: e.target.value })}
+                    aria-label="中文名称"
+                    tabIndex={0}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-400 mb-1 block">名称（英文）</label>
+                  <input
+                    type="text"
+                    className="input"
+                    value={editForm.nameEn}
+                    onChange={(e) => setEditForm({ ...editForm, nameEn: e.target.value })}
+                    aria-label="英文名称"
+                    tabIndex={0}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 mb-1 block">描述（中文）</label>
+                <textarea
+                  className="input resize-none min-h-16 text-xs"
+                  value={editForm.descZh}
+                  onChange={(e) => setEditForm({ ...editForm, descZh: e.target.value })}
+                  aria-label="中文描述"
+                  tabIndex={0}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 mb-1 block">描述（英文）</label>
+                <textarea
+                  className="input resize-none min-h-16 text-xs"
+                  value={editForm.descEn}
+                  onChange={(e) => setEditForm({ ...editForm, descEn: e.target.value })}
+                  aria-label="英文描述"
+                  tabIndex={0}
+                />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button
+                  className="btn-primary flex-1 justify-center"
+                  onClick={handleSaveEdit}
+                  disabled={saving}
+                  aria-label="保存"
+                  tabIndex={0}
+                >
+                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  {saving ? '保存中...' : '保存'}
+                </button>
+                <button
+                  className="btn-ghost"
+                  onClick={() => setEditAgent(null)}
+                  aria-label="取消"
+                  tabIndex={0}
+                >
+                  取消
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -218,9 +218,16 @@ agentsRouter.get('/pipelines', async (ctx) => {
   ctx.body = { success: true, data: pipelines };
 });
 
-// ─── 导入 Agents ───────────────────────────────────────────────────────────────
+// ─── 导入 Agents（需要 x-admin-key 请求头验证，防止未授权触发）────────────────
 
 agentsRouter.post('/ingest', async (ctx) => {
+  // 简单的 API Key 校验，防止公网随意触发导入
+  const adminKey = ctx.headers['x-admin-key'];
+  if (!adminKey || adminKey !== env.jwtSecret) {
+    ctx.status = 401;
+    ctx.body = { success: false, message: '未授权，请通过管理后台触发导入' };
+    return;
+  }
   const result = await ingestAgentsFromMarkdown(env.ingestRoot);
   ctx.body = { success: true, data: result };
 });

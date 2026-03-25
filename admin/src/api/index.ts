@@ -4,10 +4,17 @@ const api = axios.create({ baseURL: '/api/admin', timeout: 60_000 });
 
 // 请求拦截器：自动附加 token
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('admin_token');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  try {
+    const token = localStorage.getItem('admin_token');
+    if (token) config.headers.Authorization = `Bearer ${token}`;
+  } catch { /* ignore */ }
   return config;
 });
+
+/** 外部调用：手动设置 token（store 初始化时使用） */
+export const initAdminToken = (token: string) => {
+  api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+};
 
 // 响应拦截器：401 跳转登录
 api.interceptors.response.use(
@@ -73,6 +80,11 @@ export const createPipeline = async (body: Record<string, unknown>) => {
   return data.data;
 };
 
+export const updatePipeline = async (id: string, body: Record<string, unknown>) => {
+  const { data } = await api.put(`/pipelines/${id}`, body);
+  return data.data;
+};
+
 export const deletePipeline = async (id: string) => {
   await api.delete(`/pipelines/${id}`);
 };
@@ -115,6 +127,11 @@ export const fetchAdminPrompts = async (category?: string) => {
   const { data } = await api.get<{ success: boolean; data: SystemPrompt[] }>('/prompts', {
     params: category ? { category } : undefined,
   });
+  return data.data;
+};
+
+export const fetchAdminPrompt = async (key: string) => {
+  const { data } = await api.get<{ success: boolean; data: SystemPrompt }>(`/prompts/${key}`);
   return data.data;
 };
 

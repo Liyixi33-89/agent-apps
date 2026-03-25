@@ -390,6 +390,29 @@ const DEFAULT_PROMPTS = [
   },
 ];
 
+// 初始化/重置内置默认提示词（upsert，不覆盖已自定义的内容）
+// ⚠️ 必须在 /prompts/:key 之前注册，否则 'seed' 会被当作 key 参数
+adminRouter.post('/prompts/seed', requireAdmin, async (ctx) => {
+  const { force = false } = (ctx.request.body as { force?: boolean }) || {};
+
+  const results = await Promise.all(
+    DEFAULT_PROMPTS.map(async (p) => {
+      const exists = await SystemPrompt.findOne({ key: p.key });
+      if (exists && !force) {
+        return { key: p.key, action: 'skipped' };
+      }
+      await SystemPrompt.findOneAndUpdate(
+        { key: p.key },
+        { $set: p },
+        { upsert: true, new: true }
+      );
+      return { key: p.key, action: exists ? 'reset' : 'created' };
+    })
+  );
+
+  ctx.body = { success: true, data: results };
+});
+
 // 获取提示词列表（支持按 category 过滤）
 adminRouter.get('/prompts', requireAdmin, async (ctx) => {
   const { category } = ctx.query as Record<string, string>;
@@ -436,25 +459,4 @@ adminRouter.delete('/prompts/:key', requireAdmin, async (ctx) => {
   ctx.body = { success: true, message: 'Prompt deleted' };
 });
 
-// 初始化/重置内置默认提示词（upsert，不覆盖已自定义的内容）
-adminRouter.post('/prompts/seed', requireAdmin, async (ctx) => {
-  const { force = false } = (ctx.request.body as { force?: boolean }) || {};
-
-  const results = await Promise.all(
-    DEFAULT_PROMPTS.map(async (p) => {
-      const exists = await SystemPrompt.findOne({ key: p.key });
-      if (exists && !force) {
-        // 已存在且非强制重置：跳过，保留用户自定义内容
-        return { key: p.key, action: 'skipped' };
-      }
-      await SystemPrompt.findOneAndUpdate(
-        { key: p.key },
-        { $set: p },
-        { upsert: true, new: true }
-      );
-      return { key: p.key, action: exists ? 'reset' : 'created' };
-    })
-  );
-
-  ctx.body = { success: true, data: results };
-});
+// ⚠️ /prompts/seed 已移至 /prompts 路由之前注册（见上方），此处已删除重复定义
