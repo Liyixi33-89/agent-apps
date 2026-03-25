@@ -19,6 +19,8 @@ const UIPreviewPanel = ({ codeParts, lang, isStreaming, onCodePartsChange }: UIP
   const [activeCodeTab, setActiveCodeTab] = useState<CodeTab>('html');
   const [copied, setCopied] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [iframeError, setIframeError] = useState<string | null>(null);
+  const [iframeLoading, setIframeLoading] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // 本地编辑状态（与父组件同步）
@@ -53,6 +55,8 @@ const UIPreviewPanel = ({ codeParts, lang, isStreaming, onCodePartsChange }: UIP
     if (prevSrc && prevSrc.startsWith('blob:')) {
       URL.revokeObjectURL(prevSrc);
     }
+    setIframeError(null);
+    setIframeLoading(true);
     const blob = new Blob([html], { type: 'text/html; charset=utf-8' });
     const url = URL.createObjectURL(blob);
     iframeRef.current.src = url;
@@ -180,12 +184,42 @@ const UIPreviewPanel = ({ codeParts, lang, isStreaming, onCodePartsChange }: UIP
         {/* 预览 Tab */}
         <div className={`flex-1 overflow-hidden ${activeTab === 'preview' ? 'flex' : 'hidden'}`}>
           {hasContent ? (
-            <iframe
-              ref={iframeRef}
-              className="w-full h-full border-0 bg-white"
-              title="UI Preview"
-              sandbox="allow-scripts allow-same-origin"
-            />
+            <div className="relative w-full h-full">
+              <iframe
+                ref={iframeRef}
+                className="w-full h-full border-0 bg-white"
+                title="UI Preview"
+                sandbox="allow-scripts allow-same-origin"
+                onLoad={() => setIframeLoading(false)}
+                onError={() => {
+                  setIframeLoading(false);
+                  setIframeError(lang === 'zh' ? '预览加载失败' : 'Preview failed to load');
+                }}
+              />
+              {/* 加载遮罩 */}
+              {iframeLoading && (
+                <div className="absolute inset-0 bg-gray-950/80 flex items-center justify-center">
+                  <div className="flex items-center gap-2 text-xs text-gray-400">
+                    <span className="w-3 h-3 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
+                    {lang === 'zh' ? '渲染中...' : 'Rendering...'}
+                  </div>
+                </div>
+              )}
+              {/* 错误提示条 —— 仅当 iframe 本身加载失败时显示（AI 代码运行时错误由注入的 onerror 处理）*/}
+              {iframeError && (
+                <div className="absolute bottom-0 left-0 right-0 bg-red-950/90 border-t border-red-800/60 px-3 py-2 flex items-center gap-2">
+                  <span className="text-red-400 text-xs">⚠ {iframeError}</span>
+                  <button
+                    className="ml-auto text-[10px] text-red-400 hover:text-red-200 underline"
+                    onClick={() => { setIframeError(null); handleRefresh(); }}
+                    tabIndex={0}
+                    aria-label="重试"
+                  >
+                    {lang === 'zh' ? '重试' : 'Retry'}
+                  </button>
+                </div>
+              )}
+            </div>
           ) : (
             <div className="flex flex-col items-center justify-center w-full h-full gap-6 p-8">
               <div className="relative">

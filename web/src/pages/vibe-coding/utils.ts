@@ -73,10 +73,38 @@ export const extractCodeParts = (markdown: string): CodeParts => {
   };
 };
 
+// 全局错误捕获脚本 —— 注入到每个预览 HTML 中，防止 AI 生成代码的运行时错误导致白屏
+const ERROR_GUARD_SCRIPT = `
+<script>
+(function() {
+  var _errors = [];
+  window.onerror = function(msg, src, line, col, err) {
+    _errors.push({ msg: msg, line: line, col: col });
+    var bar = document.getElementById('__vibe_err_bar__');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = '__vibe_err_bar__';
+      bar.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#1a0a0a;border-top:1px solid #7f1d1d;color:#fca5a5;font-size:11px;font-family:monospace;padding:6px 12px;z-index:99999;max-height:80px;overflow-y:auto;';
+      document.body && document.body.appendChild(bar);
+    }
+    bar.innerHTML = _errors.map(function(e){ return '⚠ ' + e.msg + (e.line ? ' (line ' + e.line + ')' : ''); }).join('<br/>');
+    return false;
+  };
+  window.addEventListener('unhandledrejection', function(e) {
+    window.onerror && window.onerror(String(e.reason), '', 0, 0, null);
+  });
+})();
+<\/script>`;
+
 // 将 CodeParts 组合成完整可运行 HTML
 export const buildHtmlFromParts = (parts: CodeParts): string => {
   if (parts.isFullHtml && parts.html) {
-    return sanitizeHtml(injectCdnToFullHtml(parts.html));
+    const html = sanitizeHtml(injectCdnToFullHtml(parts.html));
+    // 在 </head> 前注入错误捕获脚本
+    if (html.includes('</head>')) {
+      return html.replace('</head>', `${ERROR_GUARD_SCRIPT}\n</head>`);
+    }
+    return ERROR_GUARD_SCRIPT + '\n' + html;
   }
   return sanitizeHtml(`<!DOCTYPE html>
 <html lang="zh">
@@ -84,6 +112,7 @@ export const buildHtmlFromParts = (parts: CodeParts): string => {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Vibe UI Preview</title>
+  ${ERROR_GUARD_SCRIPT}
   <script src="https://cdn.tailwindcss.com"><\/script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" />
   <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"><\/script>
