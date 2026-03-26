@@ -103,6 +103,12 @@ const UIPreviewPanel = ({
     if (codeParts) writeToIframe(buildHtmlFromParts(codeParts));
   }, [codeParts, writeToIframe]);
 
+  // Mobile / Desktop 切换时，新 iframe 节点挂载后重新写入内容
+  useEffect(() => {
+    if (codeParts) writeToIframe(buildHtmlFromParts(codeParts));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMobile]);
+
   // prevCodeParts 变化时写入历史 iframe
   useEffect(() => {
     if (!prevCodeParts || !historyIframeRef.current) return;
@@ -502,7 +508,7 @@ const UIPreviewPanel = ({
                 /* 桌面全宽 */
                 <div className="w-full h-full">
                   <iframe
-                    ref={iframeRef}
+                  ref={iframeRef}
                     className="w-full h-full border-0 bg-white"
                     title="UI Preview"
                     sandbox="allow-scripts allow-same-origin"
@@ -512,16 +518,6 @@ const UIPreviewPanel = ({
                       setIframeError(lang === 'zh' ? '预览加载失败' : 'Preview failed to load');
                     }}
                   />
-                </div>
-              )}
-
-              {/* 加载遮罩 */}
-              {iframeLoading && (
-                <div className="absolute inset-0 bg-gray-950/80 flex items-center justify-center">
-                  <div className="flex items-center gap-2 text-xs text-gray-400">
-                    <span className="w-3 h-3 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
-                    {lang === 'zh' ? '渲染中...' : 'Rendering...'}
-                  </div>
                 </div>
               )}
 

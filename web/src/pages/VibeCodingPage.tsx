@@ -150,8 +150,8 @@ const VibeCodingPage = () => {
     const initialSteps: PipelineStep[] = [
       { step: 1, total: 4, title: '📋 需求分析', status: 'pending' },
       { step: 2, total: 4, title: '🎨 UI 设计', status: 'pending' },
-      { step: 3, total: 4, title: '⚙️ 业务逻辑', status: 'pending' },
-      { step: 4, total: 4, title: '🔧 整合优化', status: 'pending' },
+      { step: 3, total: 4, title: '⚡ 代码生成', status: 'pending' },
+      { step: 4, total: 4, title: '🔧 质检优化', status: 'pending' },
     ];
     setPipelineSteps(initialSteps);
 
@@ -206,13 +206,16 @@ const VibeCodingPage = () => {
                 handleSaveHistory(trimmed, parts);
               }
               const analysisPreview = parsed.analysis
-                ? parsed.analysis.slice(0, 300) + (parsed.analysis.length > 300 ? '...' : '')
+                ? parsed.analysis.slice(0, 200) + (parsed.analysis.length > 200 ? '...' : '')
+                : '';
+              const designPreview = parsed.design
+                ? '\n\n🎨 **设计规范**\n' + parsed.design.slice(0, 200) + (parsed.design.length > 200 ? '...' : '')
                 : '';
               setMessages((prev) => [
                 ...prev,
                 {
                   role: 'assistant' as const,
-                  content: `✅ Pipeline 完成！已通过 4 个 Agent 协作生成完整应用。\n\n${analysisPreview}`,
+              content: `✅ Pipeline 完成！已通过 4 个 Agent 协作生成完整应用。\n\n${analysisPreview}${designPreview}`,
                   timestamp: new Date().toISOString(),
                   provider,
                 },
