@@ -934,6 +934,8 @@ const sanitizeHtmlForSandbox = (html: string): string => {
   document.addEventListener('submit', function (e) { e.preventDefault(); }, true);
 
   /* --- 拦截外链 <a> 跳转（等 DOM ready 后处理） --- */
+  var _reAbsUrl = new RegExp('^https?://', 'i');
+  var _reProtoRel = new RegExp('^//', 'i');
   var patchLinks = function () {
     try {
       var anchors = document.querySelectorAll('a[href]');
@@ -946,7 +948,7 @@ const sanitizeHtmlForSandbox = (html: string): string => {
           if (!href || typeof href !== 'string') return;
           href = href.trim();
           if (!href) return;
-          if (/^https?:\/\//i.test(href) || /^\/\//i.test(href)) {
+          if (_reAbsUrl.test(href) || _reProtoRel.test(href)) {
             a.removeAttribute('href');
             if (a.style) a.style.cursor = 'pointer';
             a.addEventListener('click', function (e) {
