@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Bot, Zap, MessageSquare, BookOpen, GitBranch, Home, Menu, X, Globe, Cpu, ShieldCheck, Store } from 'lucide-react';
+import { Bot, Zap, MessageSquare, BookOpen, GitBranch, Home, Menu, X, Globe, Cpu, ShieldCheck, Store, ListChecks } from 'lucide-react';
 import clsx from 'clsx';
 import { useAppStore } from '../store';
 
@@ -12,6 +12,7 @@ const navItems = [
   { path: '/chat',        label: { zh: '对话',         en: 'Chat' },            icon: MessageSquare,exact: false },
   { path: '/knowledge',   label: { zh: '知识库',       en: 'Knowledge' },       icon: BookOpen,     exact: false },
   { path: '/pipelines',   label: { zh: '流水线',       en: 'Pipelines' },       icon: GitBranch,    exact: false },
+  { path: '/plan',        label: { zh: '任务规划',     en: 'Plan & Execute' },  icon: ListChecks,   exact: false },
 ];
 
 interface LayoutProps {

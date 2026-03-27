@@ -17,8 +17,11 @@
  * │  routes/vibePipeline.ts  │  § 7  Vibe Pipeline（4步多Agent流水线）            │
  * │  routes/upload.ts        │  § 8  文件上传（图片，5MB 限制）                   │
  * │  routes/market.ts        │  § 9  模板市场（列表 / 详情 / 发布）               │
+ * │  routes/agentPlan.ts     │  § 10 Agent 规划器（分析/规划/执行/工具调用）        │
  * ├──────────────────────────┼──────────────────────────────────────────────────┤
  * │  lib/llmUtils.ts         │  LLM 工具函数（记忆压缩 / 截断检测 / 流式续写）     │
+ * │  lib/agentPlanner.ts     │  Plan-Execute 规划器（复杂度分析 / 计划生成 / 执行）│
+ * │  lib/agentTools.ts       │  Agent 工具系统（8个工具定义 + 执行器）             │
  * └──────────────────────────┴──────────────────────────────────────────────────┘
  *
  * 路由前缀：/api
@@ -45,6 +48,7 @@ import { vibeRouter } from './vibe.js';
 import { vibePipelineRouter } from './vibePipeline.js';
 import { uploadRouter } from './upload.js';
 import { marketRouter } from './market.js';
+import { agentPlanRouter } from './agentPlan.js';
 
 // =============================================================================
 // § 1  基础设施 — Prompt 读取工具 / Router 实例
@@ -176,3 +180,4 @@ agentsRouter.use(vibeRouter.routes(), vibeRouter.allowedMethods());
 agentsRouter.use(vibePipelineRouter.routes(), vibePipelineRouter.allowedMethods());
 agentsRouter.use(uploadRouter.routes(), uploadRouter.allowedMethods());
 agentsRouter.use(marketRouter.routes(), marketRouter.allowedMethods());
+agentsRouter.use(agentPlanRouter.routes(), agentPlanRouter.allowedMethods());

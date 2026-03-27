@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react'
 import {
   Monitor, RefreshCw, Maximize2, Minimize2, Play, Code2,
   Copy, Check, Sparkles, Smartphone, Download,
-  ImagePlus, X, Globe,
+  ImagePlus, X, Globe, MousePointer2, MousePointerClick, Crosshair,
 } from 'lucide-react';
 import { buildHtmlFromParts } from './utils';
 import { CODE_TABS } from './constants';
@@ -20,6 +20,18 @@ const MONACO_LANG: Record<CodeTab, string> = {
   js:   'javascript',
 };
 
+// ─── 选中元素信息 ────────────────────────────────────────────────────────────
+
+export interface SelectedElementInfo {
+  tagName: string;       // 如 div、button、h1
+  id: string;            // 元素 id（可能为空）
+  classList: string[];   // class 列表
+  textContent: string;   // 截断后的文本内容
+  outerHTML: string;     // 截断后的 outerHTML
+  selector: string;      // 最优 CSS 选择器
+  styles: Record<string, string>; // 关键内联/计算样式
+}
+
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface UIPreviewPanelProps {
@@ -34,6 +46,7 @@ interface UIPreviewPanelProps {
   onImageUpload?: (base64: string) => void;
   onImageClear?: () => void;
   onPublish?: () => void;              // 发布到模板市场
+  onElementSelect?: (info: SelectedElementInfo) => void; // 选中元素回调
 }
 
 // ─── 组件 ─────────────────────────────────────────────────────────────────────
@@ -50,6 +63,7 @@ const UIPreviewPanel = ({
   onImageUpload,
   onImageClear,
   onPublish,
+  onElementSelect,
 }: UIPreviewPanelProps) => {
   const [activeTab, setActiveTab] = useState<PreviewTab>('preview');
   const [activeCodeTab, setActiveCodeTab] = useState<CodeTab>('html');
@@ -58,6 +72,9 @@ const UIPreviewPanel = ({
   const [iframeError, setIframeError] = useState<string | null>(null);
   const [iframeLoading, setIframeLoading] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  // 元素选择模式
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedEl, setSelectedEl] = useState<SelectedElementInfo | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const historyIframeRef = useRef<HTMLIFrameElement>(null);
   const [historyIframeLoading, setHistoryIframeLoading] = useState(false);
@@ -87,6 +104,177 @@ const UIPreviewPanel = ({
     }
   }, [codeParts]);
 
+  // ─── 元素选择模式：向 iframe 注入选择脚本 ──────────────────────────────────
+
+  /** 构建注入到 iframe 的选择器脚本 */
+  const buildSelectorScript = useCallback(() => `
+    (function() {
+      if (window.__vibeSelectMode) return;
+      window.__vibeSelectMode = true;
+
+      const HIGHLIGHT_ID = '__vibe_highlight__';
+      const OVERLAY_ID   = '__vibe_overlay__';
+
+      // 半透明遮罩（阻止 iframe 内部点击穿透到真实交互）
+      let overlay = document.getElementById(OVERLAY_ID);
+      if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = OVERLAY_ID;
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483646;cursor:crosshair;';
+        document.body.appendChild(overlay);
+      }
+
+      // 高亮框
+      let highlight = document.getElementById(HIGHLIGHT_ID);
+      if (!highlight) {
+        highlight = document.createElement('div');
+        highlight.id = HIGHLIGHT_ID;
+        highlight.style.cssText = [
+          'position:fixed',
+          'pointer-events:none',
+          'z-index:2147483647',
+          'border:2px solid #7c3aed',
+          'background:rgba(124,58,237,0.08)',
+          'border-radius:3px',
+          'transition:all 0.08s ease',
+          'box-shadow:0 0 0 1px rgba(124,58,237,0.3)',
+        ].join(';');
+        document.body.appendChild(highlight);
+      }
+
+      let hoveredEl = null;
+
+      const getSelector = (el) => {
+        if (el.id) return '#' + el.id;
+        const tag = el.tagName.toLowerCase();
+        const classes = Array.from(el.classList).slice(0, 3).join('.');
+        return classes ? tag + '.' + classes : tag;
+      };
+
+      const getKeyStyles = (el) => {
+        const cs = window.getComputedStyle(el);
+        return {
+          color: cs.color,
+          backgroundColor: cs.backgroundColor,
+          fontSize: cs.fontSize,
+          fontWeight: cs.fontWeight,
+          padding: cs.padding,
+          margin: cs.margin,
+          borderRadius: cs.borderRadius,
+          display: cs.display,
+          width: cs.width,
+          height: cs.height,
+        };
+      };
+
+      overlay.addEventListener('mousemove', (e) => {
+        overlay.style.pointerEvents = 'none';
+        const real = document.elementFromPoint(e.clientX, e.clientY);
+        overlay.style.pointerEvents = '';
+        if (!real || real === highlight || real === overlay) return;
+        hoveredEl = real;
+        const rect = real.getBoundingClientRect();
+        highlight.style.left   = rect.left   + 'px';
+        highlight.style.top    = rect.top    + 'px';
+        highlight.style.width  = rect.width  + 'px';
+        highlight.style.height = rect.height + 'px';
+        highlight.style.display = 'block';
+      });
+
+      overlay.addEventListener('mouseleave', () => {
+        highlight.style.display = 'none';
+        hoveredEl = null;
+      });
+
+      overlay.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        overlay.style.pointerEvents = 'none';
+        const real = document.elementFromPoint(e.clientX, e.clientY);
+        overlay.style.pointerEvents = '';
+        if (!real || real === highlight || real === overlay) return;
+
+        const info = {
+          tagName: real.tagName.toLowerCase(),
+          id: real.id || '',
+          classList: Array.from(real.classList),
+          textContent: (real.textContent || '').trim().slice(0, 120),
+          outerHTML: real.outerHTML.slice(0, 400),
+          selector: getSelector(real),
+          styles: getKeyStyles(real),
+        };
+
+        // 固定高亮框（变为实线选中态）
+        highlight.style.border = '2px solid #7c3aed';
+        highlight.style.background = 'rgba(124,58,237,0.12)';
+        highlight.style.boxShadow = '0 0 0 3px rgba(124,58,237,0.25)';
+
+        window.parent.postMessage({ type: '__vibe_element_selected__', info }, '*');
+      });
+    })();
+  `, []);
+
+  /** 移除 iframe 内注入的选择器脚本 */
+  const removeSelectorScript = useCallback(() => {
+    const iframe = iframeRef.current;
+    if (!iframe?.contentWindow) return;
+    try {
+      const doc = iframe.contentDocument;
+      if (!doc) return;
+      doc.getElementById('__vibe_overlay__')?.remove();
+      doc.getElementById('__vibe_highlight__')?.remove();
+      (iframe.contentWindow as any).__vibeSelectMode = false;
+    } catch { /* 跨域时忽略 */ }
+  }, []);
+
+  /** 切换选择模式 */
+  const handleToggleSelectMode = useCallback(() => {
+    setSelectMode((prev) => {
+      const next = !prev;
+      if (!next) {
+        removeSelectorScript();
+        setSelectedEl(null);
+      }
+      return next;
+    });
+  }, [removeSelectorScript]);
+
+  /** 监听 iframe postMessage */
+  useEffect(() => {
+    const handleMessage = (e: MessageEvent) => {
+      if (e.data?.type !== '__vibe_element_selected__') return;
+      const info = e.data.info as SelectedElementInfo;
+      setSelectedEl(info);
+      onElementSelect?.(info);
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [onElementSelect]);
+
+  /** selectMode 开启时，iframe 加载完成后注入脚本 */
+  useEffect(() => {
+    if (!selectMode) return;
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    const inject = () => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (iframe.contentWindow as any)?.eval(buildSelectorScript());
+      } catch { /* 忽略 */ }
+    };
+    // 如果 iframe 已加载则立即注入，否则等 onLoad
+    if (iframe.contentDocument?.readyState === 'complete') inject();
+    iframe.addEventListener('load', inject);
+    return () => iframe.removeEventListener('load', inject);
+  }, [selectMode, buildSelectorScript]);
+
+  // 切换 selectMode 时重置选中
+  useEffect(() => {
+    if (!selectMode) setSelectedEl(null);
+  }, [selectMode]);
+
+  // ─── 写入 iframe —— Blob URL 方式 ────────────────────────────────────────────
+
   // 写入 iframe —— Blob URL 方式
   const writeToIframe = useCallback((html: string) => {
     if (!iframeRef.current) return;
@@ -98,9 +286,12 @@ const UIPreviewPanel = ({
     iframeRef.current.src = URL.createObjectURL(blob);
   }, []);
 
-  // codeParts 变化时自动渲染
+  // codeParts 变化时自动渲染，并重置选中状态
   useEffect(() => {
-    if (codeParts) writeToIframe(buildHtmlFromParts(codeParts));
+    if (codeParts) {
+      writeToIframe(buildHtmlFromParts(codeParts));
+      setSelectedEl(null);
+    }
   }, [codeParts, writeToIframe]);
 
   // Mobile / Desktop 切换时，新 iframe 节点挂载后重新写入内容
@@ -273,6 +464,26 @@ const UIPreviewPanel = ({
               <span className="w-1.5 h-1.5 bg-violet-400 rounded-full animate-pulse" />
               {lang === 'zh' ? '生成中...' : 'Generating...'}
             </span>
+          )}
+
+          {/* 元素选择模式按钮（仅预览 Tab 显示） */}
+          {activeTab === 'preview' && hasContent && (
+            <button
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all mr-1 ${
+                selectMode
+                  ? 'bg-violet-600 text-white shadow-sm ring-1 ring-violet-400/40'
+                  : 'text-gray-400 hover:text-gray-100 hover:bg-gray-800 border border-gray-700/40'
+              }`}
+              onClick={handleToggleSelectMode}
+              tabIndex={0}
+              aria-label={lang === 'zh' ? '元素选择模式' : 'Element select mode'}
+              title={lang === 'zh' ? '开启后点击页面元素，可将其交给 AI 修改' : 'Click elements to select and ask AI to modify'}
+            >
+              {selectMode
+                ? <MousePointerClick className="w-3.5 h-3.5" />
+                : <MousePointer2 className="w-3.5 h-3.5" />}
+              {lang === 'zh' ? (selectMode ? '选择中' : '选元素') : (selectMode ? 'Selecting' : 'Select')}
+            </button>
           )}
 
           {/* Mobile / Desktop 切换（仅预览 Tab 显示） */}
@@ -542,6 +753,49 @@ const UIPreviewPanel = ({
                     aria-label="重试"
                   >
                     {lang === 'zh' ? '重试' : 'Retry'}
+                  </button>
+                </div>
+              )}
+
+              {/* 选择模式提示条 */}
+              {selectMode && !selectedEl && (
+                <div className="absolute top-0 left-0 right-0 flex items-center justify-center gap-2 py-2 bg-violet-900/80 border-b border-violet-500/30 pointer-events-none">
+                  <Crosshair className="w-3.5 h-3.5 text-violet-300 animate-pulse" />
+                  <span className="text-xs text-violet-200">
+                    {lang === 'zh' ? '点击页面中的任意元素来选中它' : 'Click any element on the page to select it'}
+                  </span>
+                </div>
+              )}
+
+              {/* 已选中元素信息条 */}
+              {selectMode && selectedEl && (
+                <div className="absolute bottom-0 left-0 right-0 bg-gray-950/95 border-t border-violet-500/30 px-3 py-2.5 flex items-center gap-2.5 backdrop-blur-sm">
+                  <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                    <span className="flex-shrink-0 px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300 text-[10px] font-mono font-semibold">
+                      {selectedEl.selector}
+                    </span>
+                    {selectedEl.textContent && (
+                      <span className="text-xs text-gray-400 truncate">
+                        "{selectedEl.textContent.slice(0, 40)}{selectedEl.textContent.length > 40 ? '…' : ''}"
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-xs font-medium transition-colors"
+                    onClick={() => onElementSelect?.(selectedEl)}
+                    tabIndex={0}
+                    aria-label="将选中元素发送给 AI"
+                  >
+                    <MousePointerClick className="w-3 h-3" />
+                    {lang === 'zh' ? '问 AI' : 'Ask AI'}
+                  </button>
+                  <button
+                    className="flex-shrink-0 p-1 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-gray-800 transition-colors"
+                    onClick={() => setSelectedEl(null)}
+                    tabIndex={0}
+                    aria-label="取消选中"
+                  >
+                    <X className="w-3.5 h-3.5" />
                   </button>
                 </div>
               )}

@@ -18,7 +18,7 @@ import type { ISystemPrompt } from '../models/SystemPrompt.js';
 import { env } from '../config/env.js';
 import { streamWithContinuation } from '../lib/llmUtils.js';
 
-export const vibePipelineRouter = new Router({ prefix: '/api' });
+export const vibePipelineRouter = new Router();
 
 // =============================================================================
 // § 7a  Pipeline Prompt 常量

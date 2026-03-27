@@ -13,7 +13,7 @@ import Router from '@koa/router';
 import { KnowledgeBase } from '../models/KnowledgeBase.js';
 import { searchKnowledge, ragQuery } from '../services/knowledgeService.js';
 
-export const knowledgeRouter = new Router({ prefix: '/api' });
+export const knowledgeRouter = new Router();
 
 // ─── 知识库列表  GET /api/knowledge ──────────────────────────────────────────
 

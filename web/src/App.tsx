@@ -8,6 +8,7 @@ import TemplateMarketPage from './pages/TemplateMarketPage';
 import ChatPage from './pages/ChatPage';
 import KnowledgePage from './pages/KnowledgePage';
 import PipelinesPage from './pages/PipelinesPage';
+import AgentPlanPage from './pages/AgentPlanPage';
 
 // 主站布局包装（保持原有 children 模式）
 const MainRoutes = () => (
@@ -22,6 +23,7 @@ const MainRoutes = () => (
       <Route path="/chat/:sessionId" element={<ChatPage />} />
       <Route path="/knowledge" element={<KnowledgePage />} />
       <Route path="/pipelines" element={<PipelinesPage />} />
+      <Route path="/plan" element={<AgentPlanPage />} />
     </Routes>
   </Layout>
 );

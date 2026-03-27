@@ -143,3 +143,99 @@ export const triggerIngest = async () => {
   const { data } = await api.post<{ success: boolean; data: { totalAgents: number; totalCategories: number } }>('/ingest');
   return data.data;
 };
+
+// ─── Agent 规划器 ──────────────────────────────────────────────────────────────
+
+import type { TaskComplexity, ExecutionPlan, ToolDefinition, PlanSSEEvent } from '../types';
+
+export interface AnalyzeResult {
+  prompt: string;
+  complexity: TaskComplexity;
+  reason: string;
+  description: string;
+  /** 意图类型：qa=问答对话，action=操作/生成页面 */
+  intent: 'qa' | 'action';
+}
+
+/** 分析任务复杂度（无 LLM 调用，极快） */
+export const analyzeTaskComplexity = async (prompt: string): Promise<AnalyzeResult> => {
+  const { data } = await api.post<{ success: boolean; data: AnalyzeResult }>('/agent/analyze', { prompt });
+  return data.data;
+};
+
+/** 生成执行计划（调用 LLM） */
+export const generateAgentPlan = async (
+  prompt: string,
+  options?: { provider?: string; modelType?: string }
+): Promise<ExecutionPlan> => {
+  const { data } = await api.post<{ success: boolean; data: ExecutionPlan }>('/agent/plan', {
+    prompt,
+    ...options,
+  });
+  return data.data;
+};
+
+/** 获取所有可用工具定义 */
+export const fetchAgentTools = async (): Promise<{ total: number; tools: ToolDefinition[] }> => {
+  const { data } = await api.get<{ success: boolean; data: { total: number; tools: ToolDefinition[] } }>('/agent/tools');
+  return data.data;
+};
+
+/** 单独调用某个工具 */
+export const callAgentTool = async (
+  name: string,
+  args: Record<string, unknown> = {}
+): Promise<{ success: boolean; data?: unknown; error?: string }> => {
+  const { data } = await api.post<{ success: boolean; data?: unknown; error?: string }>('/agent/tool', {
+    name,
+    arguments: args,
+  });
+  return data;
+};
+
+/**
+ * Plan-Execute 完整流程（SSE 流式）
+ * 返回一个清理函数，调用后断开连接
+ */
+export const executeAgentPlan = (
+  prompt: string,
+  options: { provider?: string; modelType?: string },
+  onEvent: (event: PlanSSEEvent) => void,
+  onError?: (err: Error) => void
+): (() => void) => {
+  const controller = new AbortController();
+
+  fetch('/api/agent/execute', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt, ...options }),
+    signal: controller.signal,
+  })
+    .then(async (res) => {
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const event = JSON.parse(line.slice(6)) as PlanSSEEvent;
+            onEvent(event);
+          } catch { /* 忽略解析失败的行 */ }
+        }
+      }
+    })
+    .catch((err: unknown) => {
+      if (err instanceof Error && err.name === 'AbortError') return;
+      onError?.(err instanceof Error ? err : new Error(String(err)));
+    });
+
+  return () => controller.abort();
+};

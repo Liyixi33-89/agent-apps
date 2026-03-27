@@ -21,7 +21,7 @@ import { env } from '../config/env.js';
 import { v4 as uuidv4 } from 'uuid';
 import { buildMemoryMessages, streamWithContinuation } from '../lib/llmUtils.js';
 
-export const chatRouter = new Router({ prefix: '/api' });
+export const chatRouter = new Router();
 
 // ─── 工具：从数据库读取 Prompt ────────────────────────────────────────────────
 
@@ -39,8 +39,16 @@ chatRouter.post('/chat/session', async (ctx) => {
   let agentName = 'AI Assistant';
 
   if (sessionType === 'vibe') {
-    systemPrompt = await getPrompt('vibe_chat', '你是一个专业的 UI/UX 设计师兼前端工程师，根据用户描述生成完整可运行的 HTML 界面。');
-    agentName = 'UI Generator';
+    systemPrompt = await getPrompt(
+      'vibe_chat',
+      `你是一个专业的 Vibe Coding 助手，兼具 UI/UX 设计师和前端工程师能力。
+你的职责：
+1. 回答用户关于前端开发、UI设计的问题
+2. 当用户要求修改已有页面元素时，给出精确的修改建议或代码片段
+3. 当用户要求生成完整页面时，输出完整可运行的 HTML 文件（包含 <!DOCTYPE html> 到 </html>）
+4. 根据上下文判断用户意图，不要把所有问题都当成"生成页面"来处理`
+    );
+    agentName = 'Vibe Assistant';
   }
 
   if (agentSlug) {

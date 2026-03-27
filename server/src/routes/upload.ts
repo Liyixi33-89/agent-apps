@@ -29,7 +29,7 @@ const upload = multer({
   },
 });
 
-export const uploadRouter = new Router({ prefix: '/api' });
+export const uploadRouter = new Router();
 
 // ─── 图片上传  POST /api/upload/image ────────────────────────────────────────
 

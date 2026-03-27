@@ -11,7 +11,7 @@
 import Router from '@koa/router';
 import { VibeTemplate } from '../models/VibeTemplate.js';
 
-export const marketRouter = new Router({ prefix: '/api' });
+export const marketRouter = new Router();
 
 // ─── 模板列表  GET /api/vibe/templates ───────────────────────────────────────
 

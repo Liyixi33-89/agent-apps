@@ -136,3 +136,61 @@ export interface SystemPrompt {
   createdAt: string;
   updatedAt: string;
 }
+
+// ─── Agent 规划器类型 ───────────────────────────────────────────────────────────
+
+export type TaskComplexity = 'simple' | 'moderate' | 'complex';
+export type StepStatus = 'pending' | 'running' | 'done' | 'failed' | 'skipped';
+
+export interface PlanStep {
+  id: string;
+  index: number;
+  title: string;
+  description: string;
+  tools: string[];
+  agentSlug?: string;
+  inputFrom: string[];
+  expectedOutput: string;
+  status: StepStatus;
+  result?: string;
+  error?: string;
+  retryCount: number;
+  skippable: boolean;
+}
+
+export interface ExecutionPlan {
+  planId: string;
+  userPrompt: string;
+  complexity: TaskComplexity;
+  complexityReason: string;
+  steps: PlanStep[];
+  goal: string;
+  totalSteps: number;
+  createdAt: string;
+}
+
+export interface ToolDefinitionParam {
+  type: string;
+  description: string;
+  enum?: string[];
+}
+
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  parameters: {
+    type: string;
+    properties: Record<string, ToolDefinitionParam>;
+    required: string[];
+  };
+}
+
+// SSE 事件类型
+export type PlanSSEEvent =
+  | { type: 'start'; message: string }
+  | { type: 'analyze'; complexity: TaskComplexity; reason: string }
+  | { type: 'planning'; message: string }
+  | { type: 'plan_ready'; plan: Omit<ExecutionPlan, 'createdAt'> }
+  | { type: 'step_update'; step: { id: string; index: number; title: string; status: StepStatus; result?: string; toolResults?: Array<{ toolName: string; success: boolean; summary?: string }>; error?: string; retryCount: number } }
+  | { type: 'done'; success: boolean; finalResult: string; plan: Pick<ExecutionPlan, 'planId' | 'steps'> }
+  | { type: 'error'; message: string };

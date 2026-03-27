@@ -3,10 +3,12 @@ import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   Zap, Send, Bot, Cpu, Eye, MessageSquare,
   ChevronDown, Plus, Clock, Store, ImagePlus,
+  Wrench, CheckCircle2, XCircle, SkipForward, Loader2,
 } from 'lucide-react';
-import { fetchAgents, createChatSession } from '../api';
+import { fetchAgents, createChatSession, analyzeTaskComplexity, executeAgentPlan } from '../api';
 import { useAppStore } from '../store';
-import type { Agent, Provider, ModelType, ChatMessage } from '../types';
+import type { Agent, Provider, ModelType, ChatMessage, TaskComplexity, StepStatus, PlanSSEEvent } from '../types';
+import type { SelectedElementInfo } from './vibe-coding/UIPreviewPanel';
 import {
   PromptCategoryList,
   MessageBubble,
@@ -60,8 +62,37 @@ const VibeCodingPage = () => {
   const [pipelineSteps, setPipelineSteps] = useState<PipelineStep[]>([]);
   const [pipelineRunning, setPipelineRunning] = useState(false);
 
+  // Agent 规划模式状态（与 Pipeline 结合）
+  const [planComplexity, setPlanComplexity] = useState<TaskComplexity | null>(null);
+  const [planGoal, setPlanGoal] = useState<string>('');
+  const [agentPlanSteps, setAgentPlanSteps] = useState<Array<{
+    id: string;
+    index: number;
+    title: string;
+    status: StepStatus;
+    toolResults?: Array<{ toolName: string; success: boolean; summary?: string }>;
+    error?: string;
+  }>>([]);
+  const [isAgentPlanMode, setIsAgentPlanMode] = useState(false);
+  const agentPlanAbortRef = useRef<(() => void) | null>(null);
+
   // 侧边栏视图
   const [sideView, setSideView] = useState<SideView>('chat');
+
+  // 元素选择回调：自动填充输入框并提示用户
+  const handleElementSelect = useCallback((info: SelectedElementInfo) => {
+    const selectorHint = info.id ? `#${info.id}` : info.selector;
+    const textHint = info.textContent
+      ? `，内容为「${info.textContent.slice(0, 30)}${info.textContent.length > 30 ? '…' : ''}」`
+      : '';
+    // [element_modify] 标记让复杂度分析器识别为 simple，避免触发 Pipeline 重新生成
+    const prompt = lang === 'zh'
+      ? `[element_modify] 请修改选中的「${selectorHint}」元素${textHint}：`
+      : `[element_modify] Please modify the selected "${selectorHint}" element${info.textContent ? ` with text "${info.textContent.slice(0, 30)}"` : ''}: `;
+    setInput(prompt);
+    setSideView('chat');
+    setTimeout(() => textareaRef.current?.focus(), 100);
+  }, [lang]);
 
   // 接收模板市场传来的模板数据
   useEffect(() => {
@@ -120,6 +151,11 @@ const VibeCodingPage = () => {
     setIsContinuing(false);
     setPipelineSteps([]);
     setPipelineRunning(false);
+    setAgentPlanSteps([]);
+    setPlanComplexity(null);
+    setPlanGoal('');
+    setIsAgentPlanMode(false);
+    agentPlanAbortRef.current?.();
     setSideView('chat');
   }, [streaming, codeParts]);
 
@@ -137,16 +173,9 @@ const VibeCodingPage = () => {
     setSideView('chat');
   }, []);
 
-  // ─── Pipeline 多 Agent 流水线 ────────────────────────────────────────────────
+  // ─── Pipeline 多 Agent 流水线（原始 4 步固定流程）────────────────────────────
 
-  const handlePipeline = async () => {
-    const trimmed = input.trim();
-    if (!trimmed || pipelineRunning || streaming) return;
-
-    setInput('');
-    setPipelineRunning(true);
-    setPipelineSteps([]);
-
+  const runFixedPipeline = async (trimmed: string) => {
     const initialSteps: PipelineStep[] = [
       { step: 1, total: 4, title: '📋 需求分析', status: 'pending' },
       { step: 2, total: 4, title: '🎨 UI 设计', status: 'pending' },
@@ -154,13 +183,7 @@ const VibeCodingPage = () => {
       { step: 4, total: 4, title: '🔧 质检优化', status: 'pending' },
     ];
     setPipelineSteps(initialSteps);
-
-    const userMsg: ChatMessage = {
-      role: 'user',
-      content: trimmed,
-      timestamp: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, userMsg]);
+    setIsAgentPlanMode(false);
 
     abortRef.current = new AbortController();
 
@@ -215,7 +238,7 @@ const VibeCodingPage = () => {
                 ...prev,
                 {
                   role: 'assistant' as const,
-              content: `✅ Pipeline 完成！已通过 4 个 Agent 协作生成完整应用。\n\n${analysisPreview}${designPreview}`,
+                  content: `✅ Pipeline 完成！已通过 4 个 Agent 协作生成完整应用。\n\n${analysisPreview}${designPreview}`,
                   timestamp: new Date().toISOString(),
                   provider,
                 },
@@ -246,7 +269,181 @@ const VibeCodingPage = () => {
           },
         ]);
       }
-    } finally {
+    }
+  };
+
+  // ─── Agent Plan-Execute 流程（动态步骤 + 工具调用）──────────────────────────
+
+  const runAgentPlan = (trimmed: string) => {
+    setIsAgentPlanMode(true);
+    setAgentPlanSteps([]);
+    setPlanGoal('');
+
+    const cleanup = executeAgentPlan(
+      trimmed,
+      { provider, modelType },
+      (event: PlanSSEEvent) => {
+        switch (event.type) {
+          case 'analyze':
+            setPlanComplexity(event.complexity);
+            break;
+
+          case 'plan_ready':
+            setPlanGoal(event.plan.goal);
+            setAgentPlanSteps(
+              event.plan.steps.map((s) => ({
+                id: s.id,
+                index: s.index,
+                title: s.title,
+                status: s.status,
+              }))
+            );
+            break;
+
+          case 'step_update':
+            setAgentPlanSteps((prev) => {
+              const exists = prev.some((s) => s.id === event.step.id);
+              const updated = {
+                id: event.step.id,
+                index: event.step.index,
+                title: event.step.title,
+                status: event.step.status,
+                toolResults: event.step.toolResults,
+                error: event.step.error,
+              };
+              return exists
+                ? prev.map((s) => (s.id === event.step.id ? updated : s))
+                : [...prev, updated];
+            });
+            break;
+
+          case 'done': {
+            // 更新最终步骤状态
+            setAgentPlanSteps((prev) =>
+              prev.map((s) => {
+                const finalStep = event.plan.steps.find((ps) => ps.id === s.id);
+                return finalStep ? { ...s, status: finalStep.status } : s;
+              })
+            );
+            // 提取代码：优先用 finalResult，兜底遍历所有步骤结果找含 HTML 的
+            const HTML_CODE_RE = /```html[\s\S]*?```|<!DOCTYPE\s+html[\s\S]*?<\/html>/i;
+            const codeSource =
+              (event.finalResult && HTML_CODE_RE.test(event.finalResult))
+                ? event.finalResult
+                : event.plan.steps
+                    .slice()
+                    .reverse()
+                    .find((s) => s.result && HTML_CODE_RE.test(s.result))?.result ?? event.finalResult;
+
+            if (codeSource) {
+              const parts = extractCodeParts(codeSource);
+              if (parts.html || parts.css || parts.js || parts.isFullHtml) {
+                setCodeParts(parts);
+                setIsFromPreviousSession(false);
+                handleSaveHistory(trimmed, parts);
+              }
+            }
+            const complexityLabel = { simple: '简单', moderate: '中等', complex: '复杂' }[planComplexity ?? 'moderate'];
+            setMessages((prev) => [
+              ...prev,
+              {
+                role: 'assistant' as const,
+                content: event.success
+                  ? `✅ Agent 规划完成！复杂度：${complexityLabel}，共执行 ${event.plan.steps.length} 个步骤。`
+                  : `⚠️ Agent 规划部分完成，部分步骤失败，请查看步骤详情。`,
+                timestamp: new Date().toISOString(),
+                provider,
+              },
+            ]);
+            setPipelineRunning(false);
+            break;
+          }
+
+          case 'error':
+            setMessages((prev) => [
+              ...prev,
+              {
+                role: 'assistant' as const,
+                content: `❌ Agent 规划失败：${event.message}`,
+                timestamp: new Date().toISOString(),
+              },
+            ]);
+            setPipelineRunning(false);
+            break;
+        }
+      },
+      (err) => {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: 'assistant' as const,
+            content: `❌ 连接失败：${err.message}`,
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+        setPipelineRunning(false);
+      }
+    );
+
+    agentPlanAbortRef.current = cleanup;
+  };
+
+  // ─── 智能 Pipeline 入口（自动感知复杂度，路由到合适策略）────────────────────
+
+  const handlePipeline = async () => {
+    const trimmed = input.trim();
+    if (!trimmed || pipelineRunning || streaming) return;
+
+    setInput('');
+    setPipelineRunning(true);
+    setPipelineSteps([]);
+    setAgentPlanSteps([]);
+    setPlanComplexity(null);
+    setPlanGoal('');
+
+    const userMsg: ChatMessage = {
+      role: 'user',
+      content: trimmed,
+      timestamp: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, userMsg]);
+
+    try {
+      // ── 1. 分析复杂度（极快，无 LLM 调用）──────────────────────────────────
+      const analysis = await analyzeTaskComplexity(trimmed);
+      setPlanComplexity(analysis.complexity);
+
+      if (analysis.complexity === 'simple') {
+        setPipelineRunning(false);
+        setIsAgentPlanMode(false);
+        if (analysis.intent === 'qa') {
+          // 问答类（查询/解释/分析）→ 走 chat/stream 对话模式，不强制生成 HTML
+          handleSendWithContent(trimmed);
+        } else {
+          // 操作类（修改样式/元素）→ 走 vibe/stream 生成/修改 HTML
+          handleVibeStream(trimmed);
+        }
+        return;
+      }
+
+      if (analysis.complexity === 'moderate') {
+        // moderate → 走固定 4 步 Pipeline（快速稳定）
+        await runFixedPipeline(trimmed);
+        setPipelineRunning(false);
+      } else {
+        // complex → 走 Agent Plan-Execute（动态规划 + 工具调用）
+        runAgentPlan(trimmed);
+        // pipelineRunning 由 runAgentPlan 内部在 done/error 时关闭
+      }
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant' as const,
+          content: lang === 'zh' ? '❌ 智能分析失败，请检查服务连接' : '❌ Analysis failed',
+          timestamp: new Date().toISOString(),
+        },
+      ]);
       setPipelineRunning(false);
     }
   };
@@ -278,6 +475,39 @@ const VibeCodingPage = () => {
     if (!trimmed || streaming) return;
 
     setInput('');
+
+    // ── 意图分析：根据 intent 和 complexity 决定走哪条路径 ──────────────────
+    try {
+      const analysis = await analyzeTaskComplexity(trimmed);
+      setPlanComplexity(analysis.complexity);
+
+      // [element_modify] 标记：在现有页面基础上做局部修改，传入当前 HTML
+      if (trimmed.startsWith('[element_modify]')) {
+        const currentHtml = codeParts?.isFullHtml
+          ? codeParts.html
+          : codeParts
+            ? `<!DOCTYPE html><html><head><style>${codeParts.css || ''}</style></head><body>${codeParts.html || ''}<script>${codeParts.js || ''}</script></body></html>`
+            : undefined;
+        handleVibeStream(trimmed, currentHtml);
+        return;
+      }
+
+      // 问答类（查询/解释/分析）→ 走 chat/stream 对话模式，不强制生成 HTML
+      if (analysis.intent === 'qa') {
+        // 继续往下走 chat/stream 逻辑
+      } else if (analysis.complexity !== 'simple') {
+        // moderate / complex 操作类 → 走 vibe/stream（有强制 HTML 输出的 system prompt）
+        handleVibeStream(trimmed);
+        return;
+      }
+      // simple + action（修改样式等）→ 也走 vibe/stream
+      else {
+        handleVibeStream(trimmed);
+        return;
+      }
+    } catch {
+      // 分析失败时降级为普通对话
+    }
 
     const userMsg: ChatMessage = {
       role: 'user',
@@ -397,16 +627,226 @@ const VibeCodingPage = () => {
     }
   };
 
+  // ─── Vibe Stream 生成（供 simple 任务 / Pipeline 直接调用）────────────────────
+  // currentHtml：传入时走"修改模式"，AI 在现有代码基础上做局部修改；不传时走"全新生成"
+
+  const handleVibeStream = async (content: string, currentHtml?: string) => {
+    if (!content || streaming) return;
+
+    const userMsg: ChatMessage = {
+      role: 'user',
+      content,
+      timestamp: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, userMsg]);
+    setStreaming(true);
+
+    const aiMsg: ChatMessage = {
+      role: 'assistant',
+      content: '',
+      timestamp: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, aiMsg]);
+
+    abortRef.current = new AbortController();
+    setContinuationCount(0);
+    setIsContinuing(false);
+
+    try {
+      const response = await fetch('/api/vibe/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: content,
+          agentSlug: selectedAgent || undefined,
+          provider,
+          modelType,
+          ...(currentHtml ? { currentHtml } : {}),
+        }),
+        signal: abortRef.current.signal,
+      });
+
+      const reader = response.body?.getReader();
+      if (!reader) return;
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let fullContent = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const parsed = JSON.parse(line.slice(6));
+            if (parsed.type === 'delta' && parsed.delta) {
+              fullContent += parsed.delta;
+              setMessages((prev) => {
+                const updated = [...prev];
+                updated[updated.length - 1] = { ...updated[updated.length - 1], content: fullContent };
+                return updated;
+              });
+            }
+          } catch { /* 忽略 */ }
+        }
+      }
+
+      const parts = extractCodeParts(fullContent);
+      if (parts.html || parts.css || parts.js || parts.isFullHtml) {
+        setCodeParts(parts);
+        setIsFromPreviousSession(false);
+        handleSaveHistory(content, parts);
+      }
+
+      setMessages((prev) => {
+        const updated = [...prev];
+        updated[updated.length - 1] = {
+          ...updated[updated.length - 1],
+          timestamp: new Date().toISOString(),
+          provider,
+        };
+        return updated;
+      });
+    } catch (err: any) {
+      if (err.name !== 'AbortError') {
+        setMessages((prev) => {
+          const updated = [...prev];
+          updated[updated.length - 1] = {
+            ...updated[updated.length - 1],
+            content: lang === 'zh' ? '❌ 生成失败，请检查服务连接' : '❌ Generation failed',
+          };
+          return updated;
+        });
+      }
+    } finally {
+      setStreaming(false);
+      setIsContinuing(false);
+      setContinuationCount(0);
+    }
+  };
+
+  // ─── 带内容的普通发送（供 handlePipeline simple 分支调用）──────────────────
+
+  const handleSendWithContent = async (content: string) => {
+    if (!content || streaming) return;
+
+    const userMsg: ChatMessage = {
+      role: 'user',
+      content,
+      timestamp: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, userMsg]);
+    setStreaming(true);
+
+    const aiMsg: ChatMessage = {
+      role: 'assistant',
+      content: '',
+      timestamp: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, aiMsg]);
+
+    abortRef.current = new AbortController();
+    setContinuationCount(0);
+    setIsContinuing(false);
+
+    try {
+      const currentSession = await ensureSession();
+      const requestBody: Record<string, unknown> = { sessionId: currentSession.sessionId, message: content };
+      if (uploadedImage && modelType === 'vision') requestBody.imageBase64 = uploadedImage;
+
+      const response = await fetch('/api/chat/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+        signal: abortRef.current.signal,
+      });
+
+      const reader = response.body?.getReader();
+      if (!reader) return;
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let fullContent = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const parsed = JSON.parse(line.slice(6));
+            if (parsed.type === 'delta' && parsed.delta) {
+              fullContent += parsed.delta;
+              setMessages((prev) => {
+                const updated = [...prev];
+                updated[updated.length - 1] = { ...updated[updated.length - 1], content: fullContent };
+                return updated;
+              });
+            }
+          } catch { /* 忽略 */ }
+        }
+      }
+
+      const parts = extractCodeParts(fullContent);
+      if (parts.html || parts.css || parts.js || parts.isFullHtml) {
+        setCodeParts(parts);
+        setIsFromPreviousSession(false);
+        handleSaveHistory(content, parts);
+      }
+    } catch (err: any) {
+      if (err.name !== 'AbortError') {
+        setMessages((prev) => {
+          const updated = [...prev];
+          updated[updated.length - 1] = {
+            ...updated[updated.length - 1],
+            content: lang === 'zh' ? '❌ 生成失败，请检查服务连接' : '❌ Generation failed',
+          };
+          return updated;
+        });
+      }
+    } finally {
+      setStreaming(false);
+      setIsContinuing(false);
+      setContinuationCount(0);
+    }
+  };
+
   const handleStop = () => {
     abortRef.current?.abort();
+    agentPlanAbortRef.current?.();
     setStreaming(false);
+    setPipelineRunning(false);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      pipelineMode ? handlePipeline() : handleSend();
+      if (pipelineMode) handlePipeline();
+      else handleSend();
     }
+  };
+
+  // 复杂度 badge 样式
+  const complexityBadge = planComplexity ? {
+    simple:   { label: lang === 'zh' ? '简单' : 'Simple',   cls: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' },
+    moderate: { label: lang === 'zh' ? '中等' : 'Moderate', cls: 'bg-amber-500/15 text-amber-400 border-amber-500/30' },
+    complex:  { label: lang === 'zh' ? '复杂' : 'Complex',  cls: 'bg-violet-500/15 text-violet-400 border-violet-500/30' },
+  }[planComplexity] : null;
+
+  // Agent Plan 步骤状态图标
+  const StepIcon = ({ status }: { status: StepStatus }) => {
+    if (status === 'done')    return <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />;
+    if (status === 'failed')  return <XCircle className="w-3.5 h-3.5 text-red-400" />;
+    if (status === 'skipped') return <SkipForward className="w-3.5 h-3.5 text-gray-500" />;
+    if (status === 'running') return <Loader2 className="w-3.5 h-3.5 text-amber-400 animate-spin" />;
+    return <span className="w-3.5 h-3.5 rounded-full border border-gray-600 inline-block" />;
   };
 
   const hasMessages = messages.filter((m) => m.role !== 'system').length > 0;
@@ -564,7 +1004,7 @@ const VibeCodingPage = () => {
                 {modelType === 'vision' ? 'Vision' : 'Text'}
               </button>
 
-              {/* Pipeline 模式切换 */}
+              {/* 智能 Pipeline 模式切换 */}
               <button
                 className={`text-[10px] flex items-center gap-1 px-2 py-1.5 rounded-lg flex-shrink-0 transition-all ${
                   pipelineMode
@@ -572,9 +1012,11 @@ const VibeCodingPage = () => {
                     : 'bg-gray-800/80 border border-gray-700/40 text-gray-400 hover:text-amber-400 hover:border-gray-600/60'
                 }`}
                 onClick={() => setPipelineMode((v) => !v)}
-                aria-label="切换 Pipeline 模式"
+                aria-label="切换智能 Pipeline 模式"
                 tabIndex={0}
-                title={lang === 'zh' ? 'Pipeline 模式：多 Agent 协作生成完整应用' : 'Pipeline: Multi-Agent collaboration'}
+                title={lang === 'zh'
+                  ? '智能 Pipeline：自动分析复杂度\n简单→直接生成 | 中等→4步Pipeline | 复杂→Agent规划+工具调用'
+                  : 'Smart Pipeline: auto-detect complexity\nSimple→Direct | Moderate→4-step | Complex→Agent Plan+Tools'}
               >
                 <Zap className="w-3 h-3" />
                 Pipeline
@@ -605,22 +1047,44 @@ const VibeCodingPage = () => {
                     />
                   ))}
 
-                  {/* Pipeline 进度卡片 */}
-                  {pipelineSteps.length > 0 && (
-                    <div className="bg-gray-900/80 border border-amber-500/20 rounded-xl p-3.5 space-y-2.5">
+              {/* ── 智能 Pipeline / Agent 规划进度卡片 ── */}
+                  {(pipelineSteps.length > 0 || agentPlanSteps.length > 0) && (
+                    <div className={`bg-gray-900/80 border rounded-xl p-3.5 space-y-2.5 ${
+                      isAgentPlanMode ? 'border-violet-500/25' : 'border-amber-500/20'
+                    }`}>
+                      {/* 卡片头部 */}
                       <div className="flex items-center gap-2 pb-2 border-b border-gray-800/60">
-                        <div className="w-5 h-5 rounded-md bg-amber-500/15 flex items-center justify-center">
-                          <Zap className="w-3 h-3 text-amber-400" />
+                        <div className={`w-5 h-5 rounded-md flex items-center justify-center ${
+                          isAgentPlanMode ? 'bg-violet-500/15' : 'bg-amber-500/15'
+                        }`}>
+                          <Zap className={`w-3 h-3 ${isAgentPlanMode ? 'text-violet-400' : 'text-amber-400'}`} />
                         </div>
-                        <span className="text-xs font-semibold text-amber-400">Multi-Agent Pipeline</span>
+                        <span className={`text-xs font-semibold ${
+                          isAgentPlanMode ? 'text-violet-400' : 'text-amber-400'
+                        }`}>
+                          {isAgentPlanMode ? 'Agent Plan-Execute' : 'Multi-Agent Pipeline'}
+                        </span>
+                        {/* 复杂度 badge */}
+                        {complexityBadge && (
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium ${complexityBadge.cls}`}>
+                            {complexityBadge.label}
+                          </span>
+                        )}
                         {pipelineRunning && (
-                          <span className="ml-auto text-[10px] text-amber-400/60 flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                          <span className="ml-auto text-[10px] text-gray-500 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
                             {lang === 'zh' ? '执行中' : 'Running'}
                           </span>
                         )}
                       </div>
-                      {pipelineSteps.map((step) => (
+
+                      {/* 目标描述（Agent Plan 模式） */}
+                      {isAgentPlanMode && planGoal && (
+                        <p className="text-[11px] text-gray-500 leading-relaxed px-0.5">{planGoal}</p>
+                      )}
+
+                      {/* Pipeline 固定步骤 */}
+                      {!isAgentPlanMode && pipelineSteps.map((step) => (
                         <div key={step.step} className="flex items-center gap-2.5">
                           <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold transition-all ${
                             step.status === 'done'    ? 'bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/30' :
@@ -641,6 +1105,47 @@ const VibeCodingPage = () => {
                           }`}>
                             {step.title}
                           </span>
+                        </div>
+                      ))}
+
+                      {/* Agent Plan 动态步骤 */}
+                      {isAgentPlanMode && agentPlanSteps.map((step) => (
+                        <div key={step.id} className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="w-4 h-4 flex-shrink-0 flex items-center justify-center">
+                              <StepIcon status={step.status} />
+                            </span>
+                            <span className={`text-xs flex-1 transition-colors ${
+                              step.status === 'done'    ? 'text-gray-400' :
+                              step.status === 'running' ? 'text-violet-300 font-medium' :
+                              step.status === 'failed'  ? 'text-red-400' :
+                              step.status === 'skipped' ? 'text-gray-600 line-through' :
+                              'text-gray-600'
+                            }`}>
+                              <span className="text-gray-600 mr-1">{step.index}.</span>
+                              {step.title}
+                            </span>
+                          </div>
+                          {/* 工具调用结果 */}
+                          {step.toolResults && step.toolResults.length > 0 && (
+                            <div className="ml-6 space-y-0.5">
+                              {step.toolResults.map((tr, ti) => (
+                                <div key={ti} className="flex items-center gap-1.5 text-[10px]">
+                                  <Wrench className="w-2.5 h-2.5 text-gray-600 flex-shrink-0" />
+                                  <span className={tr.success ? 'text-gray-500' : 'text-red-500/70'}>
+                                    {tr.toolName}
+                                  </span>
+                                  {tr.summary && (
+                                    <span className="text-gray-600 truncate max-w-[160px]">{tr.summary}</span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {/* 错误信息 */}
+                          {step.error && (
+                            <p className="ml-6 text-[10px] text-red-400/70">{step.error}</p>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -730,6 +1235,7 @@ const VibeCodingPage = () => {
         }}
         onImageUpload={(base64) => setUploadedImage(base64)}
         onImageClear={() => setUploadedImage(null)}
+        onElementSelect={handleElementSelect}
         onPublish={() => {
           if (!codeParts) return;
           setPublishTarget({
