@@ -18,6 +18,8 @@ export interface IChat extends Document {
   provider: 'ollama' | 'codebuddy';
   modelType: 'text' | 'vision';
   systemPrompt?: string;
+  /** 会话类型：vibe=Vibe Coding 页面，chat=普通对话页面 */
+  sessionType?: 'vibe' | 'chat';
   createdAt: Date;
   updatedAt: Date;
 }
@@ -43,7 +45,8 @@ const chatSchema = new Schema<IChat>(
     messages: { type: [chatMessageSchema], default: [] },
     provider: { type: String, enum: ['ollama', 'codebuddy'], default: 'ollama' },
     modelType: { type: String, enum: ['text', 'vision'], default: 'text' },
-    systemPrompt: { type: String }
+    systemPrompt: { type: String },
+    sessionType: { type: String, enum: ['vibe', 'chat'], default: 'chat' }
   },
   { timestamps: true }
 );

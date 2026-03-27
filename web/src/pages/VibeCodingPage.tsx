@@ -553,6 +553,15 @@ const VibeCodingPage = () => {
       const decoder = new TextDecoder();
       let buffer = '';
       let fullContent = '';
+      let toolStatusLines: string[] = [];
+
+      const updateLastMsg = (text: string) => {
+        setMessages((prev) => {
+          const updated = [...prev];
+          updated[updated.length - 1] = { ...updated[updated.length - 1], content: text };
+          return updated;
+        });
+      };
 
       while (true) {
         const { done, value } = await reader.read();
@@ -566,6 +575,36 @@ const VibeCodingPage = () => {
           if (!line.startsWith('data: ')) continue;
           try {
             const parsed = JSON.parse(line.slice(6));
+
+            if (parsed.type === 'tool_calls_start') {
+              const names = (parsed.toolCalls as Array<{ name: string }>)
+                .map((tc) => `🔧 \`${tc.name}\``)
+                .join('、');
+              toolStatusLines = [`**正在调用工具：** ${names}`];
+              updateLastMsg(toolStatusLines.join('\n'));
+            }
+
+            if (parsed.type === 'tool_executing') {
+              toolStatusLines.push(`⏳ 执行 \`${parsed.toolName}\`...`);
+              updateLastMsg(toolStatusLines.join('\n'));
+            }
+
+            if (parsed.type === 'tool_result') {
+              const idx = toolStatusLines.reduce((found, l, i) => l.includes(`\`${parsed.toolName}\``) ? i : found, -1);
+              const resultLine = parsed.success
+                ? `✅ \`${parsed.toolName}\` → ${parsed.summary}`
+                : `❌ \`${parsed.toolName}\` 失败：${parsed.summary}`;
+              if (idx >= 0) toolStatusLines[idx] = resultLine;
+              else toolStatusLines.push(resultLine);
+              updateLastMsg(toolStatusLines.join('\n'));
+            }
+
+            if (parsed.type === 'generating') {
+              toolStatusLines = [];
+              fullContent = '';
+              updateLastMsg('');
+            }
+
             if (parsed.type === 'delta') {
               if (parsed.delta === '' || parsed.delta === undefined) {
                 setContinuationCount((c) => {
@@ -575,14 +614,10 @@ const VibeCodingPage = () => {
                 });
               } else {
                 fullContent += parsed.delta;
-                setMessages((prev) => {
-                  const updated = [...prev];
-                  updated[updated.length - 1] = {
-                    ...updated[updated.length - 1],
-                    content: fullContent,
-                  };
-                  return updated;
-                });
+                updateLastMsg(toolStatusLines.length > 0
+                  ? toolStatusLines.join('\n') + '\n\n' + fullContent
+                  : fullContent
+                );
               }
             }
           } catch {
@@ -771,6 +806,16 @@ const VibeCodingPage = () => {
       const decoder = new TextDecoder();
       let buffer = '';
       let fullContent = '';
+      // 工具调用过程的临时展示内容
+      let toolStatusLines: string[] = [];
+
+      const updateLastMsg = (text: string) => {
+        setMessages((prev) => {
+          const updated = [...prev];
+          updated[updated.length - 1] = { ...updated[updated.length - 1], content: text };
+          return updated;
+        });
+      };
 
       while (true) {
         const { done, value } = await reader.read();
@@ -778,17 +823,50 @@ const VibeCodingPage = () => {
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
+
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue;
           try {
             const parsed = JSON.parse(line.slice(6));
+
+            if (parsed.type === 'tool_calls_start') {
+              // 开始工具调用，展示工具名列表
+              const names = (parsed.toolCalls as Array<{ name: string }>)
+                .map((tc) => `🔧 \`${tc.name}\``)
+                .join('、');
+              toolStatusLines = [`**正在调用工具：** ${names}`];
+              updateLastMsg(toolStatusLines.join('\n'));
+            }
+
+            if (parsed.type === 'tool_executing') {
+              toolStatusLines.push(`⏳ 执行 \`${parsed.toolName}\`...`);
+              updateLastMsg(toolStatusLines.join('\n'));
+            }
+
+            if (parsed.type === 'tool_result') {
+              // 替换最后一条 executing 为结果
+              const idx = toolStatusLines.reduce((found, l, i) => l.includes(`\`${parsed.toolName}\``) ? i : found, -1);
+              const resultLine = parsed.success
+                ? `✅ \`${parsed.toolName}\` → ${parsed.summary}`
+                : `❌ \`${parsed.toolName}\` 失败：${parsed.summary}`;
+              if (idx >= 0) toolStatusLines[idx] = resultLine;
+              else toolStatusLines.push(resultLine);
+              updateLastMsg(toolStatusLines.join('\n'));
+            }
+
+            if (parsed.type === 'generating') {
+              // 工具调用完毕，开始生成最终回答，清空工具状态，准备流式输出
+              toolStatusLines = [];
+              fullContent = '';
+              updateLastMsg('');
+            }
+
             if (parsed.type === 'delta' && parsed.delta) {
               fullContent += parsed.delta;
-              setMessages((prev) => {
-                const updated = [...prev];
-                updated[updated.length - 1] = { ...updated[updated.length - 1], content: fullContent };
-                return updated;
-              });
+              updateLastMsg(toolStatusLines.length > 0
+                ? toolStatusLines.join('\n') + '\n\n' + fullContent
+                : fullContent
+              );
             }
           } catch { /* 忽略 */ }
         }

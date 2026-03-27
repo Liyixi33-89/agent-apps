@@ -2,8 +2,14 @@ import axios from 'axios';
 import { env } from '../config/env.js';
 
 export interface LLMMessage {
-  role: 'system' | 'user' | 'assistant';
+  role: 'system' | 'user' | 'assistant' | 'tool';
   content: string | Array<{ type: 'text' | 'image_url'; text?: string; image_url?: { url: string } }>;
+  /** tool role 专用：对应 tool_call 的 id */
+  tool_call_id?: string;
+  /** tool role 专用：工具名称 */
+  name?: string;
+  /** assistant role 专用：携带的工具调用列表 */
+  tool_calls?: unknown[];
 }
 
 export interface LLMResponse {
@@ -158,6 +164,97 @@ export const streamCodeBuddy = async function* (
       }
     }
   }
+};
+
+// ─── 统一调用入口 ──────────────────────────────────────────────────────────────
+
+// ─── Tool Calling 类型 ─────────────────────────────────────────────────────────
+
+export interface ToolCall {
+  id?: string;
+  type: 'function';
+  function: {
+    name: string;
+    arguments: string; // JSON 字符串
+  };
+}
+
+export interface LLMToolResponse {
+  content: string;
+  toolCalls?: ToolCall[];
+  provider: 'ollama' | 'codebuddy';
+  model: string;
+  finishReason?: string;
+}
+
+// ─── 支持 Tool Calling 的非流式调用 ───────────────────────────────────────────
+
+export const callLLMWithTools = async (
+  messages: LLMMessage[],
+  tools: unknown[],
+  options: {
+    modelType?: 'text' | 'vision';
+    provider?: 'ollama' | 'codebuddy';
+  } = {}
+): Promise<LLMToolResponse> => {
+  const provider = options.provider || env.activeProvider;
+  const modelType = options.modelType || 'text';
+
+  if (provider === 'codebuddy') {
+    const model = modelType === 'vision' ? env.codebuddyVisionModel : env.codebuddyTextModel;
+    const url = `${env.codebuddyBaseUrl}/v1/chat/completions`;
+
+    const response = await axios.post(
+      url,
+      { model, messages, tools, tool_choice: 'auto', stream: false },
+      {
+        headers: {
+          Authorization: `Bearer ${env.codebuddyApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 120_000,
+      }
+    );
+
+    const choice = response.data?.choices?.[0];
+    const content: string = choice?.message?.content || '';
+    const toolCalls: ToolCall[] | undefined = choice?.message?.tool_calls;
+    const finishReason: string | undefined = choice?.finish_reason;
+
+    return { content, toolCalls, provider: 'codebuddy', model, finishReason };
+  }
+
+  // Ollama tool calling
+  const model = modelType === 'vision' ? env.ollamaVisionModel : env.ollamaTextModel;
+  const url = `${env.ollamaBaseUrl}/api/chat`;
+
+  const response = await axios.post(
+    url,
+    { model, messages, tools, stream: false },
+    { timeout: 120_000 }
+  );
+
+  const message = response.data?.message;
+  const content: string = message?.content || '';
+  // Ollama 返回 tool_calls 字段
+  const rawToolCalls = message?.tool_calls;
+  let toolCalls: ToolCall[] | undefined;
+
+  if (Array.isArray(rawToolCalls) && rawToolCalls.length > 0) {
+    toolCalls = rawToolCalls.map((tc: any) => ({
+      id: tc.id,
+      type: 'function' as const,
+      function: {
+        name: tc.function?.name || '',
+        // Ollama 的 arguments 可能已经是对象，统一序列化为字符串
+        arguments: typeof tc.function?.arguments === 'string'
+          ? tc.function.arguments
+          : JSON.stringify(tc.function?.arguments || {}),
+      },
+    }));
+  }
+
+  return { content, toolCalls, provider: 'ollama', model };
 };
 
 // ─── 统一调用入口 ──────────────────────────────────────────────────────────────
