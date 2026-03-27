@@ -1,27 +1,23 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bot, Lock, User, Eye, EyeOff } from 'lucide-react';
+import { Form, Input, Button, Card, Typography, Alert } from 'antd';
+import { RobotOutlined, LockOutlined, UserOutlined } from '@ant-design/icons';
 import { adminLogin } from '../api';
 import { useAdminStore } from '../store';
+
+const { Title, Text } = Typography;
 
 const LoginPage = () => {
   const navigate = useNavigate();
   const { setAuth } = useAdminStore();
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!username.trim() || !password.trim()) return;
-
+  const handleLogin = async (values: { username: string; password: string }) => {
     setLoading(true);
     setError('');
-
     try {
-      const result = await adminLogin(username, password);
+      const result = await adminLogin(values.username, values.password);
       setAuth(result.token, result.username);
       navigate('/');
     } catch (err: any) {
@@ -37,77 +33,78 @@ const LoginPage = () => {
         {/* Logo */}
         <div className="text-center mb-8">
           <div className="w-16 h-16 rounded-2xl bg-sky-600 flex items-center justify-center mx-auto mb-4 shadow-lg shadow-sky-200">
-            <Bot className="w-9 h-9 text-white" />
+            <RobotOutlined style={{ fontSize: 32, color: 'white' }} />
           </div>
-          <h1 className="text-2xl font-bold text-slate-800">Agency Agents</h1>
-          <p className="text-slate-400 text-sm mt-1">管理后台</p>
+          <Title level={3} className="!mb-0 !text-slate-800">Agency Agents</Title>
+          <Text type="secondary" className="text-sm">管理后台</Text>
         </div>
 
-        {/* 登录表单 */}
-        <form onSubmit={handleLogin} className="bg-white rounded-2xl border border-slate-200 shadow-xl shadow-slate-100 p-6 space-y-4">
-          <div>
-            <label className="text-xs font-medium text-slate-500 mb-1.5 block">用户名</label>
-            <div className="relative">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input
-                type="text"
-                className="input pl-9"
-                placeholder="admin"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                aria-label="用户名"
-                autoComplete="username"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="text-xs font-medium text-slate-500 mb-1.5 block">密码</label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input
-                type={showPassword ? 'text' : 'password'}
-                className="input pl-9 pr-9"
-                placeholder="输入密码"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                aria-label="密码"
-                autoComplete="current-password"
-              />
-              <button
-                type="button"
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
-                onClick={() => setShowPassword(!showPassword)}
-                aria-label={showPassword ? '隐藏密码' : '显示密码'}
-              >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-          </div>
-
+        <Card
+          className="shadow-xl shadow-slate-100 border-slate-200 rounded-2xl"
+          styles={{ body: { padding: '24px' } }}
+        >
           {error && (
-            <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-              {error}
-            </div>
+            <Alert
+              message={error}
+              type="error"
+              showIcon
+              className="mb-4 rounded-lg"
+            />
           )}
 
-          <button
-            type="submit"
-            className="btn-primary w-full justify-center"
-            disabled={loading || !username.trim() || !password.trim()}
+          <Form
+            layout="vertical"
+            initialValues={{ username: 'admin' }}
+            onFinish={handleLogin}
+            autoComplete="off"
           >
-            {loading ? (
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <Lock className="w-4 h-4" />
-            )}
-            {loading ? '登录中...' : '登录'}
-          </button>
+            <Form.Item
+              label={<span className="text-xs font-medium text-slate-500">用户名</span>}
+              name="username"
+              rules={[{ required: true, message: '请输入用户名' }]}
+            >
+              <Input
+                prefix={<UserOutlined className="text-slate-400" />}
+                placeholder="admin"
+                size="large"
+                autoComplete="username"
+                aria-label="用户名"
+              />
+            </Form.Item>
 
-          <p className="text-xs text-slate-400 text-center">
+            <Form.Item
+              label={<span className="text-xs font-medium text-slate-500">密码</span>}
+              name="password"
+              rules={[{ required: true, message: '请输入密码' }]}
+            >
+              <Input.Password
+                prefix={<LockOutlined className="text-slate-400" />}
+                placeholder="输入密码"
+                size="large"
+                autoComplete="current-password"
+                aria-label="密码"
+              />
+            </Form.Item>
+
+            <Form.Item className="mb-2">
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={loading}
+                block
+                size="large"
+                icon={<LockOutlined />}
+                aria-label="登录"
+              >
+                {loading ? '登录中...' : '登录'}
+              </Button>
+            </Form.Item>
+          </Form>
+
+          <Text type="secondary" className="text-xs block text-center">
             首次登录将自动创建管理员账号
-          </p>
-        </form>
+          </Text>
+        </Card>
       </div>
     </div>
   );

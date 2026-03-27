@@ -1,6 +1,12 @@
 import { useState, useEffect } from 'react';
-import { LayoutDashboard, Bot, BookOpen, GitBranch, MessageSquare, RefreshCw, Cpu, Sparkles } from 'lucide-react';
+import { Card, Row, Col, Statistic, Button, Alert, Table, Tag, Typography, Space, Spin } from 'antd';
+import {
+  RobotOutlined, BookOutlined, BranchesOutlined, MessageOutlined,
+  ThunderboltOutlined, ReloadOutlined, DashboardOutlined, ApiOutlined,
+} from '@ant-design/icons';
 import { fetchDashboard, triggerAdminIngest, fetchAdminPrompts } from '../api';
+
+const { Title, Text } = Typography;
 
 interface DashboardData {
   stats: { agentCount: number; categoryCount: number; pipelineCount: number; knowledgeCount: number; chatCount: number };
@@ -14,6 +20,7 @@ const DashboardPage = () => {
   const [loading, setLoading] = useState(true);
   const [ingesting, setIngesting] = useState(false);
   const [ingestMsg, setIngestMsg] = useState('');
+  const [ingestSuccess, setIngestSuccess] = useState(true);
 
   const loadDashboard = async () => {
     try {
@@ -37,107 +44,136 @@ const DashboardPage = () => {
     setIngestMsg('');
     try {
       const result = await triggerAdminIngest();
-      setIngestMsg(`✅ 同步完成：${result.totalAgents} 个 Agent，${result.totalCategories} 个分类`);
+      setIngestMsg(`同步完成：${result.totalAgents} 个 Agent，${result.totalCategories} 个分类`);
+      setIngestSuccess(true);
       await loadDashboard();
-    } catch (err) {
-      setIngestMsg('❌ 同步失败');
+    } catch {
+      setIngestMsg('同步失败，请检查服务连接');
+      setIngestSuccess(false);
     } finally {
       setIngesting(false);
     }
   };
 
   const statCards = data ? [
-    { label: 'Agent 总数', value: data.stats.agentCount, icon: Bot, color: 'text-sky-600', bg: 'bg-sky-50', border: 'border-sky-100' },
-    { label: '知识库条目', value: data.stats.knowledgeCount, icon: BookOpen, color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-100' },
-    { label: '流水线', value: data.stats.pipelineCount, icon: GitBranch, color: 'text-violet-600', bg: 'bg-violet-50', border: 'border-violet-100' },
-    { label: '对话记录', value: data.stats.chatCount, icon: MessageSquare, color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-100' },
-    { label: '系统提示词', value: promptCount, icon: Sparkles, color: 'text-pink-600', bg: 'bg-pink-50', border: 'border-pink-100' },
+    { label: 'Agent 总数',  value: data.stats.agentCount,    icon: <RobotOutlined />,      color: '#0284c7' },
+    { label: '知识库条目',  value: data.stats.knowledgeCount, icon: <BookOutlined />,       color: '#10b981' },
+    { label: '流水线',      value: data.stats.pipelineCount,  icon: <BranchesOutlined />,   color: '#7c3aed' },
+    { label: '对话记录',    value: data.stats.chatCount,      icon: <MessageOutlined />,    color: '#f59e0b' },
+    { label: '系统提示词',  value: promptCount,               icon: <ThunderboltOutlined />, color: '#ec4899' },
   ] : [];
 
+  const chatColumns = [
+    {
+      title: 'Agent',
+      dataIndex: 'agentName',
+      key: 'agentName',
+      render: (name: string) => (
+        <Space>
+          <RobotOutlined className="text-sky-500" />
+          <Text>{name || 'AI Assistant'}</Text>
+        </Space>
+      ),
+    },
+    {
+      title: '时间',
+      dataIndex: 'updatedAt',
+      key: 'updatedAt',
+      render: (t: string) => <Text type="secondary" className="text-xs">{new Date(t).toLocaleString()}</Text>,
+    },
+  ];
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <Spin size="large" tip="加载中..." />
+      </div>
+    );
+  }
+
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6">
+    <div className="p-6 max-w-6xl mx-auto space-y-6 animate-fade-in">
       {/* 页头 */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-            <LayoutDashboard className="w-6 h-6 text-sky-600" />
+          <Title level={4} className="!mb-0 flex items-center gap-2">
+            <DashboardOutlined className="text-sky-600" />
             仪表盘
-          </h1>
-          <p className="text-slate-400 text-sm mt-1">Agency Agents 管理后台</p>
+          </Title>
+          <Text type="secondary" className="text-sm">Agency Agents 管理后台</Text>
         </div>
-        <button
-          className="btn-secondary"
+        <Button
+          icon={<ReloadOutlined spin={ingesting} />}
           onClick={handleIngest}
-          disabled={ingesting}
+          loading={ingesting}
           aria-label="同步 Agent 数据"
         >
-          <RefreshCw className={`w-4 h-4 ${ingesting ? 'animate-spin' : ''}`} />
           {ingesting ? '同步中...' : '同步 Agent 数据'}
-        </button>
+        </Button>
       </div>
 
       {ingestMsg && (
-        <div className={`text-sm px-4 py-3 rounded-lg border ${ingestMsg.startsWith('✅') ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-600'}`}>
-          {ingestMsg}
-        </div>
+        <Alert
+          message={ingestMsg}
+          type={ingestSuccess ? 'success' : 'error'}
+          showIcon
+          closable
+          onClose={() => setIngestMsg('')}
+          className="rounded-lg"
+        />
       )}
 
       {/* Provider 状态 */}
       {data && (
-        <div className="card flex items-center gap-4">
-          <div className="w-8 h-8 rounded-lg bg-sky-50 border border-sky-100 flex items-center justify-center">
-            <Cpu className="w-4 h-4 text-sky-600" />
-          </div>
-          <div>
-            <span className="text-sm text-slate-500">当前提供商：</span>
-            <span className="text-slate-800 font-semibold ml-1">{data.provider.active === 'ollama' ? '🦙 Ollama' : '🤖 CodeBuddy'}</span>
-          </div>
-          <div className="text-xs text-slate-400 ml-4">
-            Ollama: {data.provider.ollama} · CodeBuddy: {data.provider.codebuddy}
-          </div>
-        </div>
+        <Card size="small" className="border-slate-200 rounded-xl shadow-sm">
+          <Space>
+            <ApiOutlined className="text-sky-600" />
+            <Text type="secondary">当前提供商：</Text>
+            <Tag color="blue">{data.provider.active === 'ollama' ? '🦙 Ollama' : '🤖 CodeBuddy'}</Tag>
+            <Text type="secondary" className="text-xs">
+              Ollama: {data.provider.ollama} · CodeBuddy: {data.provider.codebuddy}
+            </Text>
+          </Space>
+        </Card>
       )}
 
       {/* 统计卡片 */}
-      {loading ? (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="card animate-pulse">
-              <div className="h-8 bg-slate-100 rounded w-1/2 mb-2" />
-              <div className="h-10 bg-slate-100 rounded w-3/4" />
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-          {statCards.map(({ label, value, icon: Icon, color, bg, border }) => (
-            <div key={label} className={`card border ${border}`}>
-              <div className={`w-8 h-8 rounded-lg ${bg} flex items-center justify-center mb-3`}>
-                <Icon className={`w-4 h-4 ${color}`} />
-              </div>
-              <div className={`text-3xl font-bold ${color}`}>{value}</div>
-              <div className="text-xs text-slate-400 mt-1">{label}</div>
-            </div>
-          ))}
-        </div>
-      )}
+      <Row gutter={[16, 16]}>
+        {statCards.map(({ label, value, icon, color }) => (
+          <Col key={label} xs={12} sm={12} md={8} lg={6} xl={4}>
+            <Card className="border-slate-200 rounded-xl shadow-sm hover:shadow-md transition-shadow" size="small">
+              <Statistic
+                title={<Text type="secondary" className="text-xs">{label}</Text>}
+                value={value}
+                prefix={<span style={{ color }}>{icon}</span>}
+                valueStyle={{ color, fontSize: 28, fontWeight: 700 }}
+              />
+            </Card>
+          </Col>
+        ))}
+      </Row>
 
       {/* 最近对话 */}
       {data && data.recentChats.length > 0 && (
-        <div className="card">
-          <h2 className="text-sm font-semibold text-slate-700 mb-4 flex items-center gap-2">
-            <MessageSquare className="w-4 h-4 text-amber-500" />
-            最近对话
-          </h2>
-          <div className="space-y-1">
-            {data.recentChats.map((chat) => (
-              <div key={chat._id} className="flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0">
-                <span className="text-sm text-slate-700">{chat.agentName || 'AI Assistant'}</span>
-                <span className="text-xs text-slate-400">{new Date(chat.updatedAt).toLocaleString()}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+        <Card
+          title={
+            <Space>
+              <MessageOutlined className="text-amber-500" />
+              <span>最近对话</span>
+            </Space>
+          }
+          className="border-slate-200 rounded-xl shadow-sm"
+          size="small"
+        >
+          <Table
+            dataSource={data.recentChats}
+            columns={chatColumns}
+            rowKey="_id"
+            pagination={false}
+            size="small"
+            className="rounded-lg"
+          />
+        </Card>
       )}
     </div>
   );

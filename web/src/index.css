@@ -3,6 +3,17 @@
 @tailwind utilities;
 
 @layer base {
+  html,
+  body {
+    height: 100vh;
+    margin: 0;
+    padding: 0;
+  }
+
+  #root {
+    height: 100%;
+  }
+
   :root {
     --scrollbar-width: 5px;
     --scrollbar-color: #cbd5e1;
@@ -72,38 +83,109 @@
       prose-strong:text-slate-800
       prose-li:text-slate-600;
   }
+
+  /* 代码块样式 */
+  .code-block {
+    @apply relative rounded-lg overflow-hidden;
+  }
+
+  /* 打字机光标 */
+  .typing-cursor::after {
+    content: '▋';
+    @apply animate-pulse text-sky-500;
+  }
+
+  /* 渐变背景 */
+  .gradient-bg {
+    background: radial-gradient(ellipse at top, #f0f9ff 0%, #f8fafc 100%);
+  }
+
+  /* 淡入动画 */
+  .animate-fade-in {
+    animation: fadeIn 0.25s ease-out both;
+  }
+
+  /* 消息滑入动画 */
+  .animate-slide-up {
+    animation: slideUp 0.2s ease-out both;
+  }
+
+  /* ─── Ant Design 全局覆盖 ──────────────────────────────────────────────── */
+
+  /* 侧边栏菜单 */
+  .ant-menu-inline .ant-menu-item {
+    border-radius: 8px !important;
+    margin: 2px 8px !important;
+    width: calc(100% - 16px) !important;
+  }
+
+  .ant-menu-inline .ant-menu-item-selected {
+    background-color: #f0f9ff !important;
+    color: #0284c7 !important;
+  }
+
+  /* Layout：不设置固定高度，让 h-screen 等 Tailwind utilities 正常生效 */
+  .ant-layout-sider {
+    overflow: hidden;
+  }
+
+  /* Card 圆角统一 */
+  .ant-card {
+    border-radius: 12px !important;
+  }
+
+  /* Input 圆角 */
+  .ant-input,
+  .ant-input-affix-wrapper,
+  .ant-select-selector,
+  .ant-input-password {
+    border-radius: 8px !important;
+  }
+
+  /* Button 圆角 */
+  .ant-btn {
+    border-radius: 8px !important;
+  }
+
+  /* Modal 圆角 */
+  .ant-modal-content {
+    border-radius: 16px !important;
+  }
+
+  /* Alert 圆角 */
+  .ant-alert {
+    border-radius: 10px !important;
+  }
+
+  /* Drawer body padding */
+  .ant-drawer-body {
+    padding: 0 !important;
+  }
+
+  /* Ant Design X Bubble 样式优化 */
+  .ant-bubble-content {
+    max-width: 75% !important;
+  }
+
+  /* Ant Design X Sender 样式 */
+  .ant-sender {
+    border-radius: 12px !important;
+    border-color: #e2e8f0 !important;
+  }
+
+  .ant-sender:focus-within {
+    border-color: #0284c7 !important;
+    box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.1) !important;
+  }
 }
 
-/* 代码块样式 */
-.code-block {
-  @apply relative rounded-lg overflow-hidden;
-}
-
-/* 打字机光标 */
-.typing-cursor::after {
-  content: '▋';
-  @apply animate-pulse text-sky-500;
-}
-
-/* 渐变背景 */
-.gradient-bg {
-  background: radial-gradient(ellipse at top, #f0f9ff 0%, #f8fafc 100%);
-}
-
-/* 淡入动画 */
+/* keyframes 必须在 @layer 外定义 */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-.animate-fade-in {
-  animation: fadeIn 0.25s ease-out both;
-}
 
-/* 消息滑入动画 */
 @keyframes slideUp {
   from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: translateY(0); }
-}
-.animate-slide-up {
-  animation: slideUp 0.2s ease-out both;
 }

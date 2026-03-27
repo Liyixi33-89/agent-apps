@@ -78,8 +78,17 @@ export const searchKnowledge = async (query: string, options?: { categoryKey?: s
   return data.data;
 };
 
-export const ragQuery = async (question: string, options?: { categoryKey?: string; agentSlug?: string; provider?: Provider; lang?: Lang }) => {
-  const { data } = await api.post<{ success: boolean; data: { answer: string; question: string } }>('/knowledge/rag', { question, ...options });
+export interface RagSource {
+  type: 'agent' | 'knowledge';
+  name: string;
+  slug?: string;
+  categoryKey?: string;
+  chunkId?: string;
+  score?: number;
+}
+
+export const ragQuery = async (question: string, options?: { categoryKey?: string; agentSlug?: string; provider?: Provider; lang?: Lang; history?: Array<{ role: 'user' | 'assistant'; content: string }>; rewrite?: boolean }) => {
+  const { data } = await api.post<{ success: boolean; data: { answer: string; question: string; rewrittenQuestion?: string; sources: RagSource[] } }>('/knowledge/rag', { question, ...options });
   return data.data;
 };
 

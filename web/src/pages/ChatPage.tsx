@@ -1,41 +1,20 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
-import { MessageSquare, Send, Plus, Bot, User, Cpu, Eye, Trash2 } from 'lucide-react';
+import {
+  Button, Select, Space, Tag, Typography, Spin, Empty, Avatar,
+} from 'antd';
+import {
+  PlusOutlined, RobotOutlined, UserOutlined,
+  ApiOutlined, EyeOutlined,
+} from '@ant-design/icons';
+import { Bubble, Sender } from '@ant-design/x';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { createChatSession, fetchChatSessions, fetchChatSession, fetchAgents } from '../api';
 import { useAppStore } from '../store';
 import type { ChatSession, ChatMessage, Agent, Provider, ModelType } from '../types';
 
-const MessageBubble = ({ message, lang }: { message: ChatMessage; lang: 'zh' | 'en' }) => {
-  const isUser = message.role === 'user';
-  const isSystem = message.role === 'system';
-
-  if (isSystem) return null;
-
-  return (
-    <div className={`flex gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'} animate-slide-up`}>
-      <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${isUser ? 'bg-sky-600' : 'bg-slate-200'}`}>
-        {isUser ? <User className="w-4 h-4 text-white" /> : <Bot className="w-4 h-4 text-slate-600" />}
-      </div>
-      <div className={`max-w-[75%] ${isUser ? 'items-end' : 'items-start'} flex flex-col gap-1`}>
-        <div className={`rounded-2xl px-4 py-3 text-sm ${isUser ? 'bg-sky-600 text-white rounded-tr-sm shadow-sm' : 'bg-white text-slate-700 rounded-tl-sm border border-slate-200 shadow-sm'}`}>
-          {isUser ? (
-            <p className="whitespace-pre-wrap">{message.content}</p>
-          ) : (
-            <div className="prose-dark">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
-            </div>
-          )}
-        </div>
-        <div className="flex items-center gap-2 text-xs text-slate-400">
-          <span>{new Date(message.timestamp).toLocaleTimeString()}</span>
-          {message.provider && <span>{message.provider}</span>}
-        </div>
-      </div>
-    </div>
-  );
-};
+const { Text } = Typography;
 
 const ChatPage = () => {
   const { sessionId: paramSessionId } = useParams<{ sessionId?: string }>();
@@ -84,13 +63,14 @@ const ChatPage = () => {
     }
   };
 
-  const handleSend = useCallback(async () => {
-    if (!input.trim() || streaming || !currentSession) return;
+  const handleSend = useCallback(async (text?: string) => {
+    const content = (text ?? input).trim();
+    if (!content || streaming || !currentSession) return;
 
     const userMessage: ChatMessage = {
       role: 'user',
-      content: input.trim(),
-      timestamp: new Date().toISOString()
+      content,
+      timestamp: new Date().toISOString(),
     };
 
     setMessages((prev) => [...prev, userMessage]);
@@ -103,8 +83,8 @@ const ChatPage = () => {
       const response = await fetch('/api/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId: currentSession.sessionId, message: userMessage.content }),
-        signal: abortRef.current.signal
+        body: JSON.stringify({ sessionId: currentSession.sessionId, message: content }),
+        signal: abortRef.current.signal,
       });
 
       const reader = response.body?.getReader();
@@ -134,7 +114,7 @@ const ChatPage = () => {
                 role: 'assistant',
                 content: fullContent,
                 timestamp: new Date().toISOString(),
-                provider
+                provider,
               };
               setMessages((prev) => [...prev, assistantMessage]);
               setStreamingContent('');
@@ -146,7 +126,11 @@ const ChatPage = () => {
       }
     } catch (err: any) {
       if (err.name !== 'AbortError') {
-        setMessages((prev) => [...prev, { role: 'assistant', content: '❌ 请求失败，请检查服务连接', timestamp: new Date().toISOString() }]);
+        setMessages((prev) => [...prev, {
+          role: 'assistant',
+          content: '❌ 请求失败，请检查服务连接',
+          timestamp: new Date().toISOString(),
+        }]);
       }
     } finally {
       setStreaming(false);
@@ -154,60 +138,106 @@ const ChatPage = () => {
     }
   }, [input, streaming, currentSession, provider]);
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
+  const agentOptions = [
+    { value: '', label: lang === 'zh' ? '通用助手' : 'General Assistant' },
+    ...agents.map((a) => ({
+      value: a.slug,
+      label: `${a.emoji} ${lang === 'zh' ? a.name.zh : a.name.en}`,
+    })),
+  ];
+
+  // 构建 Bubble 消息列表
+  const bubbleItems = messages
+    .filter((m) => m.role !== 'system')
+    .map((msg, i) => ({
+      key: i,
+      role: msg.role === 'user' ? 'user' : 'assistant',
+      placement: msg.role === 'user' ? 'end' as const : 'start' as const,
+      avatar: msg.role === 'user'
+        ? <Avatar size={32} style={{ backgroundColor: '#0284c7' }} icon={<UserOutlined />} />
+        : <Avatar size={32} style={{ backgroundColor: '#f1f5f9' }} icon={<RobotOutlined style={{ color: '#64748b' }} />} />,
+      content: msg.role === 'user'
+        ? msg.content
+        : (
+          <div className="prose-dark text-sm">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+          </div>
+        ),
+      styles: {
+        content: msg.role === 'user'
+          ? { background: '#0284c7', color: 'white', borderRadius: '16px 16px 4px 16px' }
+          : { background: 'white', border: '1px solid #e2e8f0', borderRadius: '16px 16px 16px 4px' },
+      },
+    }));
+
+  // 流式消息
+  if (streamingContent) {
+    bubbleItems.push({
+      key: bubbleItems.length,
+      role: 'assistant',
+      placement: 'start' as const,
+      avatar: <Avatar size={32} style={{ backgroundColor: '#f1f5f9' }} icon={<RobotOutlined style={{ color: '#64748b' }} />} />,
+      content: (
+        <div className="prose-dark text-sm">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamingContent}</ReactMarkdown>
+          <span className="typing-cursor" />
+        </div>
+      ),
+      styles: {
+        content: { background: 'white', border: '1px solid #e2e8f0', borderRadius: '16px 16px 16px 4px' },
+      },
+    });
+  }
 
   return (
     <div className="flex h-full">
       {/* 会话列表 */}
       <aside className="hidden lg:flex flex-col w-56 bg-white border-r border-slate-200">
         <div className="p-3 border-b border-slate-100">
-          <button
-            className="btn-primary w-full text-sm justify-center"
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            block
             onClick={handleNewSession}
             aria-label="新建对话"
           >
-            <Plus className="w-4 h-4" />
             {lang === 'zh' ? '新建对话' : 'New Chat'}
-          </button>
+          </Button>
         </div>
 
         {/* Agent 选择 */}
         <div className="p-3 border-b border-slate-100">
-          <label className="text-xs text-slate-400 mb-1 block">Agent</label>
-          <select
-            className="input text-xs py-1.5"
+          <Text type="secondary" className="text-xs block mb-1">Agent</Text>
+          <Select
             value={selectedAgent}
-            onChange={(e) => setSelectedAgent(e.target.value)}
+            onChange={setSelectedAgent}
+            options={agentOptions}
+            size="small"
+            className="w-full"
             aria-label="选择 Agent"
-          >
-            <option value="">{lang === 'zh' ? '通用助手' : 'General Assistant'}</option>
-            {agents.map((a) => (
-              <option key={a.slug} value={a.slug}>
-                {a.emoji} {lang === 'zh' ? a.name.zh : a.name.en}
-              </option>
-            ))}
-          </select>
+          />
         </div>
 
-        {/* Provider 和模型类型 */}
-        <div className="p-3 border-b border-slate-100 flex gap-2">
-          <button
-            className={`flex-1 text-xs py-1.5 rounded-lg transition-colors ${provider === 'ollama' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-slate-50 text-slate-500 border border-slate-200'}`}
-            onClick={() => setProvider('ollama')}
-          >
-            🦙 Ollama
-          </button>
-          <button
-            className={`flex-1 text-xs py-1.5 rounded-lg transition-colors ${provider === 'codebuddy' ? 'bg-sky-50 text-sky-600 border border-sky-200' : 'bg-slate-50 text-slate-500 border border-slate-200'}`}
-            onClick={() => setProvider('codebuddy')}
-          >
-            🤖 CB
-          </button>
+        {/* Provider 切换 */}
+        <div className="p-3 border-b border-slate-100">
+          <Space.Compact block>
+            <Button
+              size="small"
+              type={provider === 'ollama' ? 'primary' : 'default'}
+              onClick={() => setProvider('ollama')}
+              className="flex-1"
+            >
+              🦙 Ollama
+            </Button>
+            <Button
+              size="small"
+              type={provider === 'codebuddy' ? 'primary' : 'default'}
+              onClick={() => setProvider('codebuddy')}
+              className="flex-1"
+            >
+              🤖 CB
+            </Button>
+          </Space.Compact>
         </div>
 
         {/* 会话列表 */}
@@ -215,7 +245,11 @@ const ChatPage = () => {
           {sessions.map((session) => (
             <button
               key={session._id}
-              className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-colors ${currentSession?.sessionId === session.sessionId ? 'bg-sky-50 text-sky-600 border border-sky-100' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'}`}
+              className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-colors ${
+                currentSession?.sessionId === session.sessionId
+                  ? 'bg-sky-50 text-sky-600 border border-sky-100'
+                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
+              }`}
               onClick={() => navigate(`/chat/${session.sessionId}`)}
             >
               <div className="font-medium truncate">{session.agentName || 'AI Assistant'}</div>
@@ -231,99 +265,64 @@ const ChatPage = () => {
       <div className="flex-1 flex flex-col min-w-0">
         {!currentSession ? (
           <div className="flex-1 flex flex-col items-center justify-center gap-4 p-6">
-            <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center">
-              <MessageSquare className="w-8 h-8 text-slate-400" />
-            </div>
-            <div className="text-center">
-              <h2 className="text-lg font-semibold text-slate-700 mb-1">
-                {lang === 'zh' ? '开始一个新对话' : 'Start a new conversation'}
-              </h2>
-              <p className="text-slate-400 text-sm mb-4">
-                {lang === 'zh' ? '选择一个 Agent 或直接开始对话' : 'Select an agent or start chatting'}
-              </p>
-              <button className="btn-primary" onClick={handleNewSession}>
-                <Plus className="w-4 h-4" />
-                {lang === 'zh' ? '新建对话' : 'New Chat'}
-              </button>
-            </div>
+            <Empty
+              image={<RobotOutlined style={{ fontSize: 64, color: '#cbd5e1' }} />}
+              description={
+                <div className="text-center">
+                  <Text className="text-lg font-semibold text-slate-700 block mb-1">
+                    {lang === 'zh' ? '开始一个新对话' : 'Start a new conversation'}
+                  </Text>
+                  <Text type="secondary" className="text-sm block mb-4">
+                    {lang === 'zh' ? '选择一个 Agent 或直接开始对话' : 'Select an agent or start chatting'}
+                  </Text>
+                  <Button type="primary" icon={<PlusOutlined />} onClick={handleNewSession}>
+                    {lang === 'zh' ? '新建对话' : 'New Chat'}
+                  </Button>
+                </div>
+              }
+            />
           </div>
         ) : (
           <>
             {/* 对话头部 */}
             <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-200 bg-white shadow-sm">
-              <div className="w-8 h-8 rounded-full bg-sky-100 flex items-center justify-center">
-                <Bot className="w-4 h-4 text-sky-600" />
-              </div>
+              <Avatar size={32} style={{ backgroundColor: '#e0f2fe' }} icon={<RobotOutlined style={{ color: '#0284c7' }} />} />
               <div>
-                <div className="text-sm font-medium text-slate-800">{currentSession.agentName || 'AI Assistant'}</div>
-                <div className="text-xs text-slate-400 flex items-center gap-2">
-                  <Cpu className="w-3 h-3" />
-                  {currentSession.provider}
-                  {currentSession.modelType === 'vision' && <><Eye className="w-3 h-3" /> Vision</>}
+                <Text strong className="text-sm">{currentSession.agentName || 'AI Assistant'}</Text>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <Tag icon={<ApiOutlined />} color="blue" className="text-xs m-0">{currentSession.provider}</Tag>
+                  {currentSession.modelType === 'vision' && (
+                    <Tag icon={<EyeOutlined />} color="purple" className="text-xs m-0">Vision</Tag>
+                  )}
                 </div>
               </div>
             </div>
 
             {/* 消息列表 */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50">
-              {messages.map((msg, i) => (
-                <MessageBubble key={i} message={msg} lang={lang} />
-              ))}
-
-              {/* 流式输出 */}
-              {streamingContent && (
-                <div className="flex gap-3 animate-slide-up">
-                  <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center flex-shrink-0">
-                    <Bot className="w-4 h-4 text-slate-600" />
-                  </div>
-                  <div className="max-w-[75%] bg-white rounded-2xl rounded-tl-sm px-4 py-3 text-sm text-slate-700 border border-slate-200 shadow-sm">
-                    <div className="prose-dark">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamingContent}</ReactMarkdown>
-                    </div>
-                    <span className="typing-cursor" />
-                  </div>
-                </div>
-              )}
-
+            <div className="flex-1 overflow-y-auto p-4 bg-slate-50">
               {streaming && !streamingContent && (
-                <div className="flex gap-3">
-                  <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center">
-                    <Bot className="w-4 h-4 text-slate-600" />
-                  </div>
-                  <div className="bg-white rounded-2xl rounded-tl-sm px-4 py-3 border border-slate-200 shadow-sm">
-                    <div className="flex gap-1">
-                      {[0, 1, 2].map((i) => (
-                        <div key={i} className="w-2 h-2 rounded-full bg-slate-300 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
-                      ))}
-                    </div>
-                  </div>
+                <div className="flex justify-center py-2">
+                  <Spin size="small" tip="思考中..." />
                 </div>
               )}
-
+              <Bubble.List
+                items={bubbleItems}
+                className="space-y-3"
+              />
               <div ref={messagesEndRef} />
             </div>
 
-            {/* 输入区 */}
+            {/* 输入区 — 使用 Ant Design X Sender */}
             <div className="p-4 border-t border-slate-200 bg-white">
-              <div className="flex gap-2 items-end">
-                <textarea
-                  className="input flex-1 resize-none min-h-10 max-h-32 text-sm"
-                  placeholder={lang === 'zh' ? '输入消息... (Enter 发送，Shift+Enter 换行)' : 'Type a message... (Enter to send, Shift+Enter for newline)'}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  rows={1}
-                  aria-label="消息输入框"
-                />
-                <button
-                  className="btn-primary h-10 px-3 flex-shrink-0"
-                  onClick={handleSend}
-                  disabled={!input.trim() || streaming}
-                  aria-label="发送消息"
-                >
-                  <Send className="w-4 h-4" />
-                </button>
-              </div>
+              <Sender
+                value={input}
+                onChange={setInput}
+                onSubmit={(val) => handleSend(val)}
+                loading={streaming}
+                placeholder={lang === 'zh' ? '输入消息... (Enter 发送，Shift+Enter 换行)' : 'Type a message...'}
+                submitType="enter"
+                aria-label="消息输入框"
+              />
             </div>
           </>
         )}
