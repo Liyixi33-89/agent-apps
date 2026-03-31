@@ -9,7 +9,9 @@ export interface IVibeTemplate extends Document {
     html: string;
     css: string;
     js: string;
+    jsx?: string;
     isFullHtml?: boolean;
+    isReact?: boolean;
   };
   thumbnail?: string;
   publishedAt: Date;
@@ -31,7 +33,9 @@ const vibeTemplateSchema = new Schema<IVibeTemplate>(
       html:       { type: String, default: '' },
       css:        { type: String, default: '' },
       js:         { type: String, default: '' },
+      jsx:        { type: String, default: '' },
       isFullHtml: { type: Boolean, default: false },
+      isReact:    { type: Boolean, default: false },
     },
     thumbnail:   { type: String },
     publishedAt: { type: Date, default: Date.now },

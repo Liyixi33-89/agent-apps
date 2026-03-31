@@ -1351,7 +1351,6 @@ const [isReactMode, setIsReactMode] = useState(true);
           lang={lang}
           onSuccess={() => {
             setPublishTarget(null);
-            navigate('/market');
           }}
           onClose={() => setPublishTarget(null)}
         />

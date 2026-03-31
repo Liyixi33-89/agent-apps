@@ -116,7 +116,7 @@ export interface VibeTemplateItem {
 }
 
 export interface VibeTemplateDetail extends VibeTemplateItem {
-  codeParts: { html: string; css: string; js: string; isFullHtml?: boolean };
+  codeParts: { html: string; css: string; js: string; jsx?: string; isFullHtml?: boolean; isReact?: boolean };
 }
 
 export const fetchVibeTemplates = async (params?: { page?: number; limit?: number; category?: string }) => {
@@ -134,6 +134,21 @@ export const publishVibeTemplate = async (body: {
   author?: string; codeParts: object; thumbnail?: string; tags?: string[];
 }) => {
   const { data } = await api.post<{ success: boolean; data: VibeTemplateDetail }>('/vibe/templates', body);
+  return data.data;
+};
+
+// 保存应用（不发布到市场），返回后端生成的记录
+export const saveVibeApp = async (body: {
+  title: string; description?: string; category?: string;
+  author?: string; codeParts: object; thumbnail?: string; tags?: string[];
+}) => {
+  const { data } = await api.post<{ success: boolean; data: VibeTemplateDetail }>('/vibe/apps', body);
+  return data.data;
+};
+
+// 获取已保存的应用详情（通过后端 ID）
+export const fetchVibeApp = async (id: string) => {
+  const { data } = await api.get<{ success: boolean; data: VibeTemplateDetail }>(`/vibe/apps/${id}`);
   return data.data;
 };
 

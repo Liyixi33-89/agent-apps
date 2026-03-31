@@ -9,6 +9,7 @@ import ChatPage from './pages/ChatPage';
 import KnowledgePage from './pages/KnowledgePage';
 import PipelinesPage from './pages/PipelinesPage';
 import AgentPlanPage from './pages/AgentPlanPage';
+import PreviewPage from './pages/PreviewPage';
 
 // 主站布局包装（保持原有 children 模式）
 const MainRoutes = () => (
@@ -31,6 +32,8 @@ const MainRoutes = () => (
 const App = () => {
   return (
     <Routes>
+      {/* 预览页面（全屏，不带 Layout） */}
+      <Route path="/preview/:id" element={<PreviewPage />} />
       {/* 主站路由 */}
       <Route path="/*" element={<MainRoutes />} />
     </Routes>

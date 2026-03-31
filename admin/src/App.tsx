@@ -10,6 +10,7 @@ import ChatsAdminPage from './pages/ChatsAdminPage';
 import SettingsPage from './pages/SettingsPage';
 import PromptsAdminPage from './pages/PromptsAdminPage';
 import VibeTemplatesAdminPage from './pages/VibeTemplatesAdminPage';
+import VibeAppsAdminPage from './pages/VibeAppsAdminPage';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { isAuthenticated } = useAdminStore();
@@ -34,6 +35,7 @@ const App = () => {
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/prompts" element={<PromptsAdminPage />} />
                 <Route path="/vibe-templates" element={<VibeTemplatesAdminPage />} />
+                <Route path="/vibe-apps" element={<VibeAppsAdminPage />} />
               </Routes>
             </AdminLayout>
           </ProtectedRoute>

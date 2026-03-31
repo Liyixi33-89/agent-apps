@@ -48,6 +48,35 @@ marketRouter.get('/vibe/templates/:id', async (ctx) => {
   ctx.body = { success: true, data: template };
 });
 
+// ─── 保存应用（不发布到市场）  POST /api/vibe/apps ─────────────────────────
+
+marketRouter.post('/vibe/apps', async (ctx) => {
+  const body = ctx.request.body as {
+    title: string; description?: string; category?: string;
+    author?: string; codeParts: object; thumbnail?: string; tags?: string[];
+  };
+  if (!body.title || !body.codeParts) {
+    ctx.status = 400;
+    ctx.body = { success: false, message: 'title 和 codeParts 为必填项' };
+    return;
+  }
+  // isActive 为 false，表示仅保存、不在模板市场展示
+  const template = await VibeTemplate.create({ ...body, isActive: false, publishedAt: new Date() });
+  ctx.body = { success: true, data: template };
+});
+
+// ─── 获取已保存的应用  GET /api/vibe/apps/:id ────────────────────────────────
+
+marketRouter.get('/vibe/apps/:id', async (ctx) => {
+  const template = await VibeTemplate.findById(ctx.params.id).lean();
+  if (!template) {
+    ctx.status = 404;
+    ctx.body = { success: false, message: '应用不存在' };
+    return;
+  }
+  ctx.body = { success: true, data: template };
+});
+
 // ─── 发布模板  POST /api/vibe/templates ──────────────────────────────────────
 
 marketRouter.post('/vibe/templates', async (ctx) => {

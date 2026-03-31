@@ -27,7 +27,7 @@ const ERROR_CONTAINER_STYLE = `
 
 // ─── 将 JSX 编译为可执行 JS ──────────────────────────────────────────────────
 
-const compileJsx = (jsxCode: string): { code: string; error: null } | { code: null; error: string } => {
+export const compileJsx = (jsxCode: string): { code: string; error: null } | { code: null; error: string } => {
   try {
     // 预处理：移除 import 语句（浏览器端无法解析模块导入）
     let cleaned = jsxCode
@@ -66,7 +66,7 @@ const compileJsx = (jsxCode: string): { code: string; error: null } | { code: nu
 
 // ─── 构建 iframe HTML（内嵌 React + 编译后代码）────────────────────────────
 
-const buildReactIframeHtml = (compiledCode: string): string => `<!DOCTYPE html>
+export const buildReactIframeHtml = (compiledCode: string): string => `<!DOCTYPE html>
 <html lang="zh">
 <head>
   <meta charset="UTF-8" />

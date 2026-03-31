@@ -662,14 +662,14 @@ const UIPreviewPanel = ({
             </button>
           )}
 
-          {/* 发布到模板市场 */}
+          {/* 发布应用 */}
           {hasContent && onPublish && (
             <button
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-400 hover:text-white text-xs font-medium transition-all border border-emerald-500/30 hover:border-emerald-500"
               onClick={onPublish}
               tabIndex={0}
-              aria-label={lang === 'zh' ? '发布到模板市场' : 'Publish to market'}
-              title={lang === 'zh' ? '发布到模板市场' : 'Publish to market'}
+              aria-label={lang === 'zh' ? '发布应用' : 'Publish App'}
+              title={lang === 'zh' ? '发布应用' : 'Publish App'}
             >
               <Globe className="w-3.5 h-3.5" />
               {lang === 'zh' ? '发布' : 'Publish'}

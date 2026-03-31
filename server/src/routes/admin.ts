@@ -543,3 +543,47 @@ adminRouter.delete('/vibe-templates/:id', requireAdmin, async (ctx) => {
   await VibeTemplate.findByIdAndDelete(ctx.params.id);
   ctx.body = { success: true, message: '模板已删除' };
 });
+
+// ─── Vibe 已发布应用管理 ──────────────────────────────────────────────────────
+
+adminRouter.get('/vibe-apps', requireAdmin, async (ctx) => {
+  const { page = '1', limit = '20', search, isActive } = ctx.query as Record<string, string>;
+  const pageNum = Math.max(1, parseInt(page));
+  const limitNum = Math.min(100, parseInt(limit));
+
+  const filter: Record<string, unknown> = {};
+  if (search) filter.$or = [
+    { title: { $regex: search, $options: 'i' } },
+    { author: { $regex: search, $options: 'i' } },
+    { description: { $regex: search, $options: 'i' } },
+  ];
+  if (isActive === 'true') filter.isActive = true;
+  else if (isActive === 'false') filter.isActive = false;
+
+  const [apps, total] = await Promise.all([
+    VibeTemplate.find(filter, { 'codeParts.html': 0, 'codeParts.css': 0, 'codeParts.js': 0, 'codeParts.jsx': 0 })
+      .sort({ publishedAt: -1 })
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum)
+      .lean(),
+    VibeTemplate.countDocuments(filter),
+  ]);
+
+  ctx.body = { success: true, data: apps, pagination: { page: pageNum, limit: limitNum, total } };
+});
+
+adminRouter.put('/vibe-apps/:id', requireAdmin, async (ctx) => {
+  const update = ctx.request.body as Record<string, unknown>;
+  const app = await VibeTemplate.findByIdAndUpdate(
+    ctx.params.id,
+    { $set: update },
+    { new: true, projection: { 'codeParts.html': 0, 'codeParts.css': 0, 'codeParts.js': 0, 'codeParts.jsx': 0 } }
+  );
+  if (!app) { ctx.status = 404; ctx.body = { success: false, message: '应用不存在' }; return; }
+  ctx.body = { success: true, data: app };
+});
+
+adminRouter.delete('/vibe-apps/:id', requireAdmin, async (ctx) => {
+  await VibeTemplate.findByIdAndDelete(ctx.params.id);
+  ctx.body = { success: true, message: '应用已删除' };
+});

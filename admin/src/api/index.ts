@@ -196,3 +196,39 @@ export const updateAdminVibeTemplate = async (id: string, body: Partial<Omit<Vib
 export const deleteAdminVibeTemplate = async (id: string) => {
   await api.delete(`/vibe-templates/${id}`);
 };
+
+// ─── Vibe 已发布应用管理 ──────────────────────────────────────────────────────
+
+export interface VibeAppAdmin {
+  _id: string;
+  title: string;
+  description: string;
+  category: string;
+  author: string;
+  thumbnail?: string;
+  publishedAt: string;
+  viewCount: number;
+  likeCount: number;
+  tags: string[];
+  isActive: boolean;
+  codeParts: {
+    isReact?: boolean;
+    isFullHtml?: boolean;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const fetchAdminVibeApps = async (params?: { page?: number; limit?: number; search?: string; isActive?: string }) => {
+  const { data } = await api.get<{ success: boolean; data: VibeAppAdmin[]; pagination: { page: number; limit: number; total: number } }>('/vibe-apps', { params });
+  return data;
+};
+
+export const updateAdminVibeApp = async (id: string, body: Partial<Omit<VibeAppAdmin, '_id' | 'createdAt' | 'updatedAt'>>) => {
+  const { data } = await api.put<{ success: boolean; data: VibeAppAdmin }>(`/vibe-apps/${id}`, body);
+  return data.data;
+};
+
+export const deleteAdminVibeApp = async (id: string) => {
+  await api.delete(`/vibe-apps/${id}`);
+};

@@ -139,8 +139,8 @@ const HistoryPanel = ({
                     className="p-1.5 text-gray-500 hover:text-emerald-400 rounded-lg hover:bg-emerald-500/10 transition-colors"
                     onClick={() => onPublish(item)}
                     tabIndex={0}
-                    aria-label={lang === 'zh' ? '发布到模板市场' : 'Publish'}
-                    title={lang === 'zh' ? '发布到模板市场' : 'Publish to market'}
+                    aria-label={lang === 'zh' ? '发布应用' : 'Publish App'}
+                    title={lang === 'zh' ? '发布应用' : 'Publish App'}
                   >
                     <Globe className="w-3 h-3" />
                   </button>

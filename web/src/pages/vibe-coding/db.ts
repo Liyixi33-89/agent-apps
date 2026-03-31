@@ -57,6 +57,16 @@ const getAll = async <T>(store: string): Promise<T[]> => {
   });
 };
 
+const getById = async <T>(store: string, id: string): Promise<T | undefined> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(store, 'readonly');
+    const req = tx.objectStore(store).get(id);
+    req.onsuccess = () => resolve(req.result as T | undefined);
+    req.onerror = () => reject(req.error);
+  });
+};
+
 const remove = async (store: string, id: string): Promise<void> => {
   const db = await openDB();
   return new Promise((resolve, reject) => {
@@ -82,6 +92,7 @@ const clear = async (store: string): Promise<void> => {
 export const historyDB = {
   save:   (item: VibeHistoryItem) => put(STORES.history, item),
   getAll: () => getAll<VibeHistoryItem>(STORES.history),
+  getById: (id: string) => getById<VibeHistoryItem>(STORES.history, id),
   remove: (id: string) => remove(STORES.history, id),
   clear:  () => clear(STORES.history),
 };

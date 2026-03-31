@@ -6,7 +6,7 @@ import {
 import {
   DashboardOutlined, RobotOutlined, BookOutlined, BranchesOutlined,
   MessageOutlined, SettingOutlined, LogoutOutlined, MenuOutlined,
-  ThunderboltOutlined, AppstoreOutlined,
+  ThunderboltOutlined, AppstoreOutlined, CloudOutlined,
 } from '@ant-design/icons';
 import { useAdminStore } from '../store';
 
@@ -21,6 +21,7 @@ const navItems = [
   { path: '/chats',           label: '对话记录',   icon: <MessageOutlined /> },
   { path: '/prompts',         label: '提示词管理', icon: <ThunderboltOutlined /> },
   { path: '/vibe-templates',  label: '模板市场',   icon: <AppstoreOutlined /> },
+  { path: '/vibe-apps',       label: '已发布应用', icon: <CloudOutlined /> },
   { path: '/settings',        label: '系统设置',   icon: <SettingOutlined /> },
 ];
 
