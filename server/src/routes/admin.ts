@@ -9,7 +9,7 @@ import { Chat } from '../models/Chat.js';
 import { User } from '../models/User.js';
 import { SystemPrompt } from '../models/SystemPrompt.js';
 import { VibeTemplate } from '../models/VibeTemplate.js';
-import { ingestAgentsFromMarkdown, ingestKnowledgeFromAgents } from '../services/agentIngestionService.js';
+import { ingestAgentsFromMarkdown, ingestKnowledgeFromAgents, getTranslateStatus, translateAgentsInBackground } from '../services/agentIngestionService.js';
 import { createKnowledgeEntry } from '../services/knowledgeService.js';
 import { env } from '../config/env.js';
 
@@ -156,7 +156,24 @@ adminRouter.delete('/knowledge/:id', requireAdmin, async (ctx) => {
 adminRouter.post('/ingest', requireAdmin, async (ctx) => {
   const { translate = false } = (ctx.request.body as { translate?: boolean }) || {};
   const result = await ingestAgentsFromMarkdown(env.ingestRoot, Boolean(translate));
-  ctx.body = { success: true, data: result };
+  ctx.body = {
+    success: true,
+    data: result,
+    ...(translate ? { message: '导入完成，LLM 翻译任务已在后台启动，可通过 /api/admin/ingest/translate-status 查询进度' } : {}),
+  };
+});
+
+// 查询后台翻译任务进度
+adminRouter.get('/ingest/translate-status', requireAdmin, async (ctx) => {
+  ctx.body = { success: true, data: getTranslateStatus() };
+});
+
+// 手动触发后台翻译（不重新导入，仅翻译已入库的 Agent）
+adminRouter.post('/ingest/translate', requireAdmin, async (ctx) => {
+  translateAgentsInBackground().catch((err) =>
+    console.error('❌ 后台翻译任务异常：', err)
+  );
+  ctx.body = { success: true, message: 'LLM 翻译任务已在后台启动，可通过 /api/admin/ingest/translate-status 查询进度' };
 });
 
 // 从已入库的 Agent 数据生成知识库（分块向量化）

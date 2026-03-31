@@ -128,3 +128,18 @@ ${parts.js ? `<script>\n${parts.js}\n<\/script>` : ''}
 // 过滤掉 markdown 中的代码块，只保留文字说明
 export const stripCodeBlocks = (markdown: string): string =>
   markdown.replace(/```[\s\S]*?```/g, '').trim();
+
+// 从 AI 输出中提取 React JSX/TSX 代码（isReact 模式专用）
+export const extractReactCodeParts = (markdown: string): CodeParts => {
+  // 优先匹配完整 jsx/tsx 代码块
+  const jsxMatch =
+    markdown.match(/```(?:tsx|jsx)\n([\s\S]*?)```/i) ??
+    markdown.match(/```(?:tsx|jsx)\n([\s\S]+)$/i);
+
+  if (jsxMatch) {
+    return { html: '', css: '', js: '', jsx: jsxMatch[1].trim(), isReact: true };
+  }
+
+  // 降级：尝试提取普通 html/js 代码块
+  return { ...extractCodeParts(markdown), isReact: false };
+};

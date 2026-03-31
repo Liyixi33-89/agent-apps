@@ -16,6 +16,7 @@ import {
   HistoryPanel,
   PublishModal,
   extractCodeParts,
+  extractReactCodeParts,
   PROMPT_CATEGORIES,
   useVibeHistory,
   useFavoritePrompts,
@@ -56,6 +57,9 @@ const VibeCodingPage = () => {
 
   // 图片上传（Vision 参考图）
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+
+  // React 模式：告知 AI 生成 JSX 组件代码
+const [isReactMode, setIsReactMode] = useState(true);
 
   // Pipeline 模式状态
   const [pipelineMode, setPipelineMode] = useState(false);
@@ -222,8 +226,10 @@ const VibeCodingPage = () => {
                 )
               );
             } else if (parsed.type === 'done' && parsed.content) {
-              const parts = extractCodeParts(parsed.content);
-              if (parts.html || parts.css || parts.js || parts.isFullHtml) {
+              const parts = isReactMode
+                ? extractReactCodeParts(parsed.content)
+                : extractCodeParts(parsed.content);
+              if (parts.jsx || parts.html || parts.css || parts.js || parts.isFullHtml) {
                 setCodeParts(parts);
                 setIsFromPreviousSession(false);
                 handleSaveHistory(trimmed, parts);
@@ -281,7 +287,7 @@ const VibeCodingPage = () => {
 
     const cleanup = executeAgentPlan(
       trimmed,
-      { provider, modelType },
+      { provider, modelType, ...(isReactMode ? { isReact: true } : {}) },
       (event: PlanSSEEvent) => {
         switch (event.type) {
           case 'analyze':
@@ -326,18 +332,22 @@ const VibeCodingPage = () => {
               })
             );
             // 提取代码：优先用 finalResult，兜底遍历所有步骤结果找含 HTML 的
-            const HTML_CODE_RE = /```html[\s\S]*?```|<!DOCTYPE\s+html[\s\S]*?<\/html>/i;
+            const CODE_BLOCK_RE = isReactMode
+              ? /```(?:jsx|tsx)[\s\S]*?```/i
+              : /```html[\s\S]*?```|<!DOCTYPE\s+html[\s\S]*?<\/html>/i;
             const codeSource =
-              (event.finalResult && HTML_CODE_RE.test(event.finalResult))
+              (event.finalResult && CODE_BLOCK_RE.test(event.finalResult))
                 ? event.finalResult
                 : event.plan.steps
                     .slice()
                     .reverse()
-                    .find((s) => s.result && HTML_CODE_RE.test(s.result))?.result ?? event.finalResult;
+                    .find((s) => s.result && CODE_BLOCK_RE.test(s.result))?.result ?? event.finalResult;
 
             if (codeSource) {
-              const parts = extractCodeParts(codeSource);
-              if (parts.html || parts.css || parts.js || parts.isFullHtml) {
+              const parts = isReactMode
+                ? extractReactCodeParts(codeSource)
+                : extractCodeParts(codeSource);
+              if (parts.jsx || parts.html || parts.css || parts.js || parts.isFullHtml) {
                 setCodeParts(parts);
                 setIsFromPreviousSession(false);
                 handleSaveHistory(trimmed, parts);
@@ -626,8 +636,10 @@ const VibeCodingPage = () => {
         }
       }
 
-      const parts = extractCodeParts(fullContent);
-      if (parts.html || parts.css || parts.js || parts.isFullHtml) {
+      const parts = isReactMode
+        ? extractReactCodeParts(fullContent)
+        : extractCodeParts(fullContent);
+      if (parts.jsx || parts.html || parts.css || parts.js || parts.isFullHtml) {
         setCodeParts(parts);
         setIsFromPreviousSession(false);
         // 自动保存到历史
@@ -697,6 +709,7 @@ const VibeCodingPage = () => {
           provider,
           modelType,
           ...(currentHtml ? { currentHtml } : {}),
+          ...(isReactMode ? { isReact: true } : {}),
         }),
         signal: abortRef.current.signal,
       });
@@ -730,8 +743,10 @@ const VibeCodingPage = () => {
         }
       }
 
-      const parts = extractCodeParts(fullContent);
-      if (parts.html || parts.css || parts.js || parts.isFullHtml) {
+      const parts = isReactMode
+        ? extractReactCodeParts(fullContent)
+        : extractCodeParts(fullContent);
+      if (parts.jsx || parts.html || parts.css || parts.js || parts.isFullHtml) {
         setCodeParts(parts);
         setIsFromPreviousSession(false);
         handleSaveHistory(content, parts);
@@ -872,8 +887,10 @@ const VibeCodingPage = () => {
         }
       }
 
-      const parts = extractCodeParts(fullContent);
-      if (parts.html || parts.css || parts.js || parts.isFullHtml) {
+      const parts = isReactMode
+        ? extractReactCodeParts(fullContent)
+        : extractCodeParts(fullContent);
+      if (parts.jsx || parts.html || parts.css || parts.js || parts.isFullHtml) {
         setCodeParts(parts);
         setIsFromPreviousSession(false);
         handleSaveHistory(content, parts);
@@ -1306,6 +1323,8 @@ const VibeCodingPage = () => {
         isStreaming={streaming}
         isFromPreviousSession={isFromPreviousSession}
         uploadedImage={uploadedImage}
+        isReactMode={isReactMode}
+        onReactModeChange={setIsReactMode}
         onCodePartsChange={setCodeParts}
         onClearPreview={() => {
           setPrevCodeParts(null);

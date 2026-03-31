@@ -58,11 +58,45 @@ vibeRouter.post('/vibe/stream', async (ctx) => {
     provider = env.activeProvider,
     modelType = 'text',
     currentHtml,   // 当前页面 HTML（元素修改模式时传入）
+    isReact,       // React 模式：生成 JSX 组件代码
   } = ctx.request.body as Record<string, string>;
+
+  const reactMode = isReact === 'true' || isReact === true as unknown as string;
 
   let systemPrompt: string;
 
-  if (currentHtml) {
+  if (reactMode) {
+    // ── React 模式：生成 JSX 组件 ─────────────────────────────────────────────
+    systemPrompt = `你是一个专业的 React 前端工程师，擅长根据用户描述生成高质量的 React 函数组件。
+【强制要求】
+1. 使用 React 函数组件 + Hooks（useState、useEffect 等）
+2. 使用原生 CSS 进行样式设计（通过内联 style 对象或组件内定义 styles 常量），禁止使用 Tailwind CSS、className 类名方式
+3. 样式要精致美观、现代化，注重间距、圆角、阴影、配色等细节
+4. 组件必须默认导出（export default）
+5. 输出格式必须严格为：\`\`\`jsx\n...完整组件代码...\n\`\`\`
+6. 代码必须完整可运行，不能有省略或占位符
+7. 禁止 import React（使用 React 17+ 新 JSX 转换）
+8. 禁止 import 外部库（只能使用 React 内置 Hooks）
+9. 禁止输出任何解释文字，只输出代码块
+
+【示例结构】
+\`\`\`jsx
+const styles = {
+  container: { padding: '24px', fontFamily: 'system-ui, sans-serif' },
+  title: { fontSize: '24px', fontWeight: 'bold', color: '#1a1a1a' },
+};
+
+const App = () => {
+  const [count, setCount] = useState(0);
+  return (
+    <div style={styles.container}>
+      <h1 style={styles.title}>...</h1>
+    </div>
+  );
+};
+export default App;
+\`\`\``;
+  } else if (currentHtml) {
     // ── 修改模式：在现有代码基础上做局部修改 ──────────────────────────────────
     systemPrompt = `你是一个专业的前端工程师，负责对已有 HTML 页面进行精准修改。
 【任务说明】

@@ -125,7 +125,7 @@ const KnowledgeAdminPage = () => {
           {ingestMsg && (
             <span className="text-xs text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg max-w-xs truncate" title={ingestMsg}>{ingestMsg}</span>
           )}
-          <button
+          {/* <button
             className="btn-secondary flex items-center gap-1.5"
             onClick={handleIngest}
             disabled={ingestLoading || knowledgeIngestLoading}
@@ -135,7 +135,7 @@ const KnowledgeAdminPage = () => {
           >
             {ingestLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
             同步 Agent
-          </button>
+          </button> */}
           <button
             className="btn-secondary flex items-center gap-1.5 text-emerald-600 border-emerald-200 hover:bg-emerald-50"
             onClick={handleKnowledgeIngest}

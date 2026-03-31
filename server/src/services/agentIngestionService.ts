@@ -7,6 +7,7 @@ import { Agent } from '../models/Agent.js';
 import { Category } from '../models/Category.js';
 import { Pipeline } from '../models/Pipeline.js';
 import { KnowledgeBase } from '../models/KnowledgeBase.js';
+import { callLLM } from './llmService.js';
 // 静态翻译词典，无需网络/大模型
 
 // ─── 分类字典（中英文映射）────────────────────────────────────────────────────
@@ -75,8 +76,8 @@ const extractSections = (content: string) => {
     const key = slugify(currentHeading, { lower: true, strict: true }) || `section-${order}`;
     sections.push({
       key,
-      heading: { zh: currentHeading, en: currentHeading },
-      markdown: { zh: markdown, en: markdown },
+      heading: { zh: '', en: currentHeading },
+      markdown: { zh: '', en: markdown },
       order: order++
     });
   };
@@ -677,6 +678,272 @@ const translateAgentFields = (target: TranslateTarget): TranslateResult => ({
   capabilities: target.capabilities.map(translateOne),
 });
 
+// ─── LLM 批量翻译：一次调用翻译多个 Agent 的核心字段 ─────────────────────────
+
+interface AgentTranslateItem {
+  slug: string;
+  name: string;
+  description: string;
+  vibe: string;
+  workflowSummary: string;
+  sectionHeadings: string[];  // 章节标题列表
+  capabilities: string[];     // 能力列表
+}
+
+interface AgentTranslateResult {
+  slug: string;
+  name: string;
+  description: string;
+  vibe: string;
+  workflowSummary: string;
+  sectionHeadings: string[];
+  capabilities: string[];
+}
+
+// 翻译状态（内存中维护，供查询接口使用）
+interface TranslateTaskStatus {
+  running: boolean;
+  total: number;
+  done: number;
+  errors: number;
+  startedAt: Date | null;
+  finishedAt: Date | null;
+}
+
+const translateStatus: TranslateTaskStatus = {
+  running: false,
+  total: 0,
+  done: 0,
+  errors: 0,
+  startedAt: null,
+  finishedAt: null,
+};
+
+export const getTranslateStatus = (): TranslateTaskStatus => ({ ...translateStatus });
+
+// 批量翻译：一次 LLM 调用翻译 batchSize 个 Agent 的所有文本字段（rawMarkdown 除外）
+const translateBatchWithLLM = async (items: AgentTranslateItem[]): Promise<AgentTranslateResult[]> => {
+  const inputJson = JSON.stringify(
+    items.map((item) => ({
+      slug: item.slug,
+      name: item.name,
+      description: item.description,
+      vibe: item.vibe,
+      workflowSummary: item.workflowSummary,
+      sectionHeadings: item.sectionHeadings,
+      capabilities: item.capabilities,
+    })),
+    null,
+    2
+  );
+
+  const prompt = `你是一名专业翻译，请将以下 JSON 数组中每个对象的文本字段从英文翻译为简体中文。
+
+规则：
+1. 保留每个对象的 slug 字段不变
+2. 翻译字段：name、description、vibe、workflowSummary、sectionHeadings（数组）、capabilities（数组）
+3. 专有名词（如 API、LLM、React、TypeScript、Agent、GitHub 等技术词汇）保留英文
+4. 翻译要自然流畅，符合中文表达习惯
+5. 数组字段保持原有长度，逐项翻译
+6. 只输出 JSON 数组，不要有任何其他内容、解释或 markdown 代码块
+
+输入：
+${inputJson}`;
+
+  const response = await callLLM(
+    [{ role: 'user', content: prompt }],
+    { modelType: 'text' }
+  );
+
+  const raw = response.content.trim();
+  // 去除可能的 ```json ... ``` 包裹
+  const jsonStr = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+  const parsed = JSON.parse(jsonStr) as AgentTranslateResult[];
+
+  if (!Array.isArray(parsed)) throw new Error('LLM 返回格式不是数组');
+  return parsed;
+};
+
+// 后台异步翻译所有 Agent（不阻塞 HTTP 响应）
+export const translateAgentsInBackground = async (): Promise<void> => {
+  if (translateStatus.running) {
+    console.log('⚠️  翻译任务已在运行中，跳过重复启动');
+    return;
+  }
+
+  // 查询所有需要翻译的 Agent（name.zh 仍是英文的）
+  const agents = await Agent.find({}, {
+    slug: 1,
+    'name.en': 1,
+    'name.zh': 1,
+    'description.en': 1,
+    'vibe.en': 1,
+    'workflow.summary.en': 1,
+    'sections.heading.en': 1,
+    'sections.markdown.en': 1,
+    'sections.markdown.zh': 1,
+    'capabilities.en': 1,
+  }).lean();
+  // 需要翻译的条件：name.zh 为空或仍是英文（未翻译），或者有 section markdown 未翻译
+  const needTranslate = agents.filter((a) => {
+    const nameEn = (a.name as any)?.en || '';
+    const nameZh = (a.name as any)?.zh || '';
+    // name.zh 为空，或者 zh 和 en 相同（说明未翻译）
+    const nameNotTranslated = nameEn && (!nameZh || nameZh === nameEn);
+    // 检查是否有 section markdown 未翻译（zh 为空，或 zh 与 en 相同说明未翻译）
+    const hasMissingMarkdown = ((a.sections as any[]) || []).some(
+      (s: any) => s.markdown?.en && (!s.markdown?.zh || s.markdown?.zh === s.markdown?.en)
+    );
+    return nameNotTranslated || hasMissingMarkdown;
+  });
+
+  if (needTranslate.length === 0) {
+    console.log('✅ 所有 Agent 已翻译，无需重复翻译');
+    return;
+  }
+
+  translateStatus.running = true;
+  translateStatus.total = needTranslate.length;
+  translateStatus.done = 0;
+  translateStatus.errors = 0;
+  translateStatus.startedAt = new Date();
+  translateStatus.finishedAt = null;
+
+  console.log(`🌐 后台翻译任务启动：共 ${needTranslate.length} 个 Agent 待翻译`);
+
+  // 异步执行，不 await
+  (async () => {
+    const BATCH_SIZE = 3; // 每批 3 个，避免 sectionMarkdowns 内容过长导致超时
+    // 分两组：需要全量翻译的（name 未翻译）和只需补 markdown 的
+    const needFullTranslate = needTranslate.filter((a) => {
+      const nameEn = (a.name as any)?.en || '';
+      const nameZh = (a.name as any)?.zh || '';
+      return nameEn && (!nameZh || nameZh === nameEn);
+    });
+    const needMarkdownOnly = needTranslate.filter((a) => {
+      const nameEn = (a.name as any)?.en || '';
+      const nameZh = (a.name as any)?.zh || '';
+      const nameTranslated = !(nameEn && (!nameZh || nameZh === nameEn));
+      const hasMissingMarkdown = ((a.sections as any[]) || []).some(
+        (s: any) => s.markdown?.en && (!s.markdown?.zh || s.markdown?.zh === s.markdown?.en)
+      );
+      return nameTranslated && hasMissingMarkdown;
+    });
+
+    console.log(`  📋 全量翻译：${needFullTranslate.length} 个，仅补 markdown：${needMarkdownOnly.length} 个`);
+
+    const items: AgentTranslateItem[] = needFullTranslate.map((a) => ({
+      slug: (a as any).slug,
+      name: (a.name as any)?.en || '',
+      description: (a.description as any)?.en || '',
+      vibe: (a.vibe as any)?.en || '',
+      workflowSummary: (a.workflow as any)?.summary?.en || '',
+      sectionHeadings: ((a.sections as any[]) || []).map((s: any) => s.heading?.en || ''),
+      capabilities: ((a.capabilities as any[]) || []).map((c: any) => c.en || ''),
+    }));
+
+    // 先补翻译只缺 markdown 的 Agent
+    for (const a of needMarkdownOnly) {
+      const slug = (a as any).slug;
+      const sections: any[] = (a.sections as any[]) || [];
+      for (let si = 0; si < sections.length; si++) {
+        const mdEn = sections[si].markdown?.en || '';
+        const mdZh = sections[si].markdown?.zh || '';
+        if (!mdEn || (mdZh && mdZh !== mdEn)) continue; // 已翻译或无内容则跳过
+        try {
+          // 截断超长内容，避免超时
+          const truncated = mdEn.length > 2500 ? mdEn.substring(0, 2500) + '\n\n[内容已截断]' : mdEn;
+          const mdResp = await callLLM(
+            [{ role: 'user', content: `请将以下 Markdown 内容从英文翻译为简体中文。保留所有 Markdown 格式符号（#、**、-、\`\`\` 等）不变，专有名词（API、LLM、React 等技术词汇）保留英文，只输出翻译后的 Markdown，不要有任何解释：\n\n${truncated}` }],
+            { modelType: 'text' }
+          );
+          await Agent.updateOne(
+            { slug },
+            { $set: { [`sections.${si}.markdown.zh`]: mdResp.content.trim() } }
+          );
+          console.log(`  ✅ 补翻译 markdown [${slug}] section[${si}]`);
+        } catch (mdErr) {
+          console.error(`  ⚠️  补翻译 section[${si}] markdown 失败 [${slug}]：${mdErr instanceof Error ? mdErr.message : String(mdErr)}`);
+        }
+      }
+      translateStatus.done += 1;
+      console.log(`  🌐 翻译进度：${translateStatus.done}/${translateStatus.total}`);
+    }
+
+    for (let i = 0; i < items.length; i += BATCH_SIZE) {
+      const batch = items.slice(i, i + BATCH_SIZE);
+      try {
+        const results = await translateBatchWithLLM(batch);
+        // 写回数据库（rawMarkdown 不翻译，其余所有字段写回 zh）
+        await Promise.all(
+          results.map(async (r) => {
+            // 先查出当前 sections 和 capabilities 数量，按索引写回
+            const agent = await Agent.findOne({ slug: r.slug }, { sections: 1, capabilities: 1 }).lean() as any;
+            if (!agent) return;
+
+            const sectionUpdates: Record<string, string> = {};
+            const sections: any[] = (agent.sections as any[]) || [];
+            sections.forEach((_: any, i: number) => {
+              if (r.sectionHeadings[i] !== undefined) sectionUpdates[`sections.${i}.heading.zh`] = r.sectionHeadings[i];
+            });
+
+            const capabilityUpdates: Record<string, string> = {};
+            ((agent.capabilities as any[]) || []).forEach((_: any, i: number) => {
+              if (r.capabilities[i] !== undefined) capabilityUpdates[`capabilities.${i}.zh`] = r.capabilities[i];
+            });
+
+            // 先写回概览字段
+            await Agent.updateOne(
+              { slug: r.slug },
+              {
+                $set: {
+                  'name.zh': r.name,
+                  'description.zh': r.description,
+                  'vibe.zh': r.vibe,
+                  'workflow.summary.zh': r.workflowSummary,
+                  ...sectionUpdates,
+                  ...capabilityUpdates,
+                }
+              }
+            );
+
+            // 逐条翻译 section markdown（内容较长，单独处理，超过 2500 字符截断）
+            for (let si = 0; si < sections.length; si++) {
+              const mdEn = sections[si].markdown?.en || '';
+              const mdZh = sections[si].markdown?.zh || '';
+              if (!mdEn || (mdZh && mdZh !== mdEn)) continue; // 已翻译或无内容则跳过
+              try {
+                // 截断超长内容，避免 LLM 超时
+                const truncated = mdEn.length > 2500 ? mdEn.substring(0, 2500) + '\n\n[内容已截断]' : mdEn;
+                const mdResp = await callLLM(
+                  [{ role: 'user', content: `请将以下 Markdown 内容从英文翻译为简体中文。保留所有 Markdown 格式符号（#、**、-、\`\`\` 等）不变，专有名词（API、LLM、React 等技术词汇）保留英文，只输出翻译后的 Markdown，不要有任何解释：\n\n${truncated}` }],
+                  { modelType: 'text' }
+                );
+                await Agent.updateOne(
+                  { slug: r.slug },
+                  { $set: { [`sections.${si}.markdown.zh`]: mdResp.content.trim() } }
+                );
+              } catch (mdErr) {
+                console.error(`  ⚠️  section[${si}] markdown 翻译失败 [${r.slug}]：${mdErr instanceof Error ? mdErr.message : String(mdErr)}`);
+              }
+            }
+          })
+        );
+        translateStatus.done += batch.length;
+        console.log(`  🌐 翻译进度：${translateStatus.done}/${translateStatus.total}`);
+      } catch (err) {
+        translateStatus.errors += batch.length;
+        translateStatus.done += batch.length;
+        console.error(`  ❌ 批次翻译失败 [${i}-${i + BATCH_SIZE}]：${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    translateStatus.running = false;
+    translateStatus.finishedAt = new Date();
+    console.log(`✅ 后台翻译完成：${translateStatus.done} 个 Agent，${translateStatus.errors} 个失败`);
+  })();
+};
+
 // ─── 处理单个 Markdown 文件 ───────────────────────────────────────────────────
 
 const processMarkdownFile = async (filePath: string, rootDir: string, translate = false) => {
@@ -724,18 +991,19 @@ const processMarkdownFile = async (filePath: string, rootDir: string, translate 
   let finalCapabilitiesZh = capabilities.map((c) => c.zh);
 
   if (translate) {
-    const translated = translateAgentFields({
+    // 静态词典翻译所有字段（rawMarkdown 除外）
+    const staticTranslated = translateAgentFields({
       name: nameEn,
       description: descEn,
       vibe: vibeEn,
       sectionHeadings: sections.map((s) => s.heading.en),
-      capabilities: capabilities.map((c) => c.en)
+      capabilities: capabilities.map((c) => c.en),
     });
-    finalNameZh = translated.name;
-    finalDescZh = translated.description;
-    finalVibeZh = translated.vibe;
-    finalSectionHeadingsZh = translated.sectionHeadings;
-    finalCapabilitiesZh = translated.capabilities;
+    finalNameZh = staticTranslated.name;
+    finalDescZh = staticTranslated.description;
+    finalVibeZh = staticTranslated.vibe;
+    finalSectionHeadingsZh = staticTranslated.sectionHeadings;
+    finalCapabilitiesZh = staticTranslated.capabilities;
   }
 
   // 将翻译结果写回 sections 和 capabilities
@@ -848,11 +1116,13 @@ export const ingestAgentsFromMarkdown = async (rootDir: string, translate = fals
   }
 
   console.log(`📂 找到 ${mdFiles.length} 个 Markdown 文件，开始处理...`);
+  if (translate) console.log('🌐 已启用翻译模式：先快速导入，完成后在后台用 LLM 翻译中文字段...');
 
   const categoryKeys: string[] = [];
 
-  for (const filePath of mdFiles) {
+  const processOne = async (filePath: string) => {
     try {
+      // 导入阶段始终使用静态词典（快速），LLM 翻译在后台异步进行
       const agentData = await processMarkdownFile(filePath, rootDir, translate);
       categoryKeys.push(agentData.categoryKey);
 
@@ -870,6 +1140,13 @@ export const ingestAgentsFromMarkdown = async (rootDir: string, translate = fals
       result.errors.push({ file: filePath, error: message });
       console.error(`❌ 处理失败: ${filePath}`, message);
     }
+  };
+
+  // 并发处理（导入阶段不调用 LLM，可以高并发）
+  const CONCURRENCY = 10;
+  for (let i = 0; i < mdFiles.length; i += CONCURRENCY) {
+    const batch = mdFiles.slice(i, i + CONCURRENCY);
+    await Promise.all(batch.map(processOne));
   }
 
   // 同步分类
@@ -878,6 +1155,13 @@ export const ingestAgentsFromMarkdown = async (rootDir: string, translate = fals
   console.log(`✅ 导入完成：${result.totalAgents} 个 Agent（新建 ${result.created}，更新 ${result.updated}），${result.totalCategories} 个分类`);
   if (result.errors.length > 0) {
     console.warn(`⚠️  ${result.errors.length} 个文件处理失败`);
+  }
+
+  // 如果开启翻译，导入完成后启动后台 LLM 翻译任务（不阻塞当前响应）
+  if (translate) {
+    translateAgentsInBackground().catch((err) =>
+      console.error('❌ 后台翻译任务异常：', err)
+    );
   }
 
   return result;

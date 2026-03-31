@@ -95,3 +95,8 @@ export const CODE_TABS = [
   { key: 'css'  as const, label: 'CSS',  color: 'text-sky-400',    placeholder: '/* CSS 样式 */' },
   { key: 'js'   as const, label: 'JS',   color: 'text-yellow-400', placeholder: '// JavaScript 逻辑' },
 ];
+
+// React 模式下的代码 Tab（只有 JSX 一个 Tab）
+export const REACT_CODE_TABS = [
+  { key: 'jsx' as const, label: 'JSX', color: 'text-cyan-400', placeholder: '// React JSX 组件' },
+];

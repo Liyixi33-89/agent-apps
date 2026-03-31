@@ -81,7 +81,10 @@ agentPlanRouter.post('/agent/execute', async (ctx) => {
     prompt,
     provider = env.activeProvider,
     modelType = 'text',
-  } = ctx.request.body as { prompt: string; provider?: string; modelType?: string };
+    isReact,
+  } = ctx.request.body as { prompt: string; provider?: string; modelType?: string; isReact?: boolean | string };
+
+  const reactMode = isReact === 'true' || isReact === true;
 
   if (!prompt?.trim()) {
     ctx.status = 400;
@@ -115,6 +118,11 @@ agentPlanRouter.post('/agent/execute', async (ctx) => {
     const plan = await generatePlan(prompt, complexity, { provider, modelType });
     plan.complexityReason = reason;
 
+    // 如果是 React 模式，在 plan 上标记，后续 executeStep 会据此切换 prompt
+    if (reactMode) {
+      (plan as any).isReact = true;
+    }
+
     send({
       type: 'plan_ready',
       plan: {
@@ -134,9 +142,11 @@ agentPlanRouter.post('/agent/execute', async (ctx) => {
     });
 
     // ── 3. 逐步执行并推送进度 ──────────────────────────────────────────────────
-    const { finalResult, success } = await planAndExecute(prompt, {
+    const { plan: executedPlan, finalResult, success } = await planAndExecute(prompt, {
       provider,
       modelType,
+      isReact: reactMode,
+      existingPlan: plan,
       onStepUpdate: (step: PlanStep, result: StepExecutionResult) => {
         send({
           type: 'step_update',
@@ -160,21 +170,23 @@ agentPlanRouter.post('/agent/execute', async (ctx) => {
       },
     });
 
-    // ── 4. 推送最终结果 ────────────────────────────────────────────────────────
-    const HTML_CODE_RE = /```html[\s\S]*?```|<!DOCTYPE\s+html[\s\S]*?<\/html>/i;
+    // ── 4. 推送最终结果（使用 executedPlan，其 steps 状态已更新）────────────────
+    const CODE_BLOCK_RE = reactMode
+      ? /```(?:jsx|tsx)[\s\S]*?```/i
+      : /```html[\s\S]*?```|<!DOCTYPE\s+html[\s\S]*?<\/html>/i;
     send({
       type: 'done',
       success,
       finalResult,
       plan: {
-        planId: plan.planId,
-        steps: plan.steps.map((s) => ({
+        planId: executedPlan.planId,
+        steps: executedPlan.steps.map((s) => ({
           id: s.id,
           index: s.index,
           title: s.title,
           status: s.status,
-          // 含 HTML 代码的步骤完整传输，其他步骤截断到 500 字
-          result: s.result && HTML_CODE_RE.test(s.result) ? s.result : s.result?.slice(0, 500),
+          // 含代码的步骤完整传输，其他步骤截断到 500 字
+          result: s.result && CODE_BLOCK_RE.test(s.result) ? s.result : s.result?.slice(0, 500),
           error: s.error,
           retryCount: s.retryCount,
         })),

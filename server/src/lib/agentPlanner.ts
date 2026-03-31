@@ -338,7 +338,7 @@ export const executeStep = async (
   step: PlanStep,
   plan: ExecutionPlan,
   previousResults: Map<string, string>,
-  options: { provider: string; modelType: string }
+  options: { provider: string; modelType: string; isReact?: boolean }
 ): Promise<StepExecutionResult> => {
   let toolResults: ToolCallResult[] = [];
 
@@ -379,19 +379,36 @@ export const executeStep = async (
 
   contextParts.push(`【预期输出】${step.expectedOutput}`);
 
-  // 最后一步始终强制输出完整 HTML（Agent Plan 的最终目标就是生成页面）
+  // 最后一步始终强制输出完整代码（Agent Plan 的最终目标就是生成页面）
   const isLastStep = step.index === plan.totalSteps;
 
-  const systemPrompt = isLastStep
-    ? `你是一个专业的前端开发工程师。请根据用户需求和前置步骤的分析结果，生成完整的单文件 HTML 页面。
+  let systemPrompt: string;
+  if (isLastStep && options.isReact) {
+    // React 模式：生成 JSX 组件
+    systemPrompt = `你是一个专业的 React 前端工程师。请根据用户需求和前置步骤的分析结果，生成完整的 React 函数组件。
+【强制要求】
+1. 使用 React 函数组件 + Hooks（useState、useEffect 等）
+2. 使用原生 CSS 进行样式设计（通过内联 style 对象或组件内定义 styles 常量），禁止使用 Tailwind CSS、className 类名方式
+3. 样式要精致美观、现代化，注重间距、圆角、阴影、配色等细节
+4. 组件必须默认导出（export default）
+5. 输出格式必须严格为：\`\`\`jsx\n...完整组件代码...\n\`\`\`
+6. 代码必须完整可运行，不能有省略或占位符
+7. 禁止 import React（使用 React 17+ 新 JSX 转换）
+8. 禁止 import 外部库（只能使用 React 内置 Hooks）
+9. 禁止输出任何解释文字，只输出代码块`;
+  } else if (isLastStep) {
+    // HTML 模式：生成完整 HTML 页面
+    systemPrompt = `你是一个专业的前端开发工程师。请根据用户需求和前置步骤的分析结果，生成完整的单文件 HTML 页面。
 【强制要求】
 1. 必须输出完整的 HTML 文件，包含 <!DOCTYPE html> 到 </html> 的全部内容
 2. 所有 CSS 写在 <style> 标签内，所有 JS 写在 <script> 标签内
 3. 使用 Tailwind CSS CDN（https://cdn.tailwindcss.com）确保页面美观
 4. 输出格式必须严格为：\`\`\`html\n...完整代码...\n\`\`\`
 5. 禁止输出任何解释文字，只输出代码块
-6. 代码必须完整可运行，不能有省略或占位符`
-    : '你是一个专业的 AI Agent 执行器，负责按计划完成每个步骤的任务。输出要简洁、准确、可执行。';
+6. 代码必须完整可运行，不能有省略或占位符`;
+  } else {
+    systemPrompt = '你是一个专业的 AI Agent 执行器，负责按计划完成每个步骤的任务。输出要简洁、准确、可执行。';
+  }
 
   contextParts.push('请根据以上信息完成当前步骤，输出结果：');
 
@@ -470,6 +487,10 @@ const buildToolArguments = (
 export interface PlanExecuteOptions {
   provider: string;
   modelType: string;
+  /** React 模式：生成 JSX 组件代码 */
+  isReact?: boolean;
+  /** 传入已生成的计划（避免重复调用 LLM 生成计划） */
+  existingPlan?: ExecutionPlan;
   /** 是否在每步完成后回调（用于流式推送进度） */
   onStepUpdate?: (step: PlanStep, result: StepExecutionResult) => void;
 }
@@ -485,12 +506,18 @@ export const planAndExecute = async (
   userPrompt: string,
   options: PlanExecuteOptions
 ): Promise<{ plan: ExecutionPlan; finalResult: string; success: boolean }> => {
-  // ── Step 1: 分析复杂度 ────────────────────────────────────────────────────────
-  const { complexity, reason } = analyzeComplexity(userPrompt);
+  let plan: ExecutionPlan;
 
-  // ── Step 2: 生成计划 ──────────────────────────────────────────────────────────
-  const plan = await generatePlan(userPrompt, complexity, options);
-  plan.complexityReason = reason;
+  if (options.existingPlan) {
+    // 使用外部已生成的计划，避免重复调用 LLM
+    plan = options.existingPlan;
+  } else {
+    // ── Step 1: 分析复杂度 ──────────────────────────────────────────────────────
+    const { complexity, reason } = analyzeComplexity(userPrompt);
+    // ── Step 2: 生成计划 ────────────────────────────────────────────────────────
+    plan = await generatePlan(userPrompt, complexity, options);
+    plan.complexityReason = reason;
+  }
 
   // ── Step 3: 逐步执行 ──────────────────────────────────────────────────────────
   const previousResults = new Map<string, string>();
@@ -542,11 +569,13 @@ export const planAndExecute = async (
 
   const allDone = plan.steps.every((s) => s.status === 'done' || s.status === 'skipped');
 
-  // 优先取含 HTML 代码块的步骤结果作为 finalResult
-  const HTML_CODE_RE = /```html[\s\S]*?```|<!DOCTYPE\s+html[\s\S]*?<\/html>/i;
+  // 优先取含代码块的步骤结果作为 finalResult
+  const CODE_BLOCK_RE = options.isReact
+    ? /```(?:jsx|tsx)[\s\S]*?```/i
+    : /```html[\s\S]*?```|<!DOCTYPE\s+html[\s\S]*?<\/html>/i;
   let codeResult = '';
   for (const step of [...plan.steps].reverse()) {
-    if (step.result && HTML_CODE_RE.test(step.result)) {
+    if (step.result && CODE_BLOCK_RE.test(step.result)) {
       codeResult = step.result;
       break;
     }

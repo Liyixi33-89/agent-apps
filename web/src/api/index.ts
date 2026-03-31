@@ -208,7 +208,7 @@ export const callAgentTool = async (
  */
 export const executeAgentPlan = (
   prompt: string,
-  options: { provider?: string; modelType?: string },
+  options: { provider?: string; modelType?: string; isReact?: boolean },
   onEvent: (event: PlanSSEEvent) => void,
   onError?: (err: Error) => void
 ): (() => void) => {

@@ -102,14 +102,14 @@ const DashboardPage = () => {
           </Title>
           <Text type="secondary" className="text-sm">Agency Agents 管理后台</Text>
         </div>
-        <Button
+        {/* <Button
           icon={<ReloadOutlined spin={ingesting} />}
           onClick={handleIngest}
           loading={ingesting}
           aria-label="同步 Agent 数据"
         >
           {ingesting ? '同步中...' : '同步 Agent 数据'}
-        </Button>
+        </Button> */}
       </div>
 
       {ingestMsg && (
@@ -146,7 +146,7 @@ const DashboardPage = () => {
                 title={<Text type="secondary" className="text-xs">{label}</Text>}
                 value={value}
                 prefix={<span style={{ color }}>{icon}</span>}
-                valueStyle={{ color, fontSize: 28, fontWeight: 700 }}
+                styles={{ content: { color, fontSize: 28, fontWeight: 700 } }}
               />
             </Card>
           </Col>

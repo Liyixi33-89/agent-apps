@@ -19,11 +19,13 @@ export interface CodeParts {
   html: string;
   css: string;
   js: string;
+  jsx?: string;         // React JSX 代码
   isFullHtml?: boolean;
+  isReact?: boolean;    // 标记为 React 渲染模式
 }
 
 export type PreviewTab = 'preview' | 'code' | 'history';
-export type CodeTab = 'html' | 'css' | 'js';
+export type CodeTab = 'html' | 'css' | 'js' | 'jsx';
 
 export interface PromptCategory {
   label: { zh: string; en: string };

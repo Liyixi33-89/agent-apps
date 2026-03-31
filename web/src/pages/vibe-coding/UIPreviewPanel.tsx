@@ -2,10 +2,11 @@ import { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react'
 import {
   Monitor, RefreshCw, Maximize2, Minimize2, Play, Code2,
   Copy, Check, Sparkles, Smartphone, Download,
-  ImagePlus, X, Globe, MousePointer2, MousePointerClick, Crosshair,
+  ImagePlus, X, Globe, MousePointer2, MousePointerClick, Crosshair, Atom,
 } from 'lucide-react';
 import { buildHtmlFromParts } from './utils';
-import { CODE_TABS } from './constants';
+import { CODE_TABS, REACT_CODE_TABS } from './constants';
+import ReactPreview from './ReactPreview';
 import type { CodeParts, PreviewTab, CodeTab } from './types';
 
 // 懒加载 Monaco Editor，避免影响首屏
@@ -18,6 +19,7 @@ const MONACO_LANG: Record<CodeTab, string> = {
   html: 'html',
   css:  'css',
   js:   'javascript',
+  jsx:  'javascript',
 };
 
 // ─── 选中元素信息 ────────────────────────────────────────────────────────────
@@ -41,6 +43,8 @@ interface UIPreviewPanelProps {
   isStreaming: boolean;
   isFromPreviousSession?: boolean;
   uploadedImage?: string | null;       // base64 图片（来自父组件）
+  isReactMode?: boolean;               // React 模式（由父组件控制）
+  onReactModeChange?: (val: boolean) => void; // 切换 React 模式回调
   onCodePartsChange: (parts: CodeParts) => void;
   onClearPreview?: () => void;
   onImageUpload?: (base64: string) => void;
@@ -58,6 +62,8 @@ const UIPreviewPanel = ({
   isStreaming,
   isFromPreviousSession = false,
   uploadedImage,
+  isReactMode: isReactModeProp = false,
+  onReactModeChange,
   onCodePartsChange,
   onClearPreview,
   onImageUpload,
@@ -83,8 +89,24 @@ const UIPreviewPanel = ({
   // 本地编辑状态（与父组件同步）
   const [localParts, setLocalParts] = useState<CodeParts>({ html: '', css: '', js: '' });
 
+  // React 模式：父组件传入的 prop 优先，其次是 AI 返回的 isReact 标记
+  const isReactMode = isReactModeProp || !!(codeParts?.isReact || localParts?.isReact);
+
+  // 切换 React 模式：通知父组件
+  const handleToggleReactMode = () => {
+    const next = !isReactMode;
+    onReactModeChange?.(next);
+    setActiveCodeTab(next ? 'jsx' : 'html');
+  };
+
   useEffect(() => {
     if (!codeParts) return;
+    // React 模式：直接同步 jsx 字段
+    if (codeParts.isReact) {
+      setLocalParts(codeParts);
+      setActiveCodeTab('jsx');
+      return;
+    }
     if (codeParts.isFullHtml && codeParts.html) {
       const styleMatch = codeParts.html.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
       const scriptContents: string[] = [];
@@ -286,17 +308,17 @@ const UIPreviewPanel = ({
     iframeRef.current.src = URL.createObjectURL(blob);
   }, []);
 
-  // codeParts 变化时自动渲染，并重置选中状态
+  // codeParts 变化时自动渲染（非 React 模式），并重置选中状态
   useEffect(() => {
-    if (codeParts) {
+    if (codeParts && !codeParts.isReact) {
       writeToIframe(buildHtmlFromParts(codeParts));
       setSelectedEl(null);
     }
   }, [codeParts, writeToIframe]);
 
-  // Mobile / Desktop 切换时，新 iframe 节点挂载后重新写入内容
+  // Mobile / Desktop 切换时，新 iframe 节点挂载后重新写入内容（非 React 模式）
   useEffect(() => {
-    if (codeParts) writeToIframe(buildHtmlFromParts(codeParts));
+    if (codeParts && !codeParts.isReact) writeToIframe(buildHtmlFromParts(codeParts));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isMobile]);
 
@@ -317,19 +339,31 @@ const UIPreviewPanel = ({
 
   const handleRun = () => {
     onCodePartsChange(localParts);
-    writeToIframe(buildHtmlFromParts(localParts));
+    if (!localParts.isReact) writeToIframe(buildHtmlFromParts(localParts));
     setActiveTab('preview');
   };
 
-  const handleRefresh = () => writeToIframe(buildHtmlFromParts(localParts));
+  const handleRefresh = () => {
+    if (localParts.isReact) {
+      // React 模式：强制触发重新渲染（通过更新 codeParts 触发 ReactPreview）
+      onCodePartsChange({ ...localParts });
+    } else {
+      writeToIframe(buildHtmlFromParts(localParts));
+    }
+  };
 
   const handleCopy = async () => {
-    const text =
-      activeTab === 'history'
-        ? (prevCodeParts ? buildHtmlFromParts(prevCodeParts) : '')
-        : activeTab === 'preview'
-        ? (codeParts ? buildHtmlFromParts(codeParts) : '')
-        : localParts[activeCodeTab];
+    let text = '';
+    if (activeTab === 'history') {
+      text = prevCodeParts ? buildHtmlFromParts(prevCodeParts) : '';
+    } else if (activeTab === 'preview') {
+      text = codeParts
+        ? (codeParts.isReact ? (codeParts.jsx ?? '') : buildHtmlFromParts(codeParts))
+        : '';
+    } else {
+      // 代码 Tab：取当前激活的子 Tab 内容
+      text = (localParts[activeCodeTab as keyof typeof localParts] as string) ?? '';
+    }
     if (!text) return;
     await navigator.clipboard.writeText(text);
     setCopied(true);
@@ -337,6 +371,16 @@ const UIPreviewPanel = ({
   };
 
   const handleDownload = () => {
+    if (isReactMode && codeParts?.jsx) {
+      // React 模式：下载 JSX 文件
+      const blob = new Blob([codeParts.jsx], { type: 'text/plain; charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `vibe-component-${Date.now()}.jsx`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+      return;
+    }
     const html =
       activeTab === 'history' && prevCodeParts
         ? buildHtmlFromParts(prevCodeParts)
@@ -465,6 +509,22 @@ const UIPreviewPanel = ({
               {lang === 'zh' ? '生成中...' : 'Generating...'}
             </span>
           )}
+
+          {/* React 模式切换按钮（始终显示） */}
+          <button
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all mr-1 ${
+              isReactMode
+                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/30'
+                : 'text-gray-400 hover:text-gray-100 hover:bg-gray-800 border border-gray-700/40'
+            }`}
+            onClick={handleToggleReactMode}
+            tabIndex={0}
+            aria-label={lang === 'zh' ? '切换 React 模式' : 'Toggle React mode'}
+            title={lang === 'zh' ? (isReactMode ? '当前：React 模式（点击切换为 HTML 模式）' : '当前：HTML 模式（点击切换为 React 模式）') : (isReactMode ? 'React mode (click to switch to HTML)' : 'HTML mode (click to switch to React)')}
+          >
+            <Atom className="w-3.5 h-3.5" />
+            React
+          </button>
 
           {/* 元素选择模式按钮（仅预览 Tab 显示） */}
           {activeTab === 'preview' && hasContent && (
@@ -685,7 +745,31 @@ const UIPreviewPanel = ({
           {hasContent ? (
             <div className="relative w-full h-full flex items-center justify-center bg-gray-950 overflow-auto">
               {/* 设备容器 */}
-              {isMobile ? (
+              {isReactMode ? (
+                /* React 模式：直接渲染 ReactPreview */
+                isMobile ? (
+                  <div className="flex-shrink-0 flex flex-col items-center py-6 h-full">
+                    <div
+                      className="relative flex flex-col bg-gray-900 rounded-[2.5rem] shadow-2xl border-2 border-gray-700/80 overflow-hidden"
+                      style={{ width: MOBILE_WIDTH, height: '100%', maxHeight: 780 }}
+                    >
+                      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-24 h-5 bg-gray-900 rounded-b-2xl z-10 flex items-center justify-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-gray-700" />
+                        <span className="w-8 h-1 rounded-full bg-gray-700" />
+                      </div>
+                      <div className="flex-1 overflow-hidden mt-5">
+                        <ReactPreview jsx={codeParts?.jsx ?? ''} lang={lang} className="w-full h-full" />
+                      </div>
+                      <div className="flex-shrink-0 h-6 flex items-center justify-center bg-gray-900">
+                        <span className="w-24 h-1 rounded-full bg-gray-700" />
+                      </div>
+                    </div>
+                    <p className="mt-2 text-[10px] text-gray-600">Mobile · {MOBILE_WIDTH}px</p>
+                  </div>
+                ) : (
+                  <ReactPreview jsx={codeParts?.jsx ?? ''} lang={lang} className="w-full h-full" />
+                )
+              ) : isMobile ? (
                 /* 手机外框 */
                 <div className="flex-shrink-0 flex flex-col items-center py-6 h-full">
                   <div
@@ -827,6 +911,8 @@ const UIPreviewPanel = ({
                 <span className="flex items-center gap-1.5"><span className="w-2 h-2 bg-sky-500/50 rounded-full" />CSS</span>
                 <span className="w-px h-3 bg-gray-800" />
                 <span className="flex items-center gap-1.5"><span className="w-2 h-2 bg-yellow-500/50 rounded-full" />JavaScript</span>
+                <span className="w-px h-3 bg-gray-800" />
+                <span className="flex items-center gap-1.5"><span className="w-2 h-2 bg-cyan-500/50 rounded-full" />React JSX</span>
               </div>
             </div>
           )}
@@ -836,7 +922,7 @@ const UIPreviewPanel = ({
         <div className={`flex-1 overflow-hidden flex flex-col ${activeTab === 'code' ? 'flex' : 'hidden'}`}>
           {/* 代码子 Tab */}
           <div className="flex items-center gap-0 border-b border-gray-800 bg-gray-900 flex-shrink-0 px-3">
-            {CODE_TABS.map((tab) => (
+            {(isReactMode ? REACT_CODE_TABS : CODE_TABS).map((tab) => (
               <button
                 key={tab.key}
                 className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-b-2 transition-all ${
@@ -850,21 +936,28 @@ const UIPreviewPanel = ({
               >
                 <span className={`w-2 h-2 rounded-full ${
                   tab.key === 'html' ? 'bg-orange-400' :
-                  tab.key === 'css'  ? 'bg-sky-400' : 'bg-yellow-400'
+                  tab.key === 'css'  ? 'bg-sky-400' :
+                  tab.key === 'jsx'  ? 'bg-cyan-400' : 'bg-yellow-400'
                 }`} />
                 {tab.label}
-                {localParts[tab.key] && (
+                {localParts[tab.key as keyof typeof localParts] && (
                   <span className="w-1.5 h-1.5 rounded-full bg-current opacity-60" />
                 )}
               </button>
             ))}
+            {/* React 模式标识 */}
+            {isReactMode && (
+              <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] bg-cyan-500/15 text-cyan-400 border border-cyan-500/25 font-medium">
+                React
+              </span>
+            )}
             <div className="ml-auto text-[10px] text-gray-500 py-2">
               {lang === 'zh' ? '编辑后点击「运行」刷新预览' : 'Edit then click "Run" to refresh'}
             </div>
           </div>
 
           {/* Monaco 编辑器 */}
-          {CODE_TABS.map((tab) => (
+          {(isReactMode ? REACT_CODE_TABS : CODE_TABS).map((tab) => (
             <div
               key={tab.key}
               className={`flex-1 overflow-hidden ${activeCodeTab === tab.key ? 'flex' : 'hidden'}`}
@@ -877,7 +970,7 @@ const UIPreviewPanel = ({
                 <MonacoEditor
                   height="100%"
                   language={MONACO_LANG[tab.key]}
-                  value={localParts[tab.key]}
+                  value={localParts[tab.key as keyof typeof localParts] as string ?? ''}
                   onChange={(val) => handleCodeChange(tab.key, val ?? '')}
                   theme="vs-dark"
                   options={{

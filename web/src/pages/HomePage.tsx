@@ -183,7 +183,7 @@ const HomePage = () => {
                   title={<Text type="secondary" className="text-xs">{lang === 'zh' ? stat.labelZh : stat.labelEn}</Text>}
                   value={stat.value}
                   prefix={<span className="text-lg mr-1">{stat.icon}</span>}
-                  valueStyle={{ color: stat.color, fontSize: 28, fontWeight: 700 }}
+                  styles={{ content: { color: stat.color, fontSize: 28, fontWeight: 700 } }}
                 />
               </Card>
             </Col>
