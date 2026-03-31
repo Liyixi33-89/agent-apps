@@ -9,9 +9,27 @@ import { Chat } from '../models/Chat.js';
 import { User } from '../models/User.js';
 import { SystemPrompt } from '../models/SystemPrompt.js';
 import { VibeTemplate } from '../models/VibeTemplate.js';
-import { ingestAgentsFromMarkdown, ingestKnowledgeFromAgents, getTranslateStatus, translateAgentsInBackground } from '../services/agentIngestionService.js';
+import { ingestAgentsFromMarkdown, ingestKnowledgeFromAgents, getTranslateStatus, translateAgentsInBackground, processMarkdownFile, syncCategories } from '../services/agentIngestionService.js';
 import { createKnowledgeEntry } from '../services/knowledgeService.js';
 import { env } from '../config/env.js';
+import multer from '@koa/multer';
+import path from 'node:path';
+import fs from 'node:fs';
+import os from 'node:os';
+
+// ─── MD 文件上传配置 ──────────────────────────────────────────────────────────
+
+const mdUpload = multer({
+  dest: os.tmpdir(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (_req, file, cb) => {
+    if (file.originalname.endsWith('.md') || file.mimetype === 'text/markdown' || file.mimetype === 'text/plain') {
+      cb(null, true);
+    } else {
+      cb(new Error('只支持 .md 文件'));
+    }
+  },
+});
 
 export const adminRouter = new Router({ prefix: '/api/admin' });
 
@@ -121,6 +139,80 @@ adminRouter.put('/agents/:id', requireAdmin, async (ctx) => {
 adminRouter.delete('/agents/:id', requireAdmin, async (ctx) => {
   await Agent.findByIdAndDelete(ctx.params.id);
   ctx.body = { success: true, message: 'Agent deleted' };
+});
+
+// 上传 MD 文件解析生成 Agent
+adminRouter.post('/agents/upload-md', requireAdmin, mdUpload.single('file'), async (ctx) => {
+  const file = (ctx as any).file as Express.Multer.File | undefined;
+  if (!file) {
+    ctx.status = 400;
+    ctx.body = { success: false, message: '未收到 MD 文件' };
+    return;
+  }
+
+  try {
+    // 使用上传文件的临时路径，rootDir 设为临时目录
+    const tmpDir = path.dirname(file.path);
+    // 将临时文件重命名为 .md 后缀（processMarkdownFile 依赖文件名）
+    const mdPath = file.path + '.md';
+    fs.renameSync(file.path, mdPath);
+
+    // 解析 MD 文件
+    const agentData = await processMarkdownFile(mdPath, tmpDir, true);
+
+    // 清理临时文件
+    try { fs.unlinkSync(mdPath); } catch { /* ignore */ }
+
+    // 使用原始文件名作为 slug 的备选
+    const originalName = path.basename(file.originalname, '.md');
+    if (!agentData.slug || agentData.slug === path.basename(mdPath, '.md')) {
+      const slugify = (await import('slugify')).default;
+      agentData.slug = slugify(agentData.name?.en || agentData.name?.zh || originalName, {
+        lower: true, strict: true, locale: 'en',
+      }) || originalName.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    }
+
+    // 检查是否已存在同 slug 的 Agent
+    const existing = await Agent.findOne({ slug: agentData.slug });
+    let agent;
+    let action: 'created' | 'updated';
+
+    if (existing) {
+      agent = await Agent.findOneAndUpdate(
+        { slug: agentData.slug },
+        { $set: agentData },
+        { new: true }
+      );
+      action = 'updated';
+    } else {
+      agent = await Agent.create(agentData);
+      action = 'created';
+    }
+
+    // 同步分类
+    await syncCategories([agentData.categoryKey]);
+
+    ctx.body = {
+      success: true,
+      data: {
+        agent,
+        action,
+        message: action === 'created'
+          ? `成功创建 Agent「${agentData.name.zh}」`
+          : `已更新 Agent「${agentData.name.zh}」（slug: ${agentData.slug}）`,
+      },
+    };
+  } catch (err: any) {
+    // 清理临时文件
+    try { fs.unlinkSync(file.path); } catch { /* ignore */ }
+    try { fs.unlinkSync(file.path + '.md'); } catch { /* ignore */ }
+
+    ctx.status = 400;
+    ctx.body = {
+      success: false,
+      message: `MD 文件解析失败：${err?.message || String(err)}`,
+    };
+  }
 });
 
 // ─── 知识库管理 ────────────────────────────────────────────────────────────────

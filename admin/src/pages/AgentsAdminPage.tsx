@@ -1,22 +1,19 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Table, Button, Input, Modal, Form, Alert, Tag, Space, Typography,
-  Switch, Tooltip, Avatar, Popconfirm, App,
+  Tooltip, Avatar, Popconfirm, App, Upload,
 } from 'antd';
 import {
   RobotOutlined, SearchOutlined, DeleteOutlined, EditOutlined,
-  DownloadOutlined, TranslationOutlined, CheckCircleOutlined,
+  UploadOutlined, CheckCircleOutlined,
 } from '@ant-design/icons';
-import { fetchAdminAgents, deleteAgent, triggerAdminIngest, updateAgent } from '../api';
+import { fetchAdminAgents, deleteAgent, uploadAgentMd, updateAgent } from '../api';
 
 const { Title, Text } = Typography;
 
-interface IngestResult {
-  totalAgents: number;
-  totalCategories: number;
-  created: number;
-  updated: number;
-  errors: Array<{ file: string; error: string }>;
+interface UploadResult {
+  action: 'created' | 'updated';
+  message: string;
 }
 
 interface Agent {
@@ -32,17 +29,16 @@ interface Agent {
 }
 
 const AgentsAdminPage = () => {
-  const { modal } = App.useApp();
+  const { modal, message: antMessage } = App.useApp();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [ingesting, setIngesting] = useState(false);
-  const [translateOnIngest, setTranslateOnIngest] = useState(false);
-  const [ingestResult, setIngestResult] = useState<IngestResult | null>(null);
-  const [ingestError, setIngestError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [editAgent, setEditAgent] = useState<Agent | null>(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -98,33 +94,35 @@ const AgentsAdminPage = () => {
     setDeletingId(id);
     try {
       await deleteAgent(id);
+      antMessage.success('删除成功');
       await loadAgents();
     } catch (err) {
+      antMessage.error('删除失败');
       console.error('Delete failed', err);
     } finally {
       setDeletingId(null);
     }
   };
 
-  const handleIngest = async () => {
-    modal.confirm({
-      title: '确认导入',
-      content: `将扫描项目根目录下所有 .md 文件并导入/更新到数据库。${translateOnIngest ? '\n\n⚠️ 已开启「翻译为中文」，将调用 AI 翻译每个 Agent，耗时较长。' : ''}`,
-      onOk: async () => {
-        setIngesting(true);
-        setIngestResult(null);
-        setIngestError(null);
-        try {
-          const result = await triggerAdminIngest(translateOnIngest);
-          setIngestResult(result);
-          await loadAgents();
-        } catch (err: any) {
-          setIngestError(err?.response?.data?.message || err?.message || '导入失败');
-        } finally {
-          setIngesting(false);
-        }
-      },
-    });
+  /** 上传 MD 文件解析生成 Agent */
+  const handleUploadMd = async (file: File) => {
+    setUploading(true);
+    setUploadResult(null);
+    setUploadError(null);
+    try {
+      const result = await uploadAgentMd(file);
+      setUploadResult(result);
+      antMessage.success(result.message);
+      await loadAgents();
+    } catch (err: any) {
+      const errMsg = err?.response?.data?.message || err?.message || '上传失败';
+      setUploadError(errMsg);
+      antMessage.error(errMsg);
+    } finally {
+      setUploading(false);
+    }
+    // 返回 false 阻止 antd Upload 的默认上传行为
+    return false;
   };
 
   const columns = [
@@ -216,51 +214,48 @@ const AgentsAdminPage = () => {
           <Text type="secondary" className="text-sm">共 {total} 个</Text>
         </div>
         <Space>
-          <Tooltip title="开启后导入时将调用 AI 把英文字段翻译为中文（耗时较长）">
-            <Space size={4}>
-              <TranslationOutlined className="text-slate-400" />
-              <Text className="text-xs text-slate-500">翻译为中文</Text>
-              <Switch
-                size="small"
-                checked={translateOnIngest}
-                onChange={setTranslateOnIngest}
-                aria-label="翻译为中文"
-              />
-            </Space>
-          </Tooltip>
-          <Button
-            type="primary"
-            icon={<DownloadOutlined />}
-            onClick={handleIngest}
-            loading={ingesting}
-            aria-label="从 Markdown 文件导入 Agent"
+          <Upload
+            accept=".md"
+            showUploadList={false}
+            beforeUpload={(file) => {
+              handleUploadMd(file as unknown as File);
+              return false;
+            }}
+            disabled={uploading}
           >
-            {ingesting ? (translateOnIngest ? '导入并翻译中...' : '导入中...') : '从 MD 导入'}
-          </Button>
+            <Button
+              type="primary"
+              icon={<UploadOutlined />}
+              loading={uploading}
+              aria-label="上传 MD 文件生成 Agent"
+            >
+              {uploading ? '解析中...' : '上传 MD 生成 Agent'}
+            </Button>
+          </Upload>
         </Space>
       </div>
 
-      {/* 导入结果 */}
-      {ingestResult && (
+      {/* 上传结果 */}
+      {uploadResult && (
         <Alert
           icon={<CheckCircleOutlined />}
-          message="导入完成"
-          description={`共处理 ${ingestResult.totalAgents} 个 Agent，新建 ${ingestResult.created}，更新 ${ingestResult.updated}，分类 ${ingestResult.totalCategories} 个${ingestResult.errors.length > 0 ? `，${ingestResult.errors.length} 个文件失败` : ''}`}
+          message={uploadResult.action === 'created' ? '创建成功' : '更新成功'}
+          description={uploadResult.message}
           type="success"
           showIcon
           closable
-          onClose={() => setIngestResult(null)}
+          onClose={() => setUploadResult(null)}
           className="rounded-xl"
         />
       )}
-      {ingestError && (
+      {uploadError && (
         <Alert
-          message="导入失败"
-          description={ingestError}
+          message="上传失败"
+          description={uploadError}
           type="error"
           showIcon
           closable
-          onClose={() => setIngestError(null)}
+          onClose={() => setUploadError(null)}
           className="rounded-xl"
         />
       )}

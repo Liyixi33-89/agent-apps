@@ -146,14 +146,14 @@ const HomePage = () => {
               : 'Explore, build and deploy AI Agents with Vibe Coding and RAG knowledge base'}
           </Text>
         </div>
-        <Button
+        {/* <Button
           icon={<ReloadOutlined spin={ingesting} />}
           onClick={handleIngest}
           loading={ingesting}
           aria-label="同步 Agent 数据"
         >
           {ingesting ? '同步中...' : '同步数据'}
-        </Button>
+        </Button> */}
       </div>
 
       {/* 同步结果提示 */}

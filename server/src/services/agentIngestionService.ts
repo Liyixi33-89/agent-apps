@@ -946,7 +946,7 @@ export const translateAgentsInBackground = async (): Promise<void> => {
 
 // ─── 处理单个 Markdown 文件 ───────────────────────────────────────────────────
 
-const processMarkdownFile = async (filePath: string, rootDir: string, translate = false) => {
+export const processMarkdownFile = async (filePath: string, rootDir: string, translate = false) => {
   const raw = await fs.readFile(filePath, 'utf-8');
   const { data: frontmatter, content } = matter(raw);
 
@@ -1047,7 +1047,7 @@ const processMarkdownFile = async (filePath: string, rootDir: string, translate 
 
 // ─── 同步分类到数据库 ─────────────────────────────────────────────────────────
 
-const syncCategories = async (categoryKeys: string[]) => {
+export const syncCategories = async (categoryKeys: string[]) => {
   const uniqueKeys = [...new Set(categoryKeys)];
   let totalCategories = 0;
 

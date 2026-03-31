@@ -52,6 +52,21 @@ export const deleteAgent = async (id: string) => {
   await api.delete(`/agents/${id}`);
 };
 
+/** 上传 MD 文件解析生成 Agent */
+export const uploadAgentMd = async (file: File) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const { data } = await api.post('/agents/upload-md', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120_000, // MD 解析可能较慢
+  });
+  return data.data as {
+    agent: Record<string, unknown>;
+    action: 'created' | 'updated';
+    message: string;
+  };
+};
+
 export const fetchAdminKnowledge = async (params?: { page?: number; limit?: number }) => {
   const { data } = await api.get('/knowledge', { params });
   return data;
