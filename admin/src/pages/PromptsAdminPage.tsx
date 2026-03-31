@@ -4,6 +4,7 @@ import {
   ChevronDown, ChevronUp, Save, X, Loader2, Sparkles,
 } from 'lucide-react';
 import clsx from 'clsx';
+import { App } from 'antd';
 import {
   fetchAdminPrompts, createAdminPrompt, updateAdminPrompt,
   deleteAdminPrompt, seedAdminPrompts,
@@ -266,6 +267,7 @@ const PromptCard = ({ prompt, onEdit, onDelete }: PromptCardProps) => {
 // ─── 主页面 ────────────────────────────────────────────────────────────────────
 
 const PromptsAdminPage = () => {
+  const { message, modal } = App.useApp();
   const [prompts, setPrompts]       = useState<SystemPrompt[]>([]);
   const [loading, setLoading]       = useState(false);
   const [filterCat, setFilterCat]   = useState<'all' | 'vibe' | 'pipeline'>('all');
@@ -322,10 +324,23 @@ const PromptsAdminPage = () => {
     await loadPrompts();
   };
 
-  const handleDelete = async (key: string) => {
-    if (!window.confirm(`确认删除提示词 "${key}"？`)) return;
-    await deleteAdminPrompt(key);
-    await loadPrompts();
+  const handleDelete = (key: string) => {
+    modal.confirm({
+      title: '确认删除',
+      content: `确认删除提示词 "${key}"？`,
+      okText: '删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          await deleteAdminPrompt(key);
+          message.success('删除成功');
+          await loadPrompts();
+        } catch {
+          message.error('删除失败');
+        }
+      },
+    });
   };
 
   const handleSeed = async (force: boolean) => {

@@ -5,6 +5,7 @@ import {
   ChevronLeft, ChevronRight, Copy, Check,
 } from 'lucide-react';
 import clsx from 'clsx';
+import { App } from 'antd';
 import {
   fetchAdminVibeApps, updateAdminVibeApp, deleteAdminVibeApp,
   type VibeAppAdmin,
@@ -312,6 +313,7 @@ const AppRow = ({ app, onEdit, onDelete, onToggleActive }: AppRowProps) => {
 // ─── 主页面 ────────────────────────────────────────────────────────────────────
 
 const VibeAppsAdminPage = () => {
+  const { message, modal } = App.useApp();
   const [apps, setApps]             = useState<VibeAppAdmin[]>([]);
   const [loading, setLoading]       = useState(false);
   const [search, setSearch]         = useState('');
@@ -362,19 +364,42 @@ const VibeAppsAdminPage = () => {
   };
 
   const handleSave = async (id: string, data: Partial<VibeAppAdmin>) => {
-    await updateAdminVibeApp(id, data);
-    await loadApps();
+    try {
+      await updateAdminVibeApp(id, data);
+      message.success('保存成功');
+      await loadApps();
+    } catch {
+      message.error('保存失败');
+    }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm('确认删除该应用？此操作不可恢复。')) return;
-    await deleteAdminVibeApp(id);
-    await loadApps();
+  const handleDelete = (id: string) => {
+    modal.confirm({
+      title: '确认删除',
+      content: '确认删除该应用？此操作不可恢复。',
+      okText: '删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          await deleteAdminVibeApp(id);
+          message.success('删除成功');
+          await loadApps();
+        } catch {
+          message.error('删除失败');
+        }
+      },
+    });
   };
 
   const handleToggleActive = async (id: string, isActive: boolean) => {
-    await updateAdminVibeApp(id, { isActive });
-    setApps((prev) => prev.map((a) => a._id === id ? { ...a, isActive } : a));
+    try {
+      await updateAdminVibeApp(id, { isActive });
+      message.success(isActive ? '已上架' : '已下架');
+      setApps((prev) => prev.map((a) => a._id === id ? { ...a, isActive } : a));
+    } catch {
+      message.error('操作失败');
+    }
   };
 
   return (

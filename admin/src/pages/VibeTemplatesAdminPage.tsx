@@ -4,6 +4,7 @@ import {
   Loader2, RefreshCw, Eye, EyeOff, Tag, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import clsx from 'clsx';
+import { App } from 'antd';
 import {
   fetchAdminVibeTemplates, updateAdminVibeTemplate, deleteAdminVibeTemplate,
   type VibeTemplateAdmin,
@@ -311,6 +312,7 @@ const TemplateRow = ({ template, onEdit, onDelete, onToggleActive }: TemplateRow
 // ─── 主页面 ────────────────────────────────────────────────────────────────────
 
 const VibeTemplatesAdminPage = () => {
+  const { message, modal } = App.useApp();
   const [templates, setTemplates]   = useState<VibeTemplateAdmin[]>([]);
   const [loading, setLoading]       = useState(false);
   const [search, setSearch]         = useState('');
@@ -361,19 +363,42 @@ const VibeTemplatesAdminPage = () => {
   };
 
   const handleSave = async (id: string, data: Partial<VibeTemplateAdmin>) => {
-    await updateAdminVibeTemplate(id, data);
-    await loadTemplates();
+    try {
+      await updateAdminVibeTemplate(id, data);
+      message.success('保存成功');
+      await loadTemplates();
+    } catch {
+      message.error('保存失败');
+    }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm('确认删除该模板？此操作不可恢复。')) return;
-    await deleteAdminVibeTemplate(id);
-    await loadTemplates();
+  const handleDelete = (id: string) => {
+    modal.confirm({
+      title: '确认删除',
+      content: '确认删除该模板？此操作不可恢复。',
+      okText: '删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          await deleteAdminVibeTemplate(id);
+          message.success('删除成功');
+          await loadTemplates();
+        } catch {
+          message.error('删除失败');
+        }
+      },
+    });
   };
 
   const handleToggleActive = async (id: string, isActive: boolean) => {
-    await updateAdminVibeTemplate(id, { isActive });
-    setTemplates((prev) => prev.map((t) => t._id === id ? { ...t, isActive } : t));
+    try {
+      await updateAdminVibeTemplate(id, { isActive });
+      message.success(isActive ? '已上架' : '已下架');
+      setTemplates((prev) => prev.map((t) => t._id === id ? { ...t, isActive } : t));
+    } catch {
+      message.error('操作失败');
+    }
   };
 
   const categories = ['', ...Object.keys(CATEGORY_COLORS)];
