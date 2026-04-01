@@ -99,6 +99,72 @@ export const vibeGenerate = async (params: { prompt: string; agentSlug?: string;
   return data.data;
 };
 
+// ─── Vibe 全栈 Pipeline SSE 事件类型 ──────────────────────────────────────────
+
+export interface FullStackPipelineSSEEvent {
+  type: 'start' | 'step' | 'done' | 'error' | 'heartbeat';
+  step?: number;
+  total?: number;
+  title?: string;
+  status?: 'pending' | 'running' | 'done' | 'error';
+  content?: string;
+  // done 事件的完整数据
+  codeParts?: { html: string; css: string; js: string; jsx?: string; isReact?: boolean; isFullHtml?: boolean };
+  serverParts?: { model: string; route: string; service: string; middleware: string; envTemplate: string };
+  dbSchema?: { collections: string; indexes: string; seedData: string };
+  menuConfig?: { menus: string; permissions: string; roles: string };
+  analysis?: string;
+  isFullStack?: boolean;
+  message?: string;
+}
+
+/**
+ * 全栈 Pipeline 流式调用（SSE）
+ * 返回清理函数，调用后断开连接
+ */
+export const executeFullStackPipeline = (
+  prompt: string,
+  options: { provider?: string; modelType?: string },
+  onEvent: (event: FullStackPipelineSSEEvent) => void,
+  onError?: (err: Error) => void
+): (() => void) => {
+  const controller = new AbortController();
+
+  fetch('/api/vibe/fullstack-pipeline', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt, ...options }),
+    signal: controller.signal,
+  })
+    .then(async (res) => {
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const event = JSON.parse(line.slice(6)) as FullStackPipelineSSEEvent;
+            onEvent(event);
+          } catch { /* 忽略解析失败的行 */ }
+        }
+      }
+    })
+    .catch((err: unknown) => {
+      if (err instanceof Error && err.name === 'AbortError') return;
+      onError?.(err instanceof Error ? err : new Error(String(err)));
+    });
+
+  return () => controller.abort();
+};
+
 // ─── Vibe 模板市场 ─────────────────────────────────────────────────────────────
 
 export interface VibeTemplateItem {
@@ -262,4 +328,45 @@ export const executeAgentPlan = (
     });
 
   return () => controller.abort();
+};
+
+// ─── Vibe App Runtime（动态后端部署）────────────────────────────────────────────
+
+export interface DeployResult {
+  appId: string;
+  basePath: string;
+  collections: Array<{ name: string; fields: string[] }>;
+  deployedAt: string;
+}
+
+export interface RuntimeStatus {
+  deployed: boolean;
+  appId: string;
+  title?: string;
+  basePath?: string;
+  collections?: Array<{ name: string; collectionName: string; fields: string[] }>;
+  deployedAt?: string;
+}
+
+/** 部署 Vibe App 后端（解析 Model 代码，创建动态路由） */
+export const deployVibeApp = async (appId: string): Promise<DeployResult> => {
+  const { data } = await api.post<{ success: boolean; data: DeployResult; message: string }>(`/vibe-runtime/${appId}/deploy`);
+  return data.data;
+};
+
+/** 卸载 Vibe App 后端 */
+export const undeployVibeApp = async (appId: string): Promise<void> => {
+  await api.delete(`/vibe-runtime/${appId}/deploy`);
+};
+
+/** 查询 Vibe App 部署状态 */
+export const fetchVibeAppRuntimeStatus = async (appId: string): Promise<RuntimeStatus> => {
+  const { data } = await api.get<{ success: boolean; data: RuntimeStatus }>(`/vibe-runtime/${appId}/status`);
+  return data.data;
+};
+
+/** 获取所有已部署的 Vibe App 列表 */
+export const fetchDeployedVibeApps = async (): Promise<Array<{ appId: string; title: string; basePath: string; collectionCount: number; deployedAt: string }>> => {
+  const { data } = await api.get<{ success: boolean; data: Array<{ appId: string; title: string; basePath: string; collectionCount: number; deployedAt: string }> }>('/vibe-runtime/apps');
+  return data.data;
 };

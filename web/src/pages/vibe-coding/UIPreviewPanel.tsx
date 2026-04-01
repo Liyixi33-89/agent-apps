@@ -44,6 +44,8 @@ interface UIPreviewPanelProps {
   isFromPreviousSession?: boolean;
   uploadedImage?: string | null;       // base64 图片（来自父组件）
   isReactMode?: boolean;               // React 模式（由父组件控制）
+  isFullStackMode?: boolean;           // 全栈模式标识
+  runtimeApiBase?: string;              // 运行时 API 基础路径
   onReactModeChange?: (val: boolean) => void; // 切换 React 模式回调
   onCodePartsChange: (parts: CodeParts) => void;
   onClearPreview?: () => void;
@@ -63,6 +65,8 @@ const UIPreviewPanel = ({
   isFromPreviousSession = false,
   uploadedImage,
   isReactMode: isReactModeProp = false,
+  isFullStackMode = false,
+  runtimeApiBase,
   onReactModeChange,
   onCodePartsChange,
   onClearPreview,
@@ -758,7 +762,7 @@ const UIPreviewPanel = ({
                         <span className="w-8 h-1 rounded-full bg-gray-700" />
                       </div>
                       <div className="flex-1 overflow-hidden mt-5">
-                        <ReactPreview jsx={codeParts?.jsx ?? ''} lang={lang} className="w-full h-full" />
+                <ReactPreview jsx={codeParts?.jsx ?? ''} lang={lang} className="w-full h-full" runtimeApiBase={runtimeApiBase} />
                       </div>
                       <div className="flex-shrink-0 h-6 flex items-center justify-center bg-gray-900">
                         <span className="w-24 h-1 rounded-full bg-gray-700" />
@@ -767,7 +771,7 @@ const UIPreviewPanel = ({
                     <p className="mt-2 text-[10px] text-gray-600">Mobile · {MOBILE_WIDTH}px</p>
                   </div>
                 ) : (
-                  <ReactPreview jsx={codeParts?.jsx ?? ''} lang={lang} className="w-full h-full" />
+                <ReactPreview jsx={codeParts?.jsx ?? ''} lang={lang} className="w-full h-full" runtimeApiBase={runtimeApiBase} />
                 )
               ) : isMobile ? (
                 /* 手机外框 */
@@ -949,6 +953,12 @@ const UIPreviewPanel = ({
             {isReactMode && (
               <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] bg-cyan-500/15 text-cyan-400 border border-cyan-500/25 font-medium">
                 React
+              </span>
+            )}
+            {/* 全栈模式标识 */}
+            {isFullStackMode && (
+              <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 font-medium">
+                Full-Stack
               </span>
             )}
             <div className="ml-auto text-[10px] text-gray-500 py-2">

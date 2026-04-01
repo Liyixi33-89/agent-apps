@@ -46,9 +46,11 @@ import { chatRouter } from './chat.js';
 import { knowledgeRouter } from './knowledge.js';
 import { vibeRouter } from './vibe.js';
 import { vibePipelineRouter } from './vibePipeline.js';
+import { vibeFullStackPipelineRouter } from './vibeFullStackPipeline.js';
 import { uploadRouter } from './upload.js';
 import { marketRouter } from './market.js';
 import { agentPlanRouter } from './agentPlan.js';
+import { vibeAppRuntimeRouter } from './vibeAppRuntime.js';
 
 // =============================================================================
 // § 1  基础设施 — Prompt 读取工具 / Router 实例
@@ -178,6 +180,8 @@ agentsRouter.use(chatRouter.routes(), chatRouter.allowedMethods());
 agentsRouter.use(knowledgeRouter.routes(), knowledgeRouter.allowedMethods());
 agentsRouter.use(vibeRouter.routes(), vibeRouter.allowedMethods());
 agentsRouter.use(vibePipelineRouter.routes(), vibePipelineRouter.allowedMethods());
+agentsRouter.use(vibeFullStackPipelineRouter.routes(), vibeFullStackPipelineRouter.allowedMethods());
 agentsRouter.use(uploadRouter.routes(), uploadRouter.allowedMethods());
 agentsRouter.use(marketRouter.routes(), marketRouter.allowedMethods());
 agentsRouter.use(agentPlanRouter.routes(), agentPlanRouter.allowedMethods());
+agentsRouter.use(vibeAppRuntimeRouter.routes(), vibeAppRuntimeRouter.allowedMethods());

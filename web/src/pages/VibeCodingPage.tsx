@@ -4,8 +4,10 @@ import {
   Zap, Send, Bot, Cpu, Eye, MessageSquare,
   ChevronDown, Plus, Clock, Store, ImagePlus,
   Wrench, CheckCircle2, XCircle, SkipForward, Loader2,
+  Server,
 } from 'lucide-react';
-import { fetchAgents, createChatSession, analyzeTaskComplexity, executeAgentPlan } from '../api';
+import { fetchAgents, createChatSession, analyzeTaskComplexity, executeAgentPlan, executeFullStackPipeline } from '../api';
+import type { FullStackPipelineSSEEvent } from '../api';
 import { useAppStore } from '../store';
 import type { Agent, Provider, ModelType, ChatMessage, TaskComplexity, StepStatus, PlanSSEEvent } from '../types';
 import type { SelectedElementInfo } from './vibe-coding/UIPreviewPanel';
@@ -21,7 +23,7 @@ import {
   useVibeHistory,
   useFavoritePrompts,
 } from './vibe-coding';
-import type { PipelineStep, VibeSession, CodeParts, VibeHistoryItem } from './vibe-coding';
+import type { PipelineStep, VibeSession, CodeParts, VibeHistoryItem, ServerParts, DbSchema, MenuConfig } from './vibe-coding';
 
 // ─── 侧边栏视图类型 ───────────────────────────────────────────────────────────
 
@@ -60,6 +62,14 @@ const VibeCodingPage = () => {
 
   // React 模式：告知 AI 生成 JSX 组件代码
 const [isReactMode, setIsReactMode] = useState(true);
+
+  // 全栈模式：生成 Node 后端 + React 前端 + MongoDB + 权限
+  const [isFullStackMode, setIsFullStackMode] = useState(false);
+  const [serverParts, setServerParts] = useState<ServerParts | null>(null);
+  const [dbSchema, setDbSchema] = useState<DbSchema | null>(null);
+  const [menuConfig, setMenuConfig] = useState<MenuConfig | null>(null);
+  const [runtimeApiBase, setRuntimeApiBase] = useState<string>('');
+  const fullStackAbortRef = useRef<(() => void) | null>(null);
 
   // Pipeline 模式状态
   const [pipelineMode, setPipelineMode] = useState(false);
@@ -278,6 +288,101 @@ const [isReactMode, setIsReactMode] = useState(true);
     }
   };
 
+  // ─── 全栈 Pipeline（6步流水线：需求分析→数据库→后端→前端→权限→质检）────────
+
+  const runFullStackPipeline = (trimmed: string) => {
+    const initialSteps: PipelineStep[] = [
+      { step: 1, total: 6, title: '📋 全栈需求分析', status: 'pending' },
+      { step: 2, total: 6, title: '🗄️ 数据库架构', status: 'pending' },
+      { step: 3, total: 6, title: '⚙️ 后端代码', status: 'pending' },
+      { step: 4, total: 6, title: '🎨 前端代码', status: 'pending' },
+      { step: 5, total: 6, title: '🔐 权限配置', status: 'pending' },
+      { step: 6, total: 6, title: '🔧 质检整合', status: 'pending' },
+    ];
+    setPipelineSteps(initialSteps);
+    setIsAgentPlanMode(false);
+
+    const cleanup = executeFullStackPipeline(
+      trimmed,
+      { provider, modelType },
+      (event: FullStackPipelineSSEEvent) => {
+        if (event.type === 'step') {
+          setPipelineSteps((prev) =>
+            prev.map((s) =>
+              s.step === event.step
+                ? { ...s, title: event.title || s.title, status: event.status || s.status, content: event.content }
+                : s
+            )
+          );
+        } else if (event.type === 'done') {
+          // 提取前端代码（只展示前端）
+          if (event.codeParts) {
+            const parts: CodeParts = {
+              html: event.codeParts.html || '',
+              css: event.codeParts.css || '',
+              js: event.codeParts.js || '',
+              jsx: event.codeParts.jsx || '',
+              isReact: event.codeParts.isReact ?? true,
+              isFullHtml: event.codeParts.isFullHtml ?? false,
+            };
+            setCodeParts(parts);
+            setIsFromPreviousSession(false);
+            handleSaveHistory(trimmed, parts);
+          }
+
+          // 保存后端代码（不展示给用户，但保存在状态中）
+          if (event.serverParts) {
+            setServerParts(event.serverParts as ServerParts);
+          }
+          if (event.dbSchema) {
+            setDbSchema(event.dbSchema as DbSchema);
+          }
+          if (event.menuConfig) {
+            setMenuConfig(event.menuConfig as MenuConfig);
+          }
+
+          const analysisPreview = event.analysis
+            ? event.analysis.slice(0, 300) + (event.analysis.length > 300 ? '...' : '')
+            : '';
+
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: 'assistant' as const,
+              content: `✅ 全栈 Pipeline 完成！已通过 6 个 Agent 协作生成完整全栈应用。\n\n📋 **需求分析摘要**\n${analysisPreview}\n\n🗂️ 生成内容：\n- ✅ MongoDB 数据库 Schema\n- ✅ Koa 后端路由 + Service\n- ✅ React 前端页面\n- ✅ RBAC 权限配置\n\n💡 前端代码已在右侧预览面板中展示，后端代码可在 Admin 后台查看和编辑。`,
+              timestamp: new Date().toISOString(),
+              provider,
+            },
+          ]);
+          setPipelineRunning(false);
+        } else if (event.type === 'error') {
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: 'assistant' as const,
+              content: `❌ 全栈 Pipeline 失败：${event.message}`,
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+          setPipelineRunning(false);
+        }
+      },
+      (err) => {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: 'assistant' as const,
+            content: `❌ 连接失败：${err.message}`,
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+        setPipelineRunning(false);
+      }
+    );
+
+    fullStackAbortRef.current = cleanup;
+  };
+
   // ─── Agent Plan-Execute 流程（动态步骤 + 工具调用）──────────────────────────
 
   const runAgentPlan = (trimmed: string) => {
@@ -437,13 +542,24 @@ const [isReactMode, setIsReactMode] = useState(true);
       }
 
       if (analysis.complexity === 'moderate') {
-        // moderate → 走固定 4 步 Pipeline（快速稳定）
-        await runFixedPipeline(trimmed);
-        setPipelineRunning(false);
+        if (isFullStackMode) {
+          // 全栈模式 → 走 6 步全栈 Pipeline
+          runFullStackPipeline(trimmed);
+          // pipelineRunning 由 runFullStackPipeline 内部在 done/error 时关闭
+        } else {
+          // 普通模式 → 走固定 4 步 Pipeline（快速稳定）
+          await runFixedPipeline(trimmed);
+          setPipelineRunning(false);
+        }
       } else {
-        // complex → 走 Agent Plan-Execute（动态规划 + 工具调用）
-        runAgentPlan(trimmed);
-        // pipelineRunning 由 runAgentPlan 内部在 done/error 时关闭
+        if (isFullStackMode) {
+          // 全栈模式 + complex → 仍走 6 步全栈 Pipeline（全栈需求统一走全栈流水线）
+          runFullStackPipeline(trimmed);
+        } else {
+          // complex → 走 Agent Plan-Execute（动态规划 + 工具调用）
+          runAgentPlan(trimmed);
+        }
+        // pipelineRunning 由内部在 done/error 时关闭
       }
     } catch {
       setMessages((prev) => [
@@ -916,6 +1032,7 @@ const [isReactMode, setIsReactMode] = useState(true);
   const handleStop = () => {
     abortRef.current?.abort();
     agentPlanAbortRef.current?.();
+    fullStackAbortRef.current?.();
     setStreaming(false);
     setPipelineRunning(false);
   };
@@ -1110,12 +1227,36 @@ const [isReactMode, setIsReactMode] = useState(true);
                 aria-label="切换智能 Pipeline 模式"
                 tabIndex={0}
                 title={lang === 'zh'
-                  ? '智能 Pipeline：自动分析复杂度\n简单→直接生成 | 中等→4步Pipeline | 复杂→Agent规划+工具调用'
-                  : 'Smart Pipeline: auto-detect complexity\nSimple→Direct | Moderate→4-step | Complex→Agent Plan+Tools'}
+                  ? '智能 Pipeline：自动分析复杂度\n简单→直接生成 | 中等→4步Pipeline | 复杂→Agent规划+工具调用\n开启「全栈」后：中等/复杂→6步全栈Pipeline'
+                  : 'Smart Pipeline: auto-detect complexity\nSimple→Direct | Moderate→4-step | Complex→Agent Plan+Tools\nWith Full-Stack: Moderate/Complex→6-step Full-Stack Pipeline'}
               >
                 <Zap className="w-3 h-3" />
                 Pipeline
               </button>
+
+              {/* 全栈模式切换（仅在 Pipeline 模式开启时显示） */}
+              {pipelineMode && (
+                <button
+                  className={`text-[10px] flex items-center gap-1 px-2 py-1.5 rounded-lg flex-shrink-0 transition-all ${
+                    isFullStackMode
+                      ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/20'
+                      : 'bg-gray-800/80 border border-gray-700/40 text-gray-400 hover:text-emerald-400 hover:border-gray-600/60'
+                  }`}
+                  onClick={() => {
+                    setIsFullStackMode((v) => !v);
+                    // 全栈模式自动开启 React 模式
+                    if (!isFullStackMode) setIsReactMode(true);
+                  }}
+                  aria-label="切换全栈模式"
+                  tabIndex={0}
+                  title={lang === 'zh'
+                    ? '全栈模式：自动生成 Node 后端 + React 前端 + MongoDB + 权限配置\n开启后 Pipeline 将使用 6 步全栈流水线'
+                    : 'Full-Stack mode: auto-generate Node backend + React frontend + MongoDB + RBAC\nEnables 6-step full-stack pipeline'}
+                >
+                  <Server className="w-3 h-3" />
+                  {lang === 'zh' ? '全栈' : 'Full-Stack'}
+                </button>
+              )}
             </div>
 
             {/* 消息列表 */}
@@ -1286,14 +1427,18 @@ const [isReactMode, setIsReactMode] = useState(true);
                   </button>
                 ) : pipelineMode ? (
                   <button
-                    className="flex-shrink-0 h-7 px-2.5 rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1 transition-colors"
+                    className={`flex-shrink-0 h-7 px-2.5 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1 transition-colors ${
+                      isFullStackMode
+                        ? 'bg-emerald-600 hover:bg-emerald-500'
+                        : 'bg-amber-600 hover:bg-amber-500'
+                    }`}
                     onClick={handlePipeline}
                     disabled={!input.trim()}
-                    aria-label="Pipeline 生成"
+                    aria-label={isFullStackMode ? '全栈 Pipeline 生成' : 'Pipeline 生成'}
                     tabIndex={0}
                   >
-                    <Zap className="w-3 h-3 text-white" />
-                    <span className="text-[10px] text-white font-medium">Run</span>
+                    {isFullStackMode ? <Server className="w-3 h-3 text-white" /> : <Zap className="w-3 h-3 text-white" />}
+                    <span className="text-[10px] text-white font-medium">{isFullStackMode ? 'Full-Stack' : 'Run'}</span>
                   </button>
                 ) : (
                   <button
@@ -1324,6 +1469,8 @@ const [isReactMode, setIsReactMode] = useState(true);
         isFromPreviousSession={isFromPreviousSession}
         uploadedImage={uploadedImage}
         isReactMode={isReactMode}
+        isFullStackMode={isFullStackMode}
+        runtimeApiBase={runtimeApiBase}
         onReactModeChange={setIsReactMode}
         onCodePartsChange={setCodeParts}
         onClearPreview={() => {
@@ -1349,8 +1496,15 @@ const [isReactMode, setIsReactMode] = useState(true);
         <PublishModal
           item={publishTarget}
           lang={lang}
-          onSuccess={() => {
+          isFullStack={isFullStackMode}
+          serverParts={serverParts}
+          dbSchema={dbSchema}
+          menuConfig={menuConfig}
+          onSuccess={(_, deployInfo) => {
             setPublishTarget(null);
+            if (deployInfo?.runtimeApiBase) {
+              setRuntimeApiBase(deployInfo.runtimeApiBase);
+            }
           }}
           onClose={() => setPublishTarget(null)}
         />

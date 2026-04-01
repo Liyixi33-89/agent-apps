@@ -54,6 +54,11 @@ marketRouter.post('/vibe/apps', async (ctx) => {
   const body = ctx.request.body as {
     title: string; description?: string; category?: string;
     author?: string; codeParts: object; thumbnail?: string; tags?: string[];
+    // 全栈模式扩展字段
+    isFullStack?: boolean;
+    serverParts?: object;
+    dbSchema?: object;
+    menuConfig?: object;
   };
   if (!body.title || !body.codeParts) {
     ctx.status = 400;
@@ -83,6 +88,11 @@ marketRouter.post('/vibe/templates', async (ctx) => {
   const body = ctx.request.body as {
     title: string; description?: string; category?: string;
     author?: string; codeParts: object; thumbnail?: string; tags?: string[];
+    // 全栈模式扩展字段
+    isFullStack?: boolean;
+    serverParts?: object;
+    dbSchema?: object;
+    menuConfig?: object;
   };
   if (!body.title || !body.codeParts) {
     ctx.status = 400;

@@ -1,15 +1,22 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import {
   Globe, Search, Trash2, Pencil, Save, X,
   Loader2, RefreshCw, Eye, EyeOff, ExternalLink,
-  ChevronLeft, ChevronRight, Copy, Check,
+  ChevronLeft, ChevronRight, Copy, Check, Server, Code2,
+  Rocket, Power,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { App } from 'antd';
 import {
   fetchAdminVibeApps, updateAdminVibeApp, deleteAdminVibeApp,
-  type VibeAppAdmin,
+  fetchAdminVibeAppCode,
+  deployVibeAppRuntime, undeployVibeAppRuntime, fetchVibeAppRuntimeStatus,
+  type VibeAppAdmin, type VibeAppCodeDetail,
+  type RuntimeStatus,
 } from '../api';
+
+// 懒加载 Monaco Editor
+const MonacoEditor = lazy(() => import('@monaco-editor/react'));
 
 // ─── 常量 ──────────────────────────────────────────────────────────────────────
 
@@ -22,7 +29,20 @@ const STATUS_FILTERS = [
   { key: 'false', label: '已下架' },
 ];
 
-// ─── 子组件：编辑弹窗 ─────────────────────────────────────────────────────────
+// ─── 编辑 Tab 类型 ────────────────────────────────────────────────────────────
+
+type EditTab = 'info' | 'frontend' | 'backend' | 'database' | 'permission';
+
+/** 后端代码子 Tab */
+type BackendSubTab = 'model' | 'route' | 'service' | 'middleware' | 'envTemplate';
+
+/** 前端代码子 Tab */
+type FrontendSubTab = 'jsx' | 'html' | 'css' | 'js';
+
+/** 权限配置子 Tab */
+type PermissionSubTab = 'menus' | 'permissions' | 'roles';
+
+// ─── 子组件：编辑弹窗（增强版 — 支持前后端代码编辑）──────────────────────────
 
 interface EditModalProps {
   app: VibeAppAdmin;
@@ -31,19 +51,129 @@ interface EditModalProps {
 }
 
 const EditModal = ({ app, onSave, onClose }: EditModalProps) => {
+  // 基本信息
   const [title, setTitle]       = useState(app.title);
   const [description, setDesc]  = useState(app.description);
   const [author, setAuthor]     = useState(app.author);
   const [isActive, setIsActive] = useState(app.isActive);
-  const [saving, setSaving]     = useState(false);
-  const [error, setError]       = useState('');
+
+  // Tab 状态
+  const [activeTab, setActiveTab] = useState<EditTab>('info');
+
+  // 代码加载状态
+  const [codeLoading, setCodeLoading] = useState(false);
+  const [codeLoaded, setCodeLoaded]   = useState(false);
+  const [codeDetail, setCodeDetail]   = useState<VibeAppCodeDetail | null>(null);
+
+  // 前端代码编辑状态
+  const [frontendSubTab, setFrontendSubTab] = useState<FrontendSubTab>('jsx');
+  const [frontendCode, setFrontendCode] = useState<Record<FrontendSubTab, string>>({
+    jsx: '', html: '', css: '', js: '',
+  });
+
+  // 后端代码编辑状态
+  const [backendSubTab, setBackendSubTab] = useState<BackendSubTab>('model');
+  const [backendCode, setBackendCode] = useState<Record<BackendSubTab, string>>({
+    model: '', route: '', service: '', middleware: '', envTemplate: '',
+  });
+
+  // 数据库代码编辑状态
+  const [dbCode, setDbCode] = useState({ collections: '', indexes: '', seedData: '' });
+
+  // 权限配置编辑状态
+  const [permSubTab, setPermSubTab] = useState<PermissionSubTab>('menus');
+  const [permCode, setPermCode] = useState<Record<PermissionSubTab, string>>({
+    menus: '', permissions: '', roles: '',
+  });
+
+  const [saving, setSaving] = useState(false);
+  const [error, setError]   = useState('');
+
+  const isFullStack = app.isFullStack ?? false;
+
+  // 切换到代码 Tab 时懒加载完整代码
+  const loadCodeIfNeeded = useCallback(async () => {
+    if (codeLoaded || codeLoading) return;
+    setCodeLoading(true);
+    try {
+      const detail = await fetchAdminVibeAppCode(app._id);
+      setCodeDetail(detail);
+
+      // 初始化前端代码
+      setFrontendCode({
+        jsx:  detail.codeParts.jsx ?? '',
+        html: detail.codeParts.html ?? '',
+        css:  detail.codeParts.css ?? '',
+        js:   detail.codeParts.js ?? '',
+      });
+
+      // 初始化后端代码
+      if (detail.serverParts) {
+        setBackendCode({
+          model:       detail.serverParts.model ?? '',
+          route:       detail.serverParts.route ?? '',
+          service:     detail.serverParts.service ?? '',
+          middleware:   detail.serverParts.middleware ?? '',
+          envTemplate: detail.serverParts.envTemplate ?? '',
+        });
+      }
+
+      // 初始化数据库代码
+      if (detail.dbSchema) {
+        setDbCode({
+          collections: detail.dbSchema.collections ?? '',
+          indexes:     detail.dbSchema.indexes ?? '',
+          seedData:    detail.dbSchema.seedData ?? '',
+        });
+      }
+
+      // 初始化权限配置
+      if (detail.menuConfig) {
+        setPermCode({
+          menus:       detail.menuConfig.menus ?? '',
+          permissions: detail.menuConfig.permissions ?? '',
+          roles:       detail.menuConfig.roles ?? '',
+        });
+      }
+
+      setCodeLoaded(true);
+    } catch (e: any) {
+      setError('加载代码失败：' + (e?.message ?? '未知错误'));
+    } finally {
+      setCodeLoading(false);
+    }
+  }, [app._id, codeLoaded, codeLoading]);
+
+  // 切换到代码相关 Tab 时自动加载
+  useEffect(() => {
+    if (activeTab !== 'info') loadCodeIfNeeded();
+  }, [activeTab, loadCodeIfNeeded]);
 
   const handleSave = async () => {
     if (!title.trim()) { setError('标题不能为空'); return; }
     setSaving(true);
     setError('');
     try {
-      await onSave(app._id, { title, description, author, isActive });
+      const updateData: Record<string, unknown> = { title, description, author, isActive };
+
+      // 如果代码已加载且有修改，一并保存
+      if (codeLoaded) {
+        updateData.codeParts = {
+          ...(codeDetail?.codeParts ?? {}),
+          jsx:  frontendCode.jsx,
+          html: frontendCode.html,
+          css:  frontendCode.css,
+          js:   frontendCode.js,
+        };
+
+        if (isFullStack) {
+          updateData.serverParts = { ...backendCode };
+          updateData.dbSchema    = { ...dbCode };
+          updateData.menuConfig  = { ...permCode };
+        }
+      }
+
+      await onSave(app._id, updateData as Partial<VibeAppAdmin>);
       onClose();
     } catch (e: any) {
       setError(e?.response?.data?.message ?? '保存失败');
@@ -57,6 +187,78 @@ const EditModal = ({ app, onSave, onClose }: EditModalProps) => {
     if (e.key === 'Enter' && e.ctrlKey) handleSave();
   };
 
+  // Tab 配置
+  const tabs: Array<{ key: EditTab; label: string; icon: React.ReactNode; show: boolean }> = [
+    { key: 'info',       label: '基本信息', icon: <Pencil className="w-3.5 h-3.5" />,  show: true },
+    { key: 'frontend',   label: '前端代码', icon: <Code2 className="w-3.5 h-3.5" />,   show: true },
+    { key: 'backend',    label: '后端代码', icon: <Server className="w-3.5 h-3.5" />,   show: isFullStack },
+    { key: 'database',   label: '数据库',   icon: <Globe className="w-3.5 h-3.5" />,    show: isFullStack },
+    { key: 'permission', label: '权限配置', icon: <Eye className="w-3.5 h-3.5" />,      show: isFullStack },
+  ];
+
+  // 前端代码子 Tab 配置
+  const frontendSubTabs: Array<{ key: FrontendSubTab; label: string; color: string }> = [
+    { key: 'jsx',  label: 'JSX',  color: 'text-cyan-500' },
+    { key: 'html', label: 'HTML', color: 'text-orange-500' },
+    { key: 'css',  label: 'CSS',  color: 'text-sky-500' },
+    { key: 'js',   label: 'JS',   color: 'text-yellow-500' },
+  ];
+
+  // 后端代码子 Tab 配置
+  const backendSubTabs: Array<{ key: BackendSubTab; label: string }> = [
+    { key: 'model',       label: 'Model' },
+    { key: 'route',       label: 'Route' },
+    { key: 'service',     label: 'Service' },
+    { key: 'middleware',   label: 'Middleware' },
+    { key: 'envTemplate', label: '.env' },
+  ];
+
+  // 权限配置子 Tab 配置
+  const permSubTabs: Array<{ key: PermissionSubTab; label: string }> = [
+    { key: 'menus',       label: '菜单' },
+    { key: 'permissions', label: '权限' },
+    { key: 'roles',       label: '角色' },
+  ];
+
+  /** Monaco 编辑器渲染 */
+  const renderMonacoEditor = (value: string, language: string, onChange: (val: string) => void) => (
+    <Suspense fallback={
+      <div className="w-full h-full flex items-center justify-center bg-slate-50">
+        <Loader2 className="w-5 h-5 text-slate-400 animate-spin" />
+      </div>
+    }>
+      <MonacoEditor
+        height="100%"
+        language={language}
+        value={value}
+        onChange={(val) => onChange(val ?? '')}
+        theme="vs-dark"
+        options={{
+          fontSize: 13,
+          minimap: { enabled: false },
+          scrollBeyondLastLine: false,
+          wordWrap: 'on',
+          lineNumbers: 'on',
+          folding: true,
+          automaticLayout: true,
+          tabSize: 2,
+          formatOnPaste: true,
+          padding: { top: 8, bottom: 8 },
+        }}
+      />
+    </Suspense>
+  );
+
+  /** 代码加载中占位 */
+  const renderCodeLoading = () => (
+    <div className="flex items-center justify-center h-full bg-slate-50">
+      <div className="flex items-center gap-2 text-sm text-slate-400">
+        <Loader2 className="w-4 h-4 animate-spin" />
+        加载代码中...
+      </div>
+    </div>
+  );
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4"
@@ -65,12 +267,20 @@ const EditModal = ({ app, onSave, onClose }: EditModalProps) => {
       aria-modal="true"
       aria-label="编辑应用"
     >
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-base font-semibold text-slate-800 flex items-center gap-2">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl flex flex-col" style={{ maxHeight: '90vh' }}>
+        {/* 头部 */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 flex-shrink-0">
+          <div className="flex items-center gap-2">
             <Pencil className="w-4 h-4 text-sky-500" />
-            编辑应用信息
-          </h3>
+            <h3 className="text-base font-semibold text-slate-800">
+              编辑应用
+            </h3>
+            {isFullStack && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-200 font-medium">
+                全栈
+              </span>
+            )}
+          </div>
           <button
             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
             onClick={onClose}
@@ -81,80 +291,242 @@ const EditModal = ({ app, onSave, onClose }: EditModalProps) => {
           </button>
         </div>
 
+        {/* Tab 栏 */}
+        <div className="flex items-center gap-0 border-b border-slate-200 px-5 flex-shrink-0 bg-slate-50">
+          {tabs.filter((t) => t.show).map((tab) => (
+            <button
+              key={tab.key}
+              className={clsx(
+                'flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-b-2 transition-all',
+                activeTab === tab.key
+                  ? 'border-sky-500 text-sky-600 bg-white'
+                  : 'border-transparent text-slate-400 hover:text-slate-600'
+              )}
+              onClick={() => setActiveTab(tab.key)}
+              tabIndex={0}
+              aria-label={tab.label}
+            >
+              {tab.icon}
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* 错误提示 */}
         {error && (
-          <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          <div className="mx-5 mt-3 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 flex-shrink-0">
             {error}
           </div>
         )}
 
-        <div className="space-y-3">
-          <div>
-            <label className="text-xs text-slate-500 mb-1 block">标题 *</label>
-            <input
-              type="text"
-              className="input w-full"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              aria-label="应用标题"
-              tabIndex={0}
-            />
-          </div>
+        {/* 内容区 */}
+        <div className="flex-1 overflow-hidden">
 
-          <div>
-            <label className="text-xs text-slate-500 mb-1 block">作者</label>
-            <input
-              type="text"
-              className="input w-full"
-              value={author}
-              onChange={(e) => setAuthor(e.target.value)}
-              aria-label="作者"
-              tabIndex={0}
-            />
-          </div>
+          {/* ── 基本信息 Tab ── */}
+          {activeTab === 'info' && (
+            <div className="p-5 space-y-3 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 200px)' }}>
+              <div>
+                <label className="text-xs text-slate-500 mb-1 block">标题 *</label>
+                <input
+                  type="text"
+                  className="input w-full"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  aria-label="应用标题"
+                  tabIndex={0}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 mb-1 block">作者</label>
+                <input
+                  type="text"
+                  className="input w-full"
+                  value={author}
+                  onChange={(e) => setAuthor(e.target.value)}
+                  aria-label="作者"
+                  tabIndex={0}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 mb-1 block">描述</label>
+                <textarea
+                  className="input w-full resize-none min-h-16 text-sm"
+                  value={description}
+                  onChange={(e) => setDesc(e.target.value)}
+                  aria-label="描述"
+                  tabIndex={0}
+                />
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer select-none" tabIndex={0}>
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 accent-sky-500"
+                  checked={isActive}
+                  onChange={(e) => setIsActive(e.target.checked)}
+                  aria-label="是否上架"
+                />
+                <span className="text-sm text-slate-600">上架（模板市场可见）</span>
+              </label>
+            </div>
+          )}
 
-          <div>
-            <label className="text-xs text-slate-500 mb-1 block">描述</label>
-            <textarea
-              className="input w-full resize-none min-h-16 text-sm"
-              value={description}
-              onChange={(e) => setDesc(e.target.value)}
-              aria-label="描述"
-              tabIndex={0}
-            />
-          </div>
+          {/* ── 前端代码 Tab ── */}
+          {activeTab === 'frontend' && (
+            <div className="flex flex-col h-full" style={{ height: 'calc(90vh - 200px)' }}>
+              {/* 子 Tab */}
+              <div className="flex items-center gap-0 border-b border-slate-200 px-4 flex-shrink-0">
+                {frontendSubTabs.map((tab) => (
+                  <button
+                    key={tab.key}
+                    className={clsx(
+                      'flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 transition-all',
+                      frontendSubTab === tab.key
+                        ? `border-current ${tab.color}`
+                        : 'border-transparent text-slate-400 hover:text-slate-600'
+                    )}
+                    onClick={() => setFrontendSubTab(tab.key)}
+                    tabIndex={0}
+                    aria-label={tab.label}
+                  >
+                    <span className={clsx('w-2 h-2 rounded-full', {
+                      'bg-cyan-400':   tab.key === 'jsx',
+                      'bg-orange-400': tab.key === 'html',
+                      'bg-sky-400':    tab.key === 'css',
+                      'bg-yellow-400': tab.key === 'js',
+                    })} />
+                    {tab.label}
+                    {frontendCode[tab.key] && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-current opacity-50" />
+                    )}
+                  </button>
+                ))}
+              </div>
+              {/* 编辑器 */}
+              <div className="flex-1 overflow-hidden">
+                {codeLoading ? renderCodeLoading() : renderMonacoEditor(
+                  frontendCode[frontendSubTab],
+                  frontendSubTab === 'jsx' ? 'javascript' : frontendSubTab === 'js' ? 'javascript' : frontendSubTab,
+                  (val) => setFrontendCode((prev) => ({ ...prev, [frontendSubTab]: val }))
+                )}
+              </div>
+            </div>
+          )}
 
-          <label className="flex items-center gap-2 cursor-pointer select-none" tabIndex={0}>
-            <input
-              type="checkbox"
-              className="w-4 h-4 accent-sky-500"
-              checked={isActive}
-              onChange={(e) => setIsActive(e.target.checked)}
-              aria-label="是否上架"
-            />
-            <span className="text-sm text-slate-600">上架（模板市场可见）</span>
-          </label>
+          {/* ── 后端代码 Tab ── */}
+          {activeTab === 'backend' && (
+            <div className="flex flex-col h-full" style={{ height: 'calc(90vh - 200px)' }}>
+              {/* 子 Tab */}
+              <div className="flex items-center gap-0 border-b border-slate-200 px-4 flex-shrink-0">
+                {backendSubTabs.map((tab) => (
+                  <button
+                    key={tab.key}
+                    className={clsx(
+                      'flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 transition-all',
+                      backendSubTab === tab.key
+                        ? 'border-sky-500 text-sky-600'
+                        : 'border-transparent text-slate-400 hover:text-slate-600'
+                    )}
+                    onClick={() => setBackendSubTab(tab.key)}
+                    tabIndex={0}
+                    aria-label={tab.label}
+                  >
+                    {tab.label}
+                    {backendCode[tab.key] && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-sky-400 opacity-50" />
+                    )}
+                  </button>
+                ))}
+              </div>
+              {/* 编辑器 */}
+              <div className="flex-1 overflow-hidden">
+                {codeLoading ? renderCodeLoading() : renderMonacoEditor(
+                  backendCode[backendSubTab],
+                  backendSubTab === 'envTemplate' ? 'ini' : 'typescript',
+                  (val) => setBackendCode((prev) => ({ ...prev, [backendSubTab]: val }))
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── 数据库 Tab ── */}
+          {activeTab === 'database' && (
+            <div className="flex flex-col h-full" style={{ height: 'calc(90vh - 200px)' }}>
+              <div className="px-4 py-2 text-xs text-slate-400 border-b border-slate-200 flex-shrink-0">
+                MongoDB Schema 定义（Mongoose Model 代码）
+              </div>
+              <div className="flex-1 overflow-hidden">
+                {codeLoading ? renderCodeLoading() : renderMonacoEditor(
+                  dbCode.collections,
+                  'typescript',
+                  (val) => setDbCode((prev) => ({ ...prev, collections: val }))
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── 权限配置 Tab ── */}
+          {activeTab === 'permission' && (
+            <div className="flex flex-col h-full" style={{ height: 'calc(90vh - 200px)' }}>
+              {/* 子 Tab */}
+              <div className="flex items-center gap-0 border-b border-slate-200 px-4 flex-shrink-0">
+                {permSubTabs.map((tab) => (
+                  <button
+                    key={tab.key}
+                    className={clsx(
+                      'flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 transition-all',
+                      permSubTab === tab.key
+                        ? 'border-violet-500 text-violet-600'
+                        : 'border-transparent text-slate-400 hover:text-slate-600'
+                    )}
+                    onClick={() => setPermSubTab(tab.key)}
+                    tabIndex={0}
+                    aria-label={tab.label}
+                  >
+                    {tab.label}
+                    {permCode[tab.key] && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-violet-400 opacity-50" />
+                    )}
+                  </button>
+                ))}
+              </div>
+              {/* 编辑器 */}
+              <div className="flex-1 overflow-hidden">
+                {codeLoading ? renderCodeLoading() : renderMonacoEditor(
+                  permCode[permSubTab],
+                  'json',
+                  (val) => setPermCode((prev) => ({ ...prev, [permSubTab]: val }))
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
-        <div className="flex gap-2 pt-1">
-          <button
-            className="btn-primary"
-            onClick={handleSave}
-            disabled={saving}
-            aria-label="保存"
-            tabIndex={0}
-          >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            {saving ? '保存中...' : '保存'}
-          </button>
-          <button
-            className="btn-ghost"
-            onClick={onClose}
-            aria-label="取消"
-            tabIndex={0}
-          >
-            <X className="w-4 h-4" />
-            取消
-          </button>
+        {/* 底部操作 */}
+        <div className="flex items-center justify-between gap-2 px-5 py-4 border-t border-slate-200 flex-shrink-0">
+          <span className="text-[10px] text-slate-400">
+            Ctrl+Enter 快速保存 · Esc 关闭
+          </span>
+          <div className="flex gap-2">
+            <button
+              className="btn-ghost"
+              onClick={onClose}
+              aria-label="取消"
+              tabIndex={0}
+            >
+              <X className="w-4 h-4" />
+              取消
+            </button>
+            <button
+              className="btn-primary"
+              onClick={handleSave}
+              disabled={saving}
+              aria-label="保存"
+              tabIndex={0}
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              {saving ? '保存中...' : '保存'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -193,9 +565,13 @@ interface AppRowProps {
   onEdit: (a: VibeAppAdmin) => void;
   onDelete: (id: string) => void;
   onToggleActive: (id: string, isActive: boolean) => void;
+  onDeploy: (id: string) => void;
+  onUndeploy: (id: string) => void;
+  deployStatus?: RuntimeStatus;
+  deploying?: boolean;
 }
 
-const AppRow = ({ app, onEdit, onDelete, onToggleActive }: AppRowProps) => {
+const AppRow = ({ app, onEdit, onDelete, onToggleActive, onDeploy, onUndeploy, deployStatus, deploying }: AppRowProps) => {
   const previewUrl = `${PREVIEW_BASE_URL}/preview/${app._id}`;
 
   const handleEdit         = () => onEdit(app);
@@ -211,6 +587,16 @@ const AppRow = ({ app, onEdit, onDelete, onToggleActive }: AppRowProps) => {
           {app.codeParts?.isReact && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-50 text-cyan-600 border border-cyan-200 flex-shrink-0">
               React
+            </span>
+          )}
+          {app.isFullStack && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-200 flex-shrink-0">
+              全栈
+            </span>
+          )}
+          {deployStatus?.deployed && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-50 text-green-600 border border-green-200 flex-shrink-0 animate-pulse">
+              ● 已部署
             </span>
           )}
         </div>
@@ -295,6 +681,32 @@ const AppRow = ({ app, onEdit, onDelete, onToggleActive }: AppRowProps) => {
           >
             <Pencil className="w-4 h-4" />
           </button>
+          {/* 全栈项目：部署/卸载按钮 */}
+          {app.isFullStack && (
+            deploying ? (
+              <span className="p-1.5"><Loader2 className="w-4 h-4 animate-spin text-slate-400" /></span>
+            ) : deployStatus?.deployed ? (
+              <button
+                className="p-1.5 rounded-lg text-emerald-500 hover:text-red-500 hover:bg-red-50 transition-colors"
+                onClick={() => onUndeploy(app._id)}
+                aria-label="卸载后端"
+                title="卸载后端服务"
+                tabIndex={0}
+              >
+                <Power className="w-4 h-4" />
+              </button>
+            ) : (
+              <button
+                className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
+                onClick={() => onDeploy(app._id)}
+                aria-label="部署后端"
+                title="部署后端服务"
+                tabIndex={0}
+              >
+                <Rocket className="w-4 h-4" />
+              </button>
+            )
+          )}
           <button
             className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
             onClick={handleDelete}
@@ -322,6 +734,8 @@ const VibeAppsAdminPage = () => {
   const [page, setPage]             = useState(1);
   const [total, setTotal]           = useState(0);
   const [editTarget, setEditTarget] = useState<VibeAppAdmin | null>(null);
+  const [deployStatuses, setDeployStatuses] = useState<Record<string, RuntimeStatus>>({});
+  const [deployingApps, setDeployingApps] = useState<Set<string>>(new Set());
 
   const LIMIT = 20;
   const totalPages = Math.ceil(total / LIMIT);
@@ -387,6 +801,58 @@ const VibeAppsAdminPage = () => {
           await loadApps();
         } catch {
           message.error('删除失败');
+        }
+      },
+    });
+  };
+
+  // 加载应用列表后，查询全栈应用的部署状态
+  useEffect(() => {
+    const fullStackApps = apps.filter(a => a.isFullStack);
+    if (fullStackApps.length === 0) return;
+    fullStackApps.forEach(async (app) => {
+      try {
+        const status = await fetchVibeAppRuntimeStatus(app._id);
+        setDeployStatuses(prev => ({ ...prev, [app._id]: status }));
+      } catch {
+        setDeployStatuses(prev => ({ ...prev, [app._id]: { deployed: false, appId: app._id } }));
+      }
+    });
+  }, [apps]);
+
+  const handleDeploy = async (id: string) => {
+    setDeployingApps(prev => new Set(prev).add(id));
+    try {
+      const result = await deployVibeAppRuntime(id);
+      message.success(`后端部署成功，创建了 ${result.collections.length} 个数据集合`);
+      setDeployStatuses(prev => ({
+        ...prev,
+        [id]: { deployed: true, appId: id, basePath: result.basePath, deployedAt: result.deployedAt },
+      }));
+    } catch (err: any) {
+      message.error(`部署失败: ${err?.response?.data?.message || err?.message || '未知错误'}`);
+    } finally {
+      setDeployingApps(prev => { const s = new Set(prev); s.delete(id); return s; });
+    }
+  };
+
+  const handleUndeploy = (id: string) => {
+    modal.confirm({
+      title: '确认卸载',
+      content: '卸载后端服务后，前端页面将无法调用真实 API。确认卸载？',
+      okText: '卸载',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        setDeployingApps(prev => new Set(prev).add(id));
+        try {
+          await undeployVibeAppRuntime(id);
+          message.success('后端已卸载');
+          setDeployStatuses(prev => ({ ...prev, [id]: { deployed: false, appId: id } }));
+        } catch (err: any) {
+          message.error(`卸载失败: ${err?.message || '未知错误'}`);
+        } finally {
+          setDeployingApps(prev => { const s = new Set(prev); s.delete(id); return s; });
         }
       },
     });
@@ -520,6 +986,10 @@ const VibeAppsAdminPage = () => {
                     onEdit={setEditTarget}
                     onDelete={handleDelete}
                     onToggleActive={handleToggleActive}
+                    onDeploy={handleDeploy}
+                    onUndeploy={handleUndeploy}
+                    deployStatus={deployStatuses[app._id]}
+                    deploying={deployingApps.has(app._id)}
                   />
                 ))}
               </tbody>

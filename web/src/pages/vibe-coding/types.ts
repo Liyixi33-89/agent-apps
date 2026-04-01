@@ -24,6 +24,37 @@ export interface CodeParts {
   isReact?: boolean;    // 标记为 React 渲染模式
 }
 
+/** 后端代码（全栈模式） */
+export interface ServerParts {
+  model: string;       // Mongoose Model 代码
+  route: string;       // Koa Router 代码
+  service: string;     // Service 层代码
+  middleware: string;   // 中间件代码
+  envTemplate: string;  // .env 模板
+}
+
+/** 数据库 Schema（全栈模式） */
+export interface DbSchema {
+  collections: string; // MongoDB 集合定义 JSON
+  indexes: string;     // 索引定义
+  seedData: string;    // 种子数据
+}
+
+/** 菜单权限配置（全栈模式） */
+export interface MenuConfig {
+  menus: string;       // 菜单配置 JSON
+  permissions: string; // 权限配置 JSON
+  roles: string;       // 角色配置 JSON
+}
+
+/** 全栈项目完整数据 */
+export interface FullStackParts {
+  codeParts: CodeParts;
+  serverParts: ServerParts;
+  dbSchema: DbSchema;
+  menuConfig: MenuConfig;
+}
+
 export type PreviewTab = 'preview' | 'code' | 'history';
 export type CodeTab = 'html' | 'css' | 'js' | 'jsx';
 
@@ -40,6 +71,10 @@ export interface VibeHistoryItem {
   id: string;
   label: string;          // 用户输入的前 40 字
   codeParts: CodeParts;
+  serverParts?: ServerParts;   // 全栈模式下的后端代码
+  dbSchema?: DbSchema;         // 全栈模式下的数据库 Schema
+  menuConfig?: MenuConfig;     // 全栈模式下的菜单权限
+  isFullStack?: boolean;       // 是否为全栈项目
   createdAt: string;      // ISO 时间
   thumbnail?: string;     // base64 截图（可选）
 }

@@ -1,13 +1,17 @@
 import { useState, useRef } from 'react';
 import { Globe, X, Tag, Plus, Loader2, ImagePlus, Trash2, Rocket, Store } from 'lucide-react';
-import { publishVibeTemplate, uploadTemplateImage, saveVibeApp } from '../../api';
+import { publishVibeTemplate, uploadTemplateImage, saveVibeApp, deployVibeApp } from '../../api';
 
-import type { VibeHistoryItem } from './types';
+import type { VibeHistoryItem, ServerParts, DbSchema, MenuConfig } from './types';
 
 interface PublishModalProps {
   item: VibeHistoryItem;
   lang: 'zh' | 'en';
-  onSuccess: (publishedToMarket: boolean) => void;
+  isFullStack?: boolean;
+  serverParts?: ServerParts | null;
+  dbSchema?: DbSchema | null;
+  menuConfig?: MenuConfig | null;
+  onSuccess: (publishedToMarket: boolean, deployInfo?: { appId: string; runtimeApiBase: string }) => void;
   onClose: () => void;
 }
 
@@ -21,7 +25,7 @@ const CATEGORY_OPTIONS = [
   { key: '其他',       label: { zh: '其他', en: 'Other' } },
 ];
 
-const PublishModal = ({ item, lang, onSuccess, onClose }: PublishModalProps) => {
+const PublishModal = ({ item, lang, isFullStack = false, serverParts, dbSchema, menuConfig, onSuccess, onClose }: PublishModalProps) => {
   const [title, setTitle]               = useState(item.label.slice(0, 30));
   const [description, setDesc]          = useState('');
   const [category, setCategory]         = useState('官网/落地页');
@@ -81,6 +85,13 @@ const PublishModal = ({ item, lang, onSuccess, onClose }: PublishModalProps) => 
         codeParts:   item.codeParts,
         thumbnail,
         tags,
+        // 全栈模式扩展字段
+        ...(isFullStack && {
+          isFullStack: true,
+          serverParts: serverParts || undefined,
+          dbSchema: dbSchema || undefined,
+          menuConfig: menuConfig || undefined,
+        }),
       };
 
       let backendId: string;
@@ -95,10 +106,25 @@ const PublishModal = ({ item, lang, onSuccess, onClose }: PublishModalProps) => 
         backendId = result._id;
       }
 
+      // 全栈项目：自动部署后端（创建动态路由 + Mongoose Model）
+      let deployInfo: { appId: string; runtimeApiBase: string } | undefined;
+      if (isFullStack && serverParts?.model) {
+        try {
+          const deployResult = await deployVibeApp(backendId);
+          deployInfo = {
+            appId: backendId,
+            runtimeApiBase: deployResult.basePath,
+          };
+          console.log('✅ 后端自动部署成功:', deployResult);
+        } catch (deployErr: any) {
+          console.warn('⚠️ 后端自动部署失败（不影响保存）:', deployErr?.message);
+        }
+      }
+
       // 使用后端返回的 ID 打开预览页
       window.open(`/preview/${backendId}`, '_blank');
 
-      onSuccess(publishToMarket);
+      onSuccess(publishToMarket, deployInfo);
     } catch (err: any) {
       setUploadingImg(false);
       setError(err?.response?.data?.message ?? (lang === 'zh' ? '发布失败，请重试' : 'Publish failed, please retry'));
@@ -134,6 +160,25 @@ const PublishModal = ({ item, lang, onSuccess, onClose }: PublishModalProps) => 
           {error && (
             <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
               {error}
+            </div>
+          )}
+
+          {/* 全栈模式提示 */}
+          {isFullStack && (
+            <div className="flex items-center gap-2.5 py-2.5 px-3.5 bg-emerald-500/8 border border-emerald-500/20 rounded-xl">
+              <div className="w-6 h-6 rounded-md bg-emerald-500/15 flex items-center justify-center flex-shrink-0">
+                <span className="text-xs">🗂️</span>
+              </div>
+              <div>
+                <p className="text-xs text-emerald-400 font-medium">
+                  {lang === 'zh' ? '全栈项目' : 'Full-Stack Project'}
+                </p>
+                <p className="text-[10px] text-emerald-400/60 mt-0.5">
+                  {lang === 'zh'
+                    ? '包含 Node 后端 + React 前端 + MongoDB Schema + 权限配置'
+                    : 'Includes Node backend + React frontend + MongoDB Schema + RBAC config'}
+                </p>
+              </div>
             </div>
           )}
 

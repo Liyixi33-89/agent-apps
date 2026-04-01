@@ -75,9 +75,11 @@ vibeRouter.post('/vibe/stream', async (ctx) => {
 4. 组件必须默认导出（export default）
 5. 输出格式必须严格为：\`\`\`jsx\n...完整组件代码...\n\`\`\`
 6. 代码必须完整可运行，不能有省略或占位符
-7. 禁止 import React（使用 React 17+ 新 JSX 转换）
-8. 禁止 import 外部库（只能使用 React 内置 Hooks）
-9. 禁止输出任何解释文字，只输出代码块
+7. 禁止使用 import 语句（代码运行在浏览器 script 标签中，React Hooks 已作为全局变量提供）
+8. 禁止使用 require 语句
+9. 禁止引用任何外部库（antd、axios、lodash 等都不能用，只能使用 React 内置 Hooks）
+10. 禁止输出任何解释文字，只输出代码块
+11. 如果需要调用 API，使用原生 fetch 函数
 
 【示例结构】
 \`\`\`jsx

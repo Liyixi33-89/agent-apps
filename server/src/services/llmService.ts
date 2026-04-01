@@ -91,13 +91,26 @@ export const streamOllama = async function* (
   const model = modelType === 'vision' ? env.ollamaVisionModel : env.ollamaTextModel;
   const url = `${env.ollamaBaseUrl}/api/chat`;
 
-  const response = await axios.post(
-    url,
-    { model, messages, stream: true, num_predict: 16384 },
-    { responseType: 'stream', timeout: 180_000 }
-  );
+  let response;
+  try {
+    response = await axios.post(
+      url,
+      { model, messages, stream: true, num_predict: 16384, options: { num_ctx: 32768 } },
+      { responseType: 'stream', timeout: 300_000 }
+    );
+  } catch (err: any) {
+    // 连接 Ollama 失败时给出明确错误
+    const msg = err?.code === 'ECONNREFUSED'
+      ? 'Ollama 服务未启动，请先运行 ollama serve'
+      : `Ollama 连接失败: ${err?.message || '未知错误'}`;
+    console.error(`[streamOllama] ${msg}`);
+    yield { delta: '', done: true, finishReason: 'error' };
+    return;
+  }
 
   let buffer = '';
+  let hasYieldedDone = false;
+
   for await (const chunk of response.data) {
     buffer += chunk.toString();
     const lines = buffer.split('\n');
@@ -112,11 +125,35 @@ export const streamOllama = async function* (
         // Ollama 通过 done_reason 标识结束原因（'stop' | 'length'）
         const finishReason: string | undefined = done ? (parsed?.done_reason || 'stop') : undefined;
         yield { delta, done, finishReason };
-        if (done) return;
+        if (done) {
+          hasYieldedDone = true;
+          return;
+        }
       } catch {
         // 忽略解析错误
       }
     }
+  }
+
+  // 处理 buffer 中残留的最后一行数据
+  if (buffer.trim()) {
+    try {
+      const parsed = JSON.parse(buffer);
+      const delta = parsed?.message?.content || '';
+      const done = parsed?.done === true;
+      const finishReason: string | undefined = done ? (parsed?.done_reason || 'stop') : undefined;
+      yield { delta, done, finishReason };
+      if (done) hasYieldedDone = true;
+    } catch {
+      // 残留数据解析失败，忽略
+    }
+  }
+
+  // 如果流结束但没有收到 done 信号，手动发送一个
+  // 这种情况通常是 Ollama 异常断开连接
+  if (!hasYieldedDone) {
+    console.warn('[streamOllama] 流结束但未收到 done 信号，可能是连接异常断开');
+    yield { delta: '', done: true, finishReason: 'length' };
   }
 };
 

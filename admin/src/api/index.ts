@@ -226,12 +226,66 @@ export interface VibeAppAdmin {
   likeCount: number;
   tags: string[];
   isActive: boolean;
+  isFullStack?: boolean;
   codeParts: {
+    html?: string;
+    css?: string;
+    js?: string;
+    jsx?: string;
     isReact?: boolean;
     isFullHtml?: boolean;
   };
+  serverParts?: {
+    model: string;
+    route: string;
+    service: string;
+    middleware: string;
+    envTemplate: string;
+  };
+  dbSchema?: {
+    collections: string;
+    indexes: string;
+    seedData: string;
+  };
+  menuConfig?: {
+    menus: string;
+    permissions: string;
+    roles: string;
+  };
   createdAt: string;
   updatedAt: string;
+}
+
+/** 获取单个应用的完整代码（含前后端代码、数据库 Schema、权限配置） */
+export interface VibeAppCodeDetail {
+  _id: string;
+  title: string;
+  isFullStack: boolean;
+  codeParts: {
+    html: string;
+    css: string;
+    js: string;
+    jsx?: string;
+    isReact?: boolean;
+    isFullHtml?: boolean;
+  };
+  serverParts: {
+    model: string;
+    route: string;
+    service: string;
+    middleware: string;
+    envTemplate: string;
+  } | null;
+  dbSchema: {
+    collections: string;
+    indexes: string;
+    seedData: string;
+  } | null;
+  menuConfig: {
+    menus: string;
+    permissions: string;
+    roles: string;
+  } | null;
 }
 
 export const fetchAdminVibeApps = async (params?: { page?: number; limit?: number; search?: string; isActive?: string }) => {
@@ -246,4 +300,54 @@ export const updateAdminVibeApp = async (id: string, body: Partial<Omit<VibeAppA
 
 export const deleteAdminVibeApp = async (id: string) => {
   await api.delete(`/vibe-apps/${id}`);
+};
+
+/** 获取单个应用的完整代码（Admin 代码编辑器使用） */
+export const fetchAdminVibeAppCode = async (id: string): Promise<VibeAppCodeDetail> => {
+  const { data } = await api.get<{ success: boolean; data: VibeAppCodeDetail }>(`/vibe-apps/${id}/code`);
+  return data.data;
+};
+
+// ─── Vibe App Runtime（动态后端部署）────────────────────────────────────────────
+
+// 注意：Runtime API 不走 /api/admin 前缀，需要单独创建 axios 实例
+const runtimeApi = axios.create({ baseURL: '/api', timeout: 60_000 });
+
+export interface RuntimeDeployResult {
+  appId: string;
+  basePath: string;
+  collections: Array<{ name: string; fields: string[] }>;
+  deployedAt: string;
+}
+
+export interface RuntimeStatus {
+  deployed: boolean;
+  appId: string;
+  title?: string;
+  basePath?: string;
+  collections?: Array<{ name: string; collectionName: string; fields: string[] }>;
+  deployedAt?: string;
+}
+
+/** 部署 Vibe App 后端 */
+export const deployVibeAppRuntime = async (appId: string): Promise<RuntimeDeployResult> => {
+  const { data } = await runtimeApi.post<{ success: boolean; data: RuntimeDeployResult }>(`/vibe-runtime/${appId}/deploy`);
+  return data.data;
+};
+
+/** 卸载 Vibe App 后端 */
+export const undeployVibeAppRuntime = async (appId: string): Promise<void> => {
+  await runtimeApi.delete(`/vibe-runtime/${appId}/deploy`);
+};
+
+/** 查询 Vibe App 部署状态 */
+export const fetchVibeAppRuntimeStatus = async (appId: string): Promise<RuntimeStatus> => {
+  const { data } = await runtimeApi.get<{ success: boolean; data: RuntimeStatus }>(`/vibe-runtime/${appId}/status`);
+  return data.data;
+};
+
+/** 获取所有已部署的 Vibe App 列表 */
+export const fetchDeployedVibeApps = async (): Promise<Array<{ appId: string; title: string; basePath: string; collectionCount: number; deployedAt: string }>> => {
+  const { data } = await runtimeApi.get<{ success: boolean; data: Array<{ appId: string; title: string; basePath: string; collectionCount: number; deployedAt: string }> }>('/vibe-runtime/apps');
+  return data.data;
 };

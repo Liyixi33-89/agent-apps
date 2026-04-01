@@ -12,6 +12,7 @@ import { adminRouter } from './routes/admin.js';
 import { Agent } from './models/Agent.js';
 import { KnowledgeBase } from './models/KnowledgeBase.js';
 import { ingestAgentsFromMarkdown, ingestKnowledgeFromAgents } from './services/agentIngestionService.js';
+import { restoreDeployedApps } from './routes/vibeAppRuntime.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -127,6 +128,9 @@ const bootstrap = async () => {
 
   // 自动检测并初始化数据
   await autoSeedIfEmpty();
+
+  // 恢复已部署的 Vibe App 后端（动态路由）
+  await restoreDeployedApps();
 
   const server = app.listen(env.port, () => {
     console.log(`🚀 Agency Agents Platform v2.0 running on http://127.0.0.1:${env.port}`);

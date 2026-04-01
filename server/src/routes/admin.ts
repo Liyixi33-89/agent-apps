@@ -664,12 +664,30 @@ adminRouter.get('/vibe-apps', requireAdmin, async (ctx) => {
   ctx.body = { success: true, data: apps, pagination: { page: pageNum, limit: limitNum, total } };
 });
 
+// 获取单个应用的完整代码（Admin 代码编辑器使用）
+adminRouter.get('/vibe-apps/:id/code', requireAdmin, async (ctx) => {
+  const app = await VibeTemplate.findById(ctx.params.id).lean();
+  if (!app) { ctx.status = 404; ctx.body = { success: false, message: '应用不存在' }; return; }
+  ctx.body = {
+    success: true,
+    data: {
+      _id: app._id,
+      title: app.title,
+      isFullStack: app.isFullStack ?? false,
+      codeParts: app.codeParts,
+      serverParts: app.serverParts ?? null,
+      dbSchema: app.dbSchema ?? null,
+      menuConfig: app.menuConfig ?? null,
+    },
+  };
+});
+
 adminRouter.put('/vibe-apps/:id', requireAdmin, async (ctx) => {
   const update = ctx.request.body as Record<string, unknown>;
   const app = await VibeTemplate.findByIdAndUpdate(
     ctx.params.id,
     { $set: update },
-    { new: true, projection: { 'codeParts.html': 0, 'codeParts.css': 0, 'codeParts.js': 0, 'codeParts.jsx': 0 } }
+    { new: true }
   );
   if (!app) { ctx.status = 404; ctx.body = { success: false, message: '应用不存在' }; return; }
   ctx.body = { success: true, data: app };
