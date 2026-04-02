@@ -48,6 +48,96 @@ interface DeployedApp {
 const deployedApps = new Map<string, DeployedApp>();
 
 // =============================================================================
+// § 1b  集合名模糊匹配（AI 生成的 API 路径可能与注册的集合名不完全一致）
+// =============================================================================
+
+/**
+ * 从已部署应用中查找匹配的集合
+ * 支持：
+ *   - 精确匹配：orders → orders
+ *   - 复数→单数：orders → order
+ *   - 单数→复数：order → orders
+ *   - 带路径前缀：v1/orders → orders（取最后一段）
+ *   - 常见复数变体：categories → category, inventories → inventory
+ */
+const findCollection = (app: DeployedApp, collectionParam: string) => {
+  // 取路径最后一段（处理 v1/orders 这种情况）
+  const segments = collectionParam.split('/').filter(Boolean);
+  const raw = segments[segments.length - 1] || collectionParam;
+  // 统一：去掉连字符/下划线，全部小写
+  const name = raw.toLowerCase().replace(/[-_]/g, '');
+
+  const allKeys = Array.from(app.collections.keys());
+  console.log(`[findCollection] 查找 "${collectionParam}" → 标准化 "${name}", 已注册集合: [${allKeys.join(', ')}]`);
+
+  // 辅助：标准化集合 key（去掉连字符/下划线）
+  const normalizeKey = (k: string) => k.toLowerCase().replace(/[-_]/g, '');
+
+  // 1. 精确匹配（标准化后）
+  for (const [key, col] of app.collections) {
+    if (normalizeKey(key) === name) return col;
+  }
+
+  // 2. 复数→单数（去掉尾部 s/es/ies）
+  const singulars = [
+    name.replace(/ies$/, 'y'),      // categories → category
+    name.replace(/ses$/, 's'),      // addresses → address
+    name.replace(/es$/, ''),        // boxes → box
+    name.replace(/s$/, ''),         // orders → order
+  ];
+  for (const s of singulars) {
+    for (const [key, col] of app.collections) {
+      if (normalizeKey(key) === s) return col;
+    }
+  }
+
+  // 3. 单数→复数（加 s/es/ies）
+  const plurals = [
+    name + 's',                     // order → orders
+    name + 'es',                    // box → boxes
+    name.replace(/y$/, 'ies'),      // category → categories
+  ];
+  for (const p of plurals) {
+    for (const [key, col] of app.collections) {
+      if (normalizeKey(key) === p) return col;
+    }
+  }
+
+  // 4. 包含匹配（如 order-management → order, orderitem → order）
+  for (const [key, col] of app.collections) {
+    const nk = normalizeKey(key);
+    if (name.includes(nk) || nk.includes(name)) return col;
+  }
+
+  console.warn(`[findCollection] ❌ 未找到匹配集合: "${collectionParam}" (标准化: "${name}"), 可用: [${allKeys.join(', ')}]`);
+  return null;
+};
+
+/**
+ * 自动创建集合（Auto-Provision）
+ * 当 AI 生成的前端代码请求的集合不存在时，自动创建一个通用集合
+ * 使用 strict: false 的 Schema，允许存储任意字段
+ */
+const autoProvisionCollection = (app: DeployedApp, collectionName: string) => {
+  const segments = collectionName.split('/').filter(Boolean);
+  const name = (segments[segments.length - 1] || collectionName).toLowerCase().replace(/[-_]/g, '');
+
+  // 通用字段：name + data（Mixed），其余字段由 strict: false 自动接收
+  const fields: Record<string, any> = {
+    name: { type: String, default: '' },
+    data: { type: Schema.Types.Mixed, default: {} },
+  };
+
+  const { model, collectionName: colName, modelName } = createDynamicModel(app.appId, name, fields);
+
+  const col = { modelName, collectionName: colName, model, fields };
+  app.collections.set(name, col);
+
+  console.log(`[autoProvision] ✅ 自动创建集合 "${name}" (${colName}) for app ${app.appId}`);
+  return col;
+};
+
+// =============================================================================
 // § 2  Schema 解析器 — 从 AI 生成的 Model 代码中提取字段定义
 // =============================================================================
 
@@ -276,6 +366,101 @@ const parseFieldType = (typeDef: string): any => {
 // =============================================================================
 
 /**
+ * 对 AI 生成的 Schema 字段定义做容错处理：
+ * 1. 将 ObjectId 类型字段的 required 去掉（前端通常不传合法 ObjectId）
+ * 2. 将 select: false 的 required 字段（如 passwordHash）改为非必填并加默认值
+ * 3. 保留 enum、ref 等约束但做宽松处理
+ */
+const sanitizeSchemaFields = (fields: Record<string, any>): Record<string, any> => {
+  const sanitized: Record<string, any> = {};
+
+  for (const [fieldName, fieldDef] of Object.entries(fields)) {
+    if (fieldName === '_placeholder') continue;
+
+    // 深拷贝避免修改原始定义
+    const def = JSON.parse(JSON.stringify(fieldDef, (_, v) => {
+      // JSON.stringify 无法序列化函数和特殊类型，需要特殊处理
+      if (v === String) return '__TYPE_STRING__';
+      if (v === Number) return '__TYPE_NUMBER__';
+      if (v === Boolean) return '__TYPE_BOOLEAN__';
+      if (v === Date) return '__TYPE_DATE__';
+      if (v === Buffer) return '__TYPE_BUFFER__';
+      return v;
+    }, 2));
+
+    // 还原类型
+    const restoreTypes = (obj: any): any => {
+      if (obj === '__TYPE_STRING__') return String;
+      if (obj === '__TYPE_NUMBER__') return Number;
+      if (obj === '__TYPE_BOOLEAN__') return Boolean;
+      if (obj === '__TYPE_DATE__') return Date;
+      if (obj === '__TYPE_BUFFER__') return Buffer;
+      if (Array.isArray(obj)) return obj.map(restoreTypes);
+      if (obj && typeof obj === 'object') {
+        const result: any = {};
+        for (const [k, v] of Object.entries(obj)) {
+          result[k] = restoreTypes(v);
+        }
+        return result;
+      }
+      return obj;
+    };
+
+    const restored = restoreTypes(def);
+
+    if (typeof restored === 'object' && restored !== null && !Array.isArray(restored)) {
+      const typeName = String(restored.type?.name || restored.type || '');
+      const isObjectId = typeName.includes('ObjectId') ||
+        (typeof fieldDef.type === 'function' && fieldDef.type === Schema.Types.ObjectId) ||
+        (fieldDef.type === Schema.Types.ObjectId);
+      const isObjectIdArray = Array.isArray(fieldDef.type) &&
+        fieldDef.type.length > 0 &&
+        (fieldDef.type[0]?.type === Schema.Types.ObjectId || fieldDef.type[0] === Schema.Types.ObjectId);
+
+      // ObjectId 类型字段：改为 Mixed，去掉 required，前端传什么都能存
+      if (isObjectId) {
+        sanitized[fieldName] = { type: Schema.Types.Mixed, default: null };
+        continue;
+      }
+
+      // ObjectId 数组字段：改为 Mixed 数组
+      if (isObjectIdArray) {
+        sanitized[fieldName] = { type: [Schema.Types.Mixed], default: [] };
+        continue;
+      }
+
+      // select: false 且 required 的字段（如 passwordHash）：去掉 required，加默认值
+      if (restored.select === false && restored.required) {
+        restored.required = false;
+        if (restored.default === undefined) {
+          // 根据类型给默认值
+          if (restored.type === String) restored.default = '';
+          else if (restored.type === Number) restored.default = 0;
+          else restored.default = null;
+        }
+        sanitized[fieldName] = restored;
+        continue;
+      }
+
+      // 带 validator 自定义验证器的字段：去掉 validator（JSON 序列化会丢失函数）
+      if (fieldDef.validate) {
+        const cleanDef = { ...fieldDef };
+        delete cleanDef.validate;
+        // 如果是 ObjectId 相关的 validator，也去掉 required
+        cleanDef.required = false;
+        sanitized[fieldName] = cleanDef;
+        continue;
+      }
+    }
+
+    // 直接使用原始定义（保留函数引用等）
+    sanitized[fieldName] = fieldDef;
+  }
+
+  return sanitized;
+};
+
+/**
  * 根据解析出的字段定义，动态创建 Mongoose Model
  * 集合名称格式：vibe_{appId}_{entityName}（小写）
  */
@@ -293,10 +478,13 @@ const createDynamicModel = (
     delete (mongoose.connection as any).collections[collectionName];
   }
 
+  // 对字段定义做容错处理
+  const sanitizedFields = sanitizeSchemaFields(fields);
+
   // 构建 Schema 定义
   const schemaDef: Record<string, any> = {};
 
-  for (const [fieldName, fieldDef] of Object.entries(fields)) {
+  for (const [fieldName, fieldDef] of Object.entries(sanitizedFields)) {
     if (fieldName === '_placeholder') continue;
     schemaDef[fieldName] = fieldDef;
   }
@@ -309,6 +497,7 @@ const createDynamicModel = (
   const schema = new Schema(schemaDef, {
     timestamps: true,
     collection: collectionName,
+    strict: false, // 允许存储 Schema 中未定义的字段（AI 生成的前端可能发送额外字段）
   });
 
   // 为常用查询字段添加索引
@@ -324,94 +513,111 @@ const createDynamicModel = (
 // § 4  部署管理路由
 // =============================================================================
 
+// ─── 部署核心逻辑（可被 Pipeline 等模块直接调用）──────────────────────────────
+
+export interface DeployResult {
+  appId: string;
+  basePath: string;
+  collections: Array<{ name: string; fields: string[] }>;
+  deployedAt: Date;
+}
+
+/**
+ * 部署应用后端的核心函数（不依赖 Koa ctx）
+ * 从数据库读取 Vibe App → 解析 Model → 创建动态 Mongoose Model → 注册 CRUD 路由
+ *
+ * @param appId  应用 ID（MongoDB ObjectId）
+ * @returns 部署结果
+ * @throws Error 如果应用不存在、不是全栈项目、或解析失败
+ */
+export const deployAppBackend = async (appId: string): Promise<DeployResult> => {
+  // 从数据库读取 Vibe App
+  const app = await VibeTemplate.findById(appId).lean();
+  if (!app) {
+    throw new Error('应用不存在');
+  }
+
+  if (!app.isFullStack || !app.serverParts?.model) {
+    throw new Error('该应用不是全栈项目或缺少 Model 定义');
+  }
+
+  // 解析 Model 代码
+  const modelDefs = parseModelDefinitions(app.serverParts.model);
+  if (modelDefs.length === 0) {
+    throw new Error('无法从 Model 代码中解析出数据实体');
+  }
+
+  // 如果已部署，先卸载
+  if (deployedApps.has(appId)) {
+    undeployApp(appId);
+  }
+
+  // 创建动态 Model
+  const collections = new Map<string, any>();
+  const deployedCollections: Array<{ name: string; fields: string[] }> = [];
+
+  for (const def of modelDefs) {
+    if (def.fields._placeholder) {
+      // 没有解析出字段，创建一个通用 Schema
+      def.fields = {
+        name: { type: String, default: '' },
+        data: { type: Schema.Types.Mixed, default: {} },
+      };
+    }
+
+    const { model, collectionName, modelName } = createDynamicModel(appId, def.name, def.fields);
+
+    collections.set(def.name.toLowerCase(), {
+      modelName,
+      collectionName,
+      model,
+      fields: def.fields,
+    });
+
+    deployedCollections.push({
+      name: def.name.toLowerCase(),
+      fields: Object.keys(def.fields).filter((f) => f !== '_placeholder'),
+    });
+  }
+
+  // 注册到部署表
+  const deployed: DeployedApp = {
+    appId,
+    title: app.title,
+    collections,
+    deployedAt: new Date(),
+  };
+  deployedApps.set(appId, deployed);
+
+  // 更新数据库中的部署状态
+  await VibeTemplate.findByIdAndUpdate(appId, {
+    $set: { deployPath: `/api/vibe-runtime/${appId}` },
+  });
+
+  return {
+    appId,
+    basePath: `/api/vibe-runtime/${appId}`,
+    collections: deployedCollections,
+    deployedAt: deployed.deployedAt,
+  };
+};
+
 // ─── 部署应用后端  POST /api/vibe-runtime/:appId/deploy ─────────────────────
 
 vibeAppRuntimeRouter.post('/vibe-runtime/:appId/deploy', async (ctx) => {
   const { appId } = ctx.params;
 
   try {
-    // 从数据库读取 Vibe App
-    const app = await VibeTemplate.findById(appId).lean();
-    if (!app) {
-      ctx.status = 404;
-      ctx.body = { success: false, message: '应用不存在' };
-      return;
-    }
-
-    if (!app.isFullStack || !app.serverParts?.model) {
-      ctx.status = 400;
-      ctx.body = { success: false, message: '该应用不是全栈项目或缺少 Model 定义' };
-      return;
-    }
-
-    // 解析 Model 代码
-    const modelDefs = parseModelDefinitions(app.serverParts.model);
-    if (modelDefs.length === 0) {
-      ctx.status = 400;
-      ctx.body = { success: false, message: '无法从 Model 代码中解析出数据实体' };
-      return;
-    }
-
-    // 如果已部署，先卸载
-    if (deployedApps.has(appId)) {
-      undeployApp(appId);
-    }
-
-    // 创建动态 Model
-    const collections = new Map<string, any>();
-    const deployedCollections: Array<{ name: string; fields: string[] }> = [];
-
-    for (const def of modelDefs) {
-      if (def.fields._placeholder) {
-        // 没有解析出字段，创建一个通用 Schema
-        def.fields = {
-          name: { type: String, default: '' },
-          data: { type: Schema.Types.Mixed, default: {} },
-        };
-      }
-
-      const { model, collectionName, modelName } = createDynamicModel(appId, def.name, def.fields);
-
-      collections.set(def.name.toLowerCase(), {
-        modelName,
-        collectionName,
-        model,
-        fields: def.fields,
-      });
-
-      deployedCollections.push({
-        name: def.name.toLowerCase(),
-        fields: Object.keys(def.fields).filter((f) => f !== '_placeholder'),
-      });
-    }
-
-    // 注册到部署表
-    const deployed: DeployedApp = {
-      appId,
-      title: app.title,
-      collections,
-      deployedAt: new Date(),
-    };
-    deployedApps.set(appId, deployed);
-
-    // 更新数据库中的部署状态
-    await VibeTemplate.findByIdAndUpdate(appId, {
-      $set: { deployPath: `/api/vibe-runtime/${appId}` },
-    });
-
+    const result = await deployAppBackend(appId);
     ctx.body = {
       success: true,
-      message: `应用「${app.title}」后端部署成功`,
-      data: {
-        appId,
-        basePath: `/api/vibe-runtime/${appId}`,
-        collections: deployedCollections,
-        deployedAt: deployed.deployedAt,
-      },
+      message: `应用后端部署成功`,
+      data: result,
     };
   } catch (err: any) {
-    ctx.status = 500;
-    ctx.body = { success: false, message: `部署失败：${err.message}` };
+    const msg = err.message || '部署失败';
+    ctx.status = msg.includes('不存在') ? 404 : msg.includes('不是全栈') || msg.includes('无法') ? 400 : 500;
+    ctx.body = { success: false, message: msg };
   }
 });
 
@@ -531,16 +737,7 @@ vibeAppRuntimeRouter.get('/vibe-runtime/:appId/:collection', async (ctx) => {
     return;
   }
 
-  const col = app.collections.get(collection.toLowerCase());
-  if (!col) {
-    ctx.status = 404;
-    ctx.body = {
-      success: false,
-      message: `集合 "${collection}" 不存在`,
-      availableCollections: Array.from(app.collections.keys()),
-    };
-    return;
-  }
+  const col = findCollection(app, collection) || autoProvisionCollection(app, collection);
 
   const {
     page = '1',
@@ -559,7 +756,7 @@ vibeAppRuntimeRouter.get('/vibe-runtime/:appId/:collection', async (ctx) => {
   // 搜索：在所有 String 类型字段中模糊搜索
   if (search) {
     const stringFields = Object.entries(col.fields)
-      .filter(([, def]) => def.type === String || def.type?.name === 'String')
+      .filter(([, def]) => (def as any).type === String || (def as any).type?.name === 'String')
       .map(([name]) => name);
 
     if (stringFields.length > 0) {
@@ -569,10 +766,10 @@ vibeAppRuntimeRouter.get('/vibe-runtime/:appId/:collection', async (ctx) => {
     }
   }
 
-  // 精确过滤
+  // 精确过滤（允许任意查询参数，由 MongoDB 处理）
   for (const [key, value] of Object.entries(filters)) {
-    if (key.startsWith('_') || ['page', 'limit', 'sort', 'search'].includes(key)) continue;
-    if (col.fields[key]) {
+    if (key.startsWith('_') || key.startsWith('$') || ['page', 'limit', 'sort', 'search'].includes(key)) continue;
+    if (value !== undefined && value !== '') {
       query[key] = value;
     }
   }
@@ -619,12 +816,7 @@ vibeAppRuntimeRouter.get('/vibe-runtime/:appId/:collection/:id', async (ctx) => 
     return;
   }
 
-  const col = app.collections.get(collection.toLowerCase());
-  if (!col) {
-    ctx.status = 404;
-    ctx.body = { success: false, message: `集合 "${collection}" 不存在` };
-    return;
-  }
+  const col = findCollection(app, collection) || autoProvisionCollection(app, collection);
 
   try {
     const doc = await col.model.findOne({ _id: id, isDeleted: { $ne: true } }).lean();
@@ -652,22 +844,21 @@ vibeAppRuntimeRouter.post('/vibe-runtime/:appId/:collection', async (ctx) => {
     return;
   }
 
-  const col = app.collections.get(collection.toLowerCase());
-  if (!col) {
-    ctx.status = 404;
-    ctx.body = { success: false, message: `集合 "${collection}" 不存在` };
-    return;
-  }
+  const col = findCollection(app, collection) || autoProvisionCollection(app, collection);
 
   try {
     const body = ctx.request.body as Record<string, any>;
-    // 过滤掉不在 Schema 中的字段（安全）
+    // 过滤掉危险字段，其余字段交给 Mongoose Schema 验证
+    const dangerousKeys = new Set(['_id', '__v', 'isDeleted', '$set', '$unset', '$push', '$pull']);
     const safeData: Record<string, any> = {};
     for (const [key, value] of Object.entries(body)) {
-      if (col.fields[key] || key === 'isDeleted') {
+      if (!dangerousKeys.has(key) && !key.startsWith('$')) {
         safeData[key] = value;
       }
     }
+
+    // 对 ObjectId 类型字段做容错：如果值不是合法 ObjectId 则保留原值（Schema 已改为 Mixed）
+    // 对 required 但未提供的字段，Mongoose 会使用 Schema 中的 default 值
 
     const doc = await col.model.create(safeData);
     ctx.status = 201;
@@ -702,19 +893,15 @@ vibeAppRuntimeRouter.put('/vibe-runtime/:appId/:collection/:id', async (ctx) => 
     return;
   }
 
-  const col = app.collections.get(collection.toLowerCase());
-  if (!col) {
-    ctx.status = 404;
-    ctx.body = { success: false, message: `集合 "${collection}" 不存在` };
-    return;
-  }
+  const col = findCollection(app, collection) || autoProvisionCollection(app, collection);
 
   try {
     const body = ctx.request.body as Record<string, any>;
-    // 过滤掉不在 Schema 中的字段
+    // 过滤掉危险字段，其余字段交给 Mongoose Schema 验证
+    const dangerousKeys = new Set(['_id', '__v', '$set', '$unset', '$push', '$pull']);
     const safeData: Record<string, any> = {};
     for (const [key, value] of Object.entries(body)) {
-      if (col.fields[key] || key === 'isDeleted') {
+      if (!dangerousKeys.has(key) && !key.startsWith('$')) {
         safeData[key] = value;
       }
     }
@@ -755,12 +942,7 @@ vibeAppRuntimeRouter.delete('/vibe-runtime/:appId/:collection/:id', async (ctx) 
     return;
   }
 
-  const col = app.collections.get(collection.toLowerCase());
-  if (!col) {
-    ctx.status = 404;
-    ctx.body = { success: false, message: `集合 "${collection}" 不存在` };
-    return;
-  }
+  const col = findCollection(app, collection) || autoProvisionCollection(app, collection);
 
   const { hard } = ctx.query as Record<string, string>;
 

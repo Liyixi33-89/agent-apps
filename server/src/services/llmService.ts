@@ -95,7 +95,7 @@ export const streamOllama = async function* (
   try {
     response = await axios.post(
       url,
-      { model, messages, stream: true, num_predict: 16384, options: { num_ctx: 32768 } },
+      { model, messages, stream: true, num_predict: 32768, options: { num_ctx: 65536 } },
       { responseType: 'stream', timeout: 300_000 }
     );
   } catch (err: any) {
@@ -123,7 +123,10 @@ export const streamOllama = async function* (
         const delta = parsed?.message?.content || '';
         const done = parsed?.done === true;
         // Ollama 通过 done_reason 标识结束原因（'stop' | 'length'）
-        const finishReason: string | undefined = done ? (parsed?.done_reason || 'stop') : undefined;
+        // ⚠️ 注意：某些 Ollama 版本/模型在 token 截断时不返回 done_reason 或返回空字符串
+        // 此时不应默认回退为 'stop'，而应保留 undefined 让 isLikelyTruncated 进行内容检测
+        const rawDoneReason = parsed?.done_reason;
+        const finishReason: string | undefined = done ? (rawDoneReason && rawDoneReason !== '' ? rawDoneReason : undefined) : undefined;
         yield { delta, done, finishReason };
         if (done) {
           hasYieldedDone = true;
@@ -141,7 +144,8 @@ export const streamOllama = async function* (
       const parsed = JSON.parse(buffer);
       const delta = parsed?.message?.content || '';
       const done = parsed?.done === true;
-      const finishReason: string | undefined = done ? (parsed?.done_reason || 'stop') : undefined;
+      const rawDoneReason = parsed?.done_reason;
+      const finishReason: string | undefined = done ? (rawDoneReason && rawDoneReason !== '' ? rawDoneReason : undefined) : undefined;
       yield { delta, done, finishReason };
       if (done) hasYieldedDone = true;
     } catch {

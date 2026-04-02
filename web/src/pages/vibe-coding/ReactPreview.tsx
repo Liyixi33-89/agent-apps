@@ -1,5 +1,18 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import * as Babel from '@babel/standalone';
+import {
+  compileJsx as esbuildCompileJsx,
+  compileJsxSync as esbuildCompileJsxSync,
+  preInitEsbuild,
+} from './esbuildCompiler';
+
+// ─── 重新导出编译函数（保持向后兼容）────────────────────────────────────────
+// 异步版本（推荐）：使用 esbuild-wasm 完整编译 TypeScript/TSX
+export const compileJsx = esbuildCompileJsx;
+// 同步版本（降级兼容）：用于不方便使用 async 的场景
+export const compileJsxSync = esbuildCompileJsxSync;
+
+// 预初始化 esbuild WASM（避免首次编译延迟）
+preInitEsbuild();
 
 interface ReactPreviewProps {
   jsx: string;
@@ -26,102 +39,6 @@ const ERROR_CONTAINER_STYLE = `
   max-height: 80px;
   overflow-y: auto;
 `;
-
-// ─── 将 JSX 编译为可执行 JS ──────────────────────────────────────────────────
-
-export const compileJsx = (jsxCode: string): { code: string; error: null } | { code: null; error: string } => {
-  try {
-    // ── 预处理 1：移除所有 import 语句（浏览器端无法解析模块导入）──────────
-    // 支持前导空格、多行 import、各种 import 格式
-    let cleaned = jsxCode
-      // 多行 import：import { \n  A, \n  B \n } from 'xxx'
-      .replace(/^\s*import\s+\{[\s\S]*?\}\s+from\s+['"][^'"]+['"]\s*;?\s*$/gm, '')
-      // 单行 import：import X from 'xxx' / import { A, B } from 'xxx'
-      .replace(/^\s*import\s+.*?from\s+['"][^'"]+['"]\s*;?\s*$/gm, '')
-      // 副作用 import：import 'xxx' / import "xxx"
-      .replace(/^\s*import\s+['"][^'"]+['"]\s*;?\s*$/gm, '')
-      // import type 语句（TypeScript）
-      .replace(/^\s*import\s+type\s+.*?from\s+['"][^'"]+['"]\s*;?\s*$/gm, '')
-      // 动态 import 赋值：const X = await import('xxx')
-      .replace(/^\s*(?:const|let|var)\s+\w+\s*=\s*(?:await\s+)?import\s*\([^)]+\)\s*;?\s*$/gm, '')
-      // require 语句
-      .replace(/^\s*(?:const|let|var)\s+.*?=\s*require\s*\([^)]+\)\s*;?\s*$/gm, '')
-      .trim();
-
-    // ── 预处理 2：移除 TypeScript 独立类型声明（interface / type / enum）────
-    // 支持多行 interface/type/enum，使用非贪婪匹配
-    cleaned = cleaned
-      // 多行 interface（支持嵌套大括号）
-      .replace(/^\s*(?:export\s+)?interface\s+\w+[\s\S]*?^\s*\}\s*;?\s*$/gm, '')
-      // 单行 type alias
-      .replace(/^\s*(?:export\s+)?type\s+\w+\s*=\s*[^;]+;\s*$/gm, '')
-      // 多行 type alias（带大括号）
-      .replace(/^\s*(?:export\s+)?type\s+\w+\s*=\s*\{[\s\S]*?^\s*\}\s*;?\s*$/gm, '')
-      // enum
-      .replace(/^\s*(?:export\s+)?enum\s+\w+\s*\{[\s\S]*?^\s*\}\s*;?\s*$/gm, '');
-
-    // ── 预处理 3：移除 AI 生成的渲染入口代码（由模板统一控制）────────────
-    // 渲染入口由 buildReactIframeHtml 模板统一管理，AI 代码中的渲染调用必须移除
-    cleaned = cleaned
-      // ReactDOM.render(<App />, document.getElementById('root'))
-      .replace(/^\s*ReactDOM\.render\s*\([\s\S]*?\)\s*;?\s*$/gm, '')
-      // ReactDOM.createRoot(document.getElementById('root')).render(<App />)
-      .replace(/^\s*(?:const|let|var)\s+\w+\s*=\s*ReactDOM\.createRoot\s*\([^)]*\)\s*;?\s*$/gm, '')
-      .replace(/^\s*\w+\.render\s*\(\s*<[^>]+\s*\/>\s*\)\s*;?\s*$/gm, '')
-      // 单行 createRoot(...).render(...)
-      .replace(/^\s*ReactDOM\.createRoot\s*\([^)]*\)\.render\s*\([\s\S]*?\)\s*;?\s*$/gm, '')
-      // root.render(<App />) — 常见的分步写法
-      .replace(/^\s*root\.render\s*\([\s\S]*?\)\s*;?\s*$/gm, '')
-      // document.getElementById('root') 独立赋值行（无害但冗余）
-      // 不移除，因为可能被其他代码引用
-      .trim();
-
-    // 处理 export default：支持多种形式
-    // 1. export default function Foo() {} → function Foo() {} \n const __VibeApp__ = Foo;
-    // 2. export default class Foo {} → class Foo {} \n const __VibeApp__ = Foo;
-    // 3. export default Foo; → const __VibeApp__ = Foo;
-    // 4. export default () => {} → const __VibeApp__ = () => {}
-    // 5. export default function() {} → const __VibeApp__ = function() {}
-
-    // 先处理 export default function/class 带名称的情况
-    // 保留原始声明（其他代码可能引用），再追加 __VibeApp__ 赋值
-    cleaned = cleaned.replace(
-      /^export\s+default\s+(function|class)\s+([A-Z][A-Za-z0-9_]*)\s*/m,
-      (_, keyword, name) => `${keyword} ${name} `
-    );
-    // 如果上面替换成功，追加 __VibeApp__ 赋值
-    const namedExportMatch = jsxCode.match(/^export\s+default\s+(?:function|class)\s+([A-Z][A-Za-z0-9_]*)/m);
-    if (namedExportMatch && !cleaned.includes('__VibeApp__')) {
-      cleaned += `\nconst __VibeApp__ = ${namedExportMatch[1]};`;
-    }
-
-    // 处理 export default 匿名函数/箭头函数/标识符
-    cleaned = cleaned
-      .replace(/^export\s+default\s+/m, 'const __VibeApp__ = ')
-      // 移除命名导出（export { xxx }）
-      .replace(/^export\s+\{[^}]*\}\s*;?\s*$/gm, '')
-      // 移除 export 关键字但保留声明（export const/function/class → const/function/class）
-      .replace(/^export\s+(const|let|var|function|class)\s+/gm, '$1 ');
-
-    // 如果没有 __VibeApp__，尝试从代码中推断组件名并追加赋值
-    if (!cleaned.includes('__VibeApp__')) {
-      // 匹配 const/function 声明的组件名（首字母大写）
-      const componentMatch = cleaned.match(/(?:const|function|class)\s+([A-Z][A-Za-z0-9_]*)\s*(?:=|\(|\{|extends)/m);
-      if (componentMatch) {
-        cleaned += `\nconst __VibeApp__ = ${componentMatch[1]};`;
-      }
-    }
-
-    const result = Babel.transform(cleaned, {
-      presets: ['react', 'typescript'],
-      filename: 'vibe-preview.tsx',
-    });
-
-    return { code: result.code ?? '', error: null };
-  } catch (err) {
-    return { code: null, error: err instanceof Error ? err.message : String(err) };
-  }
-};
 
 // ─── 构建 iframe HTML（内嵌 React + 编译后代码）────────────────────────────
 
@@ -152,6 +69,72 @@ export const buildReactIframeHtml = (compiledCode: string, options?: { runtimeAp
     window.addEventListener('unhandledrejection', function(e) {
       window.onerror && window.onerror(String(e.reason), '', 0, 0);
     });
+
+    // ── 导航拦截：防止 AI 生成的代码导致父页面刷新 ──────────────────────
+    // 锁定 window.location，阻止任何页面跳转
+    (function() {
+      // 拦截 window.open
+      window.open = function(url) {
+        console.warn('[Vibe] 已拦截 window.open:', url);
+        return null;
+      };
+
+      // 拦截 form submit
+      document.addEventListener('submit', function(e) { e.preventDefault(); }, true);
+
+      // 拦截 <a> 外链跳转（DOM ready 后处理）
+      var patchLinks = function() {
+        try {
+          var anchors = document.querySelectorAll('a[href]');
+          if (!anchors || !anchors.length) return;
+          anchors.forEach(function(a) {
+            try {
+              var href = a.getAttribute('href');
+              if (!href) return;
+              href = href.trim();
+              // 拦截绝对 URL、协议相对 URL、以及 / 开头的路径（会导致父页面跳转）
+              if (/^https?:\\/\\//i.test(href) || /^\\/\\//i.test(href) || /^\\/[^/]/i.test(href) || href === '/') {
+                a.removeAttribute('href');
+                a.style.cursor = 'pointer';
+                a.addEventListener('click', function(e) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  console.warn('[Vibe] 已拦截链接跳转:', href);
+                });
+              }
+            } catch(err) { /* 单个元素处理失败不影响其他 */ }
+          });
+        } catch(err) { /* patchLinks 整体异常兜底 */ }
+      };
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', patchLinks);
+      } else {
+        patchLinks();
+      }
+      // MutationObserver 监听动态添加的 <a> 标签
+      try {
+        var observer = new MutationObserver(function() { patchLinks(); });
+        if (document.body) {
+          observer.observe(document.body, { childList: true, subtree: true });
+        } else {
+          document.addEventListener('DOMContentLoaded', function() {
+            observer.observe(document.body, { childList: true, subtree: true });
+          });
+        }
+      } catch(e) { /* MutationObserver 不可用时忽略 */ }
+
+      // 拦截 history.pushState / replaceState（防止 React Router 等修改 URL）
+      try {
+        var _origPushState = history.pushState;
+        var _origReplaceState = history.replaceState;
+        history.pushState = function() {
+          console.warn('[Vibe] 已拦截 history.pushState');
+        };
+        history.replaceState = function() {
+          console.warn('[Vibe] 已拦截 history.replaceState');
+        };
+      } catch(e) { /* 忽略 */ }
+    })();
   <\/script>
 </head>
 <body>
@@ -171,27 +154,121 @@ export const buildReactIframeHtml = (compiledCode: string, options?: { runtimeAp
       const Fragment = React.Fragment;
 
       // ── API 代理/Mock 层 ──────────────────────────────────────────────
-      // runtimeApiBase 不为空时：将 /api/xxx 代理到 /api/vibe-runtime/{appId}/xxx（真实后端）
-      // runtimeApiBase 为空时：返回 mock 数据（后端未部署）
       const _originalFetch = window.fetch.bind(window);
       const _runtimeApiBase = '${runtimeApiBase}';
+      // 获取父页面 origin，用于将相对路径转为绝对 URL（Blob URL 环境中 fetch 无法解析相对路径）
+      var _parentOrigin = '';
+      try { _parentOrigin = window.parent.location.origin; } catch(e) { _parentOrigin = window.location.origin; }
+      // 如果 origin 是 blob: 或 null，回退到 location.ancestorOrigins 或空字符串
+      if (!_parentOrigin || _parentOrigin === 'null' || _parentOrigin.startsWith('blob:')) {
+        try { _parentOrigin = window.location.ancestorOrigins && window.location.ancestorOrigins[0] || ''; } catch(e) { _parentOrigin = ''; }
+      }
+      console.info('[Vibe iframe] _runtimeApiBase =', JSON.stringify(_runtimeApiBase), _runtimeApiBase ? '✅ 已部署模式' : '⚠️ Mock 模式', '| origin:', _parentOrigin);
+
+      // 将相对路径转为绝对 URL（解决 Blob URL 环境下 fetch 无法解析相对路径的问题）
+      var _toAbsoluteUrl = function(relativeUrl) {
+        if (!relativeUrl) return relativeUrl;
+        // 已经是绝对 URL，直接返回
+        if (/^https?:\\/\\//.test(relativeUrl)) return relativeUrl;
+        // 相对路径 → 拼接 origin
+        if (_parentOrigin) return _parentOrigin + relativeUrl;
+        return relativeUrl;
+      };
+
+      // 判断是否为 API 请求（需要代理/mock）
+      var _isApiRequest = function(url) {
+        if (url.startsWith('/api/')) return true;
+        if (/^\\/v\\d+\\//.test(url)) return true;
+        return false;
+      };
+
+      // 从 URL 中提取实体路径（去掉 /api/ 或 /v1/ 等前缀）
+      var _extractEntityPath = function(url) {
+        return url
+          .replace(/^\\/api\\//, '')
+          .replace(/^\\/v\\d+\\//, '');
+      };
+
+      // 包装 fetch 响应：确保 .json() 返回的数据中 data 字段始终是数组，并对错误状态打印日志
+      var _wrapApiResponse = function(fetchPromise) {
+        return fetchPromise.then(function(res) {
+          var origJson = res.json.bind(res);
+          res.json = function() {
+            return origJson().then(function(body) {
+              if (!res.ok) {
+                console.warn('[Vibe Runtime] API 返回错误:', res.status, body && body.message || '');
+              }
+              if (body && typeof body === 'object') {
+                if (body.data === undefined || body.data === null) body.data = [];
+                if (!Array.isArray(body.data) && typeof body.data !== 'object') body.data = [];
+                // 过滤掉数组中的 null/undefined 项（后端可能返回被删除的关联数据）
+                if (Array.isArray(body.data)) {
+                  body.data = body.data.filter(function(item) { return item != null; });
+                }
+              }
+              return body;
+            });
+          };
+          return res;
+        });
+      };
+
+      // 确保写操作（POST/PUT/PATCH）带有 Content-Type: application/json
+      var _ensureJsonHeaders = function(opts) {
+        if (!opts) opts = {};
+        var method = (opts.method || 'GET').toUpperCase();
+        if (method === 'POST' || method === 'PUT' || method === 'PATCH') {
+          if (!opts.headers) opts.headers = {};
+          // 如果没有设置 Content-Type，自动补充
+          var hasContentType = false;
+          if (opts.headers instanceof Headers) {
+            hasContentType = opts.headers.has('Content-Type');
+          } else if (typeof opts.headers === 'object') {
+            for (var key in opts.headers) {
+              if (key.toLowerCase() === 'content-type') { hasContentType = true; break; }
+            }
+          }
+          if (!hasContentType && opts.body && typeof opts.body === 'string') {
+            try { JSON.parse(opts.body); opts.headers['Content-Type'] = 'application/json'; } catch(e) { /* 非 JSON body，不补充 */ }
+          }
+          // 如果 body 是普通对象（非 FormData/Blob），自动 JSON.stringify
+          if (opts.body && typeof opts.body === 'object' && !(opts.body instanceof FormData) && !(opts.body instanceof Blob) && !(opts.body instanceof ArrayBuffer)) {
+            opts.body = JSON.stringify(opts.body);
+            if (!hasContentType) opts.headers['Content-Type'] = 'application/json';
+          }
+        }
+        return opts;
+      };
+
       window.fetch = function(url, opts) {
-        if (typeof url === 'string' && url.startsWith('/api/')) {
+        if (typeof url === 'string' && _isApiRequest(url)) {
           if (_runtimeApiBase) {
-            // 已部署模式：将 /api/users → /api/vibe-runtime/{appId}/users
-            var entityPath = url.replace(/^\\/api\\//, '');
-            var realUrl = _runtimeApiBase + '/' + entityPath;
+            var entityPath = _extractEntityPath(url);
+            var realUrl = _toAbsoluteUrl(_runtimeApiBase + '/' + entityPath);
+            opts = _ensureJsonHeaders(opts);
             console.info('[Vibe Runtime] 代理 API:', url, '→', realUrl);
-            return _originalFetch(realUrl, opts);
+            return _wrapApiResponse(_originalFetch(realUrl, opts));
           } else {
-            // 未部署模式：返回 mock 数据
             console.info('[Vibe Mock] 拦截 API 请求:', url, '→ 返回模拟数据');
-            var mockResponse = {
-              success: true,
-              data: [],
-              pagination: { page: 1, limit: 20, total: 0 },
-              message: 'Mock response - 后端 API 未部署'
-            };
+            var method = (opts && opts.method || 'GET').toUpperCase();
+            var mockResponse;
+            if (method === 'POST') {
+              var postBody = {};
+              try { postBody = JSON.parse(opts && opts.body || '{}'); } catch(e) {}
+              mockResponse = { success: true, data: Object.assign({ _id: 'mock_' + Date.now() }, postBody), message: '创建成功（Mock）' };
+            } else if (method === 'PUT' || method === 'PATCH') {
+              mockResponse = { success: true, data: {}, message: '更新成功（Mock）' };
+            } else if (method === 'DELETE') {
+              mockResponse = { success: true, message: '删除成功（Mock）' };
+            } else {
+              mockResponse = {
+                success: true,
+                data: [],
+                pagination: { page: 1, limit: 20, total: 0, pages: 0 },
+                total: 0,
+                message: 'Mock response - 后端 API 未部署'
+              };
+            }
             return Promise.resolve(new Response(JSON.stringify(mockResponse), {
               status: 200,
               headers: { 'Content-Type': 'application/json' }
@@ -201,24 +278,55 @@ export const buildReactIframeHtml = (compiledCode: string, options?: { runtimeAp
         return _originalFetch(url, opts);
       };
 
-      // ── axios mock（如果 AI 生成的代码使用了 axios）──────────────────────
-      window.axios = {
-        create: function() { return window.axios; },
-        get: function(url) { return window.fetch(url).then(function(r){ return r.json().then(function(d){ return {data:d}; }); }); },
-        post: function(url, body) { return window.fetch(url, {method:'POST',body:JSON.stringify(body)}).then(function(r){ return r.json().then(function(d){ return {data:d}; }); }); },
-        put: function(url, body) { return window.fetch(url, {method:'PUT',body:JSON.stringify(body)}).then(function(r){ return r.json().then(function(d){ return {data:d}; }); }); },
-        delete: function(url) { return window.fetch(url, {method:'DELETE'}).then(function(r){ return r.json().then(function(d){ return {data:d}; }); }); },
-        defaults: { baseURL: '', headers: { common: {} } },
-        interceptors: { request: { use: function(){} }, response: { use: function(){} } }
-      };
+      // ── axios mock ──────────────────────────────────────────────────────
+      var _createAxiosInstance = function(config) {
+        var _baseURL = (config && config.baseURL) || '';
+        if (_baseURL.endsWith('/')) _baseURL = _baseURL.slice(0, -1);
 
-      // ── 常用库 mock（防止 AI 生成的代码引用未加载的库报错）──────────────
+        var _resolveUrl = function(url) {
+          if (!url) return _toAbsoluteUrl(_baseURL || '/');
+          if (url.startsWith('http')) return url;
+          if (url.startsWith('/api/') && !_baseURL) return _toAbsoluteUrl(url);
+          if (url.startsWith('/')) return _toAbsoluteUrl(_baseURL + url);
+          return _toAbsoluteUrl(_baseURL + '/' + url);
+        };
+
+        var instance = {
+          defaults: { baseURL: _baseURL, headers: { common: {} } },
+          interceptors: { request: { use: function(){} }, response: { use: function(){} } },
+          create: _createAxiosInstance,
+          get: function(url, config) {
+            var fullUrl = _resolveUrl(url);
+            var params = config && config.params;
+            if (params) {
+              var qs = new URLSearchParams(params).toString();
+              fullUrl += (fullUrl.includes('?') ? '&' : '?') + qs;
+            }
+            return window.fetch(fullUrl).then(function(r){ return r.json().then(function(d){ return {data:d, status: r.status}; }); });
+          },
+          post: function(url, body) {
+            return window.fetch(_resolveUrl(url), {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)}).then(function(r){ return r.json().then(function(d){ return {data:d, status: r.status}; }); });
+          },
+          put: function(url, body) {
+            return window.fetch(_resolveUrl(url), {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)}).then(function(r){ return r.json().then(function(d){ return {data:d, status: r.status}; }); });
+          },
+          patch: function(url, body) {
+            return window.fetch(_resolveUrl(url), {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)}).then(function(r){ return r.json().then(function(d){ return {data:d, status: r.status}; }); });
+          },
+          delete: function(url) {
+            return window.fetch(_resolveUrl(url), {method:'DELETE'}).then(function(r){ return r.json().then(function(d){ return {data:d, status: r.status}; }); });
+          },
+        };
+        return instance;
+      };
+      window.axios = _createAxiosInstance({});
+
+      // ── 常用库 mock ──────────────────────────────────────────────────────
       if (!window.antd) window.antd = new Proxy({}, { get: function(t,p) { return function() { return null; }; } });
       if (!window.dayjs) window.dayjs = function(d) { var _d = d ? new Date(d) : new Date(); return { format: function(f) { return _d.toLocaleDateString(); }, toDate: function() { return _d; }, isValid: function() { return true; } }; };
       if (!window.moment) window.moment = window.dayjs;
 
       // 拦截 AI 代码中可能残留的 ReactDOM.render / createRoot 调用
-      // 防止 AI 代码自行渲染导致与模板渲染入口冲突
       var _noop = function() {
         console.warn('[Vibe] 已拦截 AI 代码中的 ReactDOM.render/createRoot 调用，渲染由模板统一管理');
         return { render: function(){}, unmount: function(){} };
@@ -229,9 +337,58 @@ export const buildReactIframeHtml = (compiledCode: string, options?: { runtimeAp
       ReactDOM.render = function() { _noop(); };
 
       try {
-        // Babel 编译可能生成 CommonJS 风格的 exports 对象
+        // esbuild 编译后可能生成 CommonJS 风格的 exports 对象
         var exports = {};
         var module = { exports: exports };
+
+        // ── 全局防御：patch React.createElement 自动修复 undefined data 和非法 style ──
+        var _origCreateElement = React.createElement;
+        React.createElement = function(type, props) {
+          if (props) {
+            var needPatch = false;
+            // 修复 style 属性：数组 → 合并为对象，非对象 → 清空
+            if (props.style !== undefined && props.style !== null) {
+              if (Array.isArray(props.style)) {
+                needPatch = true;
+              } else if (typeof props.style !== 'object') {
+                needPatch = true;
+              }
+            }
+            // 修复 undefined/null 的 data/dataSource/items（仅函数组件）
+            if (typeof type === 'function') {
+              if (props.data === undefined || props.data === null) needPatch = true;
+              if (props.dataSource === undefined || props.dataSource === null) needPatch = true;
+              if (props.items === undefined || props.items === null) needPatch = true;
+            }
+            if (needPatch) {
+              var newProps = {};
+              for (var k in props) { if (props.hasOwnProperty(k)) newProps[k] = props[k]; }
+              // 修复 style
+              if (Array.isArray(newProps.style)) {
+                var merged = {};
+                for (var si = 0; si < newProps.style.length; si++) {
+                  var s = newProps.style[si];
+                  if (s && typeof s === 'object') {
+                    for (var sk in s) { if (s.hasOwnProperty(sk)) merged[sk] = s[sk]; }
+                  }
+                }
+                newProps.style = merged;
+              } else if (newProps.style !== undefined && newProps.style !== null && typeof newProps.style !== 'object') {
+                newProps.style = {};
+              }
+              // 修复 data/dataSource/items
+              if (typeof type === 'function') {
+                if (newProps.data === undefined || newProps.data === null) newProps.data = [];
+                if (newProps.dataSource === undefined || newProps.dataSource === null) newProps.dataSource = [];
+                if (newProps.items === undefined || newProps.items === null) newProps.items = [];
+              }
+              var args = [type, newProps];
+              for (var i = 2; i < arguments.length; i++) args.push(arguments[i]);
+              return _origCreateElement.apply(React, args);
+            }
+          }
+          return _origCreateElement.apply(React, arguments);
+        };
 
         ${compiledCode}
 
@@ -242,7 +399,7 @@ export const buildReactIframeHtml = (compiledCode: string, options?: { runtimeAp
         // 尝试找到默认导出的组件
         var __VibeRoot__ = (typeof __VibeApp__ !== 'undefined') ? __VibeApp__ : null;
 
-        // 处理 Babel 编译后的 exports.default 格式
+        // 处理编译后的 exports.default 格式
         if (!__VibeRoot__ && exports && exports.default) {
           __VibeRoot__ = exports.default;
         }
@@ -250,37 +407,104 @@ export const buildReactIframeHtml = (compiledCode: string, options?: { runtimeAp
           __VibeRoot__ = module.exports;
         }
 
-        // 如果 __VibeRoot__ 是对象（而非函数），尝试取 .default 属性
-        if (__VibeRoot__ && typeof __VibeRoot__ === 'object' && __VibeRoot__.default) {
-          __VibeRoot__ = __VibeRoot__.default;
-        }
-
-        // 降级：扫描所有局部变量，找首字母大写的函数/类组件
-        if (!__VibeRoot__) {
-          var __candidates__ = [typeof App !== 'undefined' && App, typeof Main !== 'undefined' && Main, typeof Page !== 'undefined' && Page, typeof Dashboard !== 'undefined' && Dashboard, typeof AdminDashboard !== 'undefined' && AdminDashboard, typeof Counter !== 'undefined' && Counter, typeof Home !== 'undefined' && Home, typeof Layout !== 'undefined' && Layout, typeof AdminPanel !== 'undefined' && AdminPanel, typeof ManagementSystem !== 'undefined' && ManagementSystem, typeof EcommerceDashboard !== 'undefined' && EcommerceDashboard, typeof OrderManagement !== 'undefined' && OrderManagement, typeof ProductManagement !== 'undefined' && ProductManagement, typeof UserManagement !== 'undefined' && UserManagement].filter(Boolean);
-          __VibeRoot__ = __candidates__[0] || null;
-        }
-
-        // 最终校验：确保 __VibeRoot__ 是函数（React 组件）
-        if (__VibeRoot__ && typeof __VibeRoot__ === 'object' && !__VibeRoot__.$$typeof) {
-          // 可能是 { default: Component } 或其他包装对象，尝试取第一个函数属性
-          var _keys = Object.keys(__VibeRoot__);
-          for (var _i = 0; _i < _keys.length; _i++) {
-            if (typeof __VibeRoot__[_keys[_i]] === 'function') {
-              __VibeRoot__ = __VibeRoot__[_keys[_i]];
+        // ── 类型解包：处理 array / object 包装 ──────────────────────────
+        if (Array.isArray(__VibeRoot__)) {
+          console.warn('[Vibe] __VibeRoot__ 是数组，尝试取第一个函数元素');
+          for (var _ai = 0; _ai < __VibeRoot__.length; _ai++) {
+            if (typeof __VibeRoot__[_ai] === 'function') {
+              __VibeRoot__ = __VibeRoot__[_ai];
               break;
+            }
+          }
+          if (Array.isArray(__VibeRoot__)) __VibeRoot__ = null;
+        }
+
+        if (__VibeRoot__ && typeof __VibeRoot__ === 'object' && !Array.isArray(__VibeRoot__)) {
+          if (__VibeRoot__.default) {
+            __VibeRoot__ = __VibeRoot__.default;
+          } else if (__VibeRoot__.$$typeof) {
+            // 已经是 React 元素，保持不变
+          } else {
+            var _keys = Object.keys(__VibeRoot__);
+            for (var _oi = 0; _oi < _keys.length; _oi++) {
+              if (typeof __VibeRoot__[_keys[_oi]] === 'function') {
+                __VibeRoot__ = __VibeRoot__[_keys[_oi]];
+                break;
+              }
             }
           }
         }
 
-        if (!__VibeRoot__ || (typeof __VibeRoot__ !== 'function' && typeof __VibeRoot__ !== 'object')) {
-          throw new Error('未找到可渲染的 React 组件，请确保有 export default 的组件');
+        // 降级：扫描所有局部变量，找首字母大写的函数/类组件
+        if (!__VibeRoot__ || (typeof __VibeRoot__ !== 'function' && !(__VibeRoot__ && __VibeRoot__.$$typeof))) {
+          var __candidates__ = [typeof App !== 'undefined' && App, typeof Main !== 'undefined' && Main, typeof Page !== 'undefined' && Page, typeof Dashboard !== 'undefined' && Dashboard, typeof AdminDashboard !== 'undefined' && AdminDashboard, typeof Counter !== 'undefined' && Counter, typeof Home !== 'undefined' && Home, typeof Layout !== 'undefined' && Layout, typeof AdminPanel !== 'undefined' && AdminPanel, typeof ManagementSystem !== 'undefined' && ManagementSystem, typeof EcommerceDashboard !== 'undefined' && EcommerceDashboard, typeof OrderManagement !== 'undefined' && OrderManagement, typeof ProductManagement !== 'undefined' && ProductManagement, typeof UserManagement !== 'undefined' && UserManagement, typeof SystemManagement !== 'undefined' && SystemManagement, typeof BackendManagement !== 'undefined' && BackendManagement, typeof AdminSystem !== 'undefined' && AdminSystem].filter(function(c) { return typeof c === 'function'; });
+          if (__candidates__.length > 0) {
+            __VibeRoot__ = __candidates__[0];
+            console.info('[Vibe] 降级使用候选组件:', __VibeRoot__.name || __VibeRoot__);
+          }
         }
 
+        // 最终二次校验
+        if (Array.isArray(__VibeRoot__)) {
+          throw new Error('组件解析结果为数组，无法渲染。请确保 export default 导出的是单个 React 组件。');
+        }
+        if (!__VibeRoot__ || (typeof __VibeRoot__ !== 'function' && !(typeof __VibeRoot__ === 'object' && __VibeRoot__.$$typeof))) {
+          throw new Error('未找到可渲染的 React 组件（类型: ' + typeof __VibeRoot__ + '），请确保有 export default 的组件');
+        }
+
+        // ── React Error Boundary（类组件，防止运行时错误白屏）──────────
+        var VibeErrorBoundary = (function() {
+          // 使用 class 语法确保 React 能正确识别 getDerivedStateFromError
+          // 手动原型链继承在某些 React 版本中无法正确绑定 static 方法
+          function EB(props) {
+            // 调用父类构造函数
+            React.Component.call(this, props);
+            this.state = { hasError: false, error: null };
+          }
+          EB.prototype = Object.create(React.Component.prototype);
+          EB.prototype.constructor = EB;
+          // React 通过检查 constructor.getDerivedStateFromError 来判断是否为 Error Boundary
+          // 同时也需要 componentDidCatch 作为兜底
+          EB.getDerivedStateFromError = function(error) {
+            return { hasError: true, error: error };
+          };
+          EB.prototype.componentDidCatch = function(error, info) {
+            console.error('[Vibe ErrorBoundary]', error, info);
+            // getDerivedStateFromError 可能未被调用（某些 React 版本的兼容性问题）
+            // 在 componentDidCatch 中也设置 state 作为兜底
+            this.setState({ hasError: true, error: error });
+            // 同时显示到错误条
+            if (typeof window.onerror === 'function') {
+              window.onerror(error.message || String(error), '', 0, 0);
+            }
+          };
+          EB.prototype.render = function() {
+            if (this.state.hasError) {
+              var errMsg = this.state.error ? (this.state.error.message || String(this.state.error)) : '未知错误';
+              return _origCreateElement('div', {
+                style: { padding: '24px', color: '#f87171', fontFamily: 'monospace', fontSize: '13px', background: '#1a0a0a', minHeight: '100vh' }
+              },
+                _origCreateElement('strong', null, '⚠ 运行时错误'),
+                _origCreateElement('br'),
+                _origCreateElement('span', null, errMsg),
+                _origCreateElement('br'),
+                _origCreateElement('br'),
+                _origCreateElement('span', { style: { color: '#94a3b8', fontSize: '11px' } }, '提示：这通常是 AI 生成的代码存在问题，请尝试重新生成或修改提示词。')
+              );
+            }
+            return this.props.children;
+          };
+          return EB;
+        })();
+
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(React.createElement(__VibeRoot__));
+        root.render(_origCreateElement(VibeErrorBoundary, null, React.createElement(__VibeRoot__)));
       } catch(e) {
-        window.onerror(e.message || String(e), '', 0, 0);
+        if (typeof window.onerror === 'function') {
+          window.onerror(e.message || String(e), '', 0, 0);
+        } else {
+          console.error('[Vibe] 渲染错误:', e);
+        }
         document.getElementById('root').innerHTML =
           '<div style="padding:24px;color:#f87171;font-family:monospace;font-size:13px;">' +
           '<strong>渲染错误</strong><br/>' + (e.message || String(e)) + '</div>';
@@ -297,22 +521,16 @@ const ReactPreview = ({ jsx, lang = 'zh', className = '', runtimeApiBase }: Reac
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [compileError, setCompileError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  // 缓存编译结果，避免 runtimeApiBase 变化时重复编译
+  const compiledCodeRef = useRef<string | null>(null);
+  const lastJsxRef = useRef<string>('');
+  const lastApiBaseRef = useRef<string>('');
+  // 用于取消过期的异步编译任务
+  const compileIdRef = useRef(0);
 
-  const renderJsx = useCallback((jsxCode: string) => {
-    if (!jsxCode.trim()) return;
-
-    setIsLoading(true);
-    setCompileError(null);
-
-    const result = compileJsx(jsxCode);
-
-    if (result.error) {
-      setCompileError(result.error);
-      setIsLoading(false);
-      return;
-    }
-
-    const html = buildReactIframeHtml(result.code!, { runtimeApiBase });
+  /** 将编译后的代码写入 iframe */
+  const writeToIframe = useCallback((compiledCode: string, apiBase?: string) => {
+    const html = buildReactIframeHtml(compiledCode, { runtimeApiBase: apiBase });
     const blob = new Blob([html], { type: 'text/html; charset=utf-8' });
 
     if (iframeRef.current) {
@@ -320,11 +538,77 @@ const ReactPreview = ({ jsx, lang = 'zh', className = '', runtimeApiBase }: Reac
       if (prevSrc?.startsWith('blob:')) URL.revokeObjectURL(prevSrc);
       iframeRef.current.src = URL.createObjectURL(blob);
     }
-  }, [runtimeApiBase]);
+  }, []);
 
+  /**
+   * 统一的渲染 effect：
+   * - jsx 变化 → 重新编译（异步）+ 渲染
+   * - runtimeApiBase 变化（且已有编译结果）→ 只重建 HTML（不重新编译）
+   */
   useEffect(() => {
-    renderJsx(jsx);
-  }, [jsx, renderJsx]);
+    if (!jsx.trim()) {
+      console.info('[ReactPreview] jsx 为空，跳过渲染。runtimeApiBase:', runtimeApiBase || '(空)');
+      return;
+    }
+
+    const apiBase = runtimeApiBase || '';
+    const jsxChanged = jsx !== lastJsxRef.current;
+    const apiBaseChanged = apiBase !== lastApiBaseRef.current;
+
+    console.info('[ReactPreview] useEffect 触发:', {
+      jsxChanged,
+      apiBaseChanged,
+      apiBase: apiBase || '(空)',
+      jsxLen: jsx.length,
+      hasCachedCode: !!compiledCodeRef.current,
+    });
+
+    // 如果 jsx 和 apiBase 都没变，跳过
+    if (!jsxChanged && !apiBaseChanged && compiledCodeRef.current) return;
+
+    // 如果只有 apiBase 变了，且已有编译结果，直接重建 HTML
+    if (!jsxChanged && apiBaseChanged && compiledCodeRef.current) {
+      console.info('[ReactPreview] runtimeApiBase 变化，重建 iframe:', apiBase);
+      lastApiBaseRef.current = apiBase;
+      setIsLoading(true);
+      writeToIframe(compiledCodeRef.current, apiBase);
+      return;
+    }
+
+    // jsx 变了，需要重新编译（异步）
+    setIsLoading(true);
+    setCompileError(null);
+
+    // 递增编译 ID，用于取消过期的编译任务
+    const currentCompileId = ++compileIdRef.current;
+
+    compileJsx(jsx).then((result) => {
+      // 如果编译 ID 已过期（用户在编译期间又修改了代码），丢弃结果
+      if (currentCompileId !== compileIdRef.current) {
+        console.info('[ReactPreview] 编译结果已过期，丢弃');
+        return;
+      }
+
+      if (result.error) {
+        setCompileError(result.error);
+        setIsLoading(false);
+        compiledCodeRef.current = null;
+        return;
+      }
+
+      console.info('[ReactPreview] esbuild 编译完成，runtimeApiBase:', apiBase || '(空，将使用 Mock)');
+      lastJsxRef.current = jsx;
+      lastApiBaseRef.current = apiBase;
+      compiledCodeRef.current = result.code;
+      writeToIframe(result.code!, apiBase);
+    }).catch((err) => {
+      if (currentCompileId !== compileIdRef.current) return;
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('[ReactPreview] 编译异常:', message);
+      setCompileError(message);
+      setIsLoading(false);
+    });
+  }, [jsx, runtimeApiBase, writeToIframe]);
 
   return (
     <div className={`relative w-full h-full ${className}`}>

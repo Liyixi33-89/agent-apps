@@ -17,8 +17,10 @@
 import Router from '@koa/router';
 import { SystemPrompt } from '../models/SystemPrompt.js';
 import type { ISystemPrompt } from '../models/SystemPrompt.js';
+import { VibeTemplate } from '../models/VibeTemplate.js';
 import { env } from '../config/env.js';
 import { streamWithContinuation } from '../lib/llmUtils.js';
+import { deployAppBackend } from './vibeAppRuntime.js';
 
 export const vibeFullStackPipelineRouter = new Router();
 
@@ -138,7 +140,7 @@ const FS_BACKEND_ENGINEER_PROMPT = `你是一个资深 Node.js 后端工程师�
 
 请直接输出所有后端代码文件，不要输出解释文字。`;
 
-const FS_FRONTEND_ENGINEER_PROMPT = `你是一个资深 React 前端工程师，专精于 React + TypeScript。
+const FS_FRONTEND_ENGINEER_PROMPT = `你是一个资深 React 前端工程师，专精于 React 18 + 纯 CSS 内联样式。
 请根据需求分析和 API 接口清单，生成完整的前端 React 页面代码。
 
 【输出格式要求】
@@ -147,64 +149,99 @@ const FS_FRONTEND_ENGINEER_PROMPT = `你是一个资深 React 前端工程师，
 // 完整的 React 前端代码（单文件，包含所有页面和组件）
 \`\`\`
 
-【代码规范 - 必须严格遵守】
-1. 使用 React 函数组件 + Hooks（useState、useEffect、useCallback）
-2. 使用原生 CSS 进行样式设计（通过内联 style 对象或组件内定义 styles 常量）
-3. 样式要精致美观、现代化，注重间距、圆角、阴影、配色
-4. 组件必须默认导出（export default）
-5. 禁止 import React（使用 React 17+ 新 JSX 转换）
-6. 禁止 import 外部库（只能使用 React 内置 Hooks）
-7. 禁止使用 import 语句（所有依赖通过全局变量获取）
-8. 代码必须完整可运行，不能有省略或占位符
+【⚠️ 代码长度限制 - 最高优先级】
+你的输出 token 有限，必须用最紧凑的方式写完所有模块。关键策略：
+1. **使用 CRUD 页面工厂**：写一个通用的 CrudPage 组件，接收 columns/fields/apiName 配置，自动生成完整 CRUD 页面
+2. **每个模块只需一行配置**：如 <CrudPage apiName="order" columns={orderColumns} fields={orderFields} />
+3. **绝对不要为每个模块重复写 CRUD 逻辑**，这是代码被截断的主要原因
+4. 变量名可以适当缩短（如 s 代替 styles），样式对象用展开运算符复用
+5. 不要写注释，不要写空行，代码越短越好
 
-【API 调用规范 - 极其重要】
-1. 必须使用 fetch 调用后端 API（路径以 /api/ 开头）
-2. 每个 CRUD 操作都必须有对应的 fetch 调用函数
-3. API 调用函数统一放在组件顶部，格式如下：
-   const api = {
-     getList: (params) => fetch('/api/模块名?' + new URLSearchParams(params)).then(r => r.json()),
-     getById: (id) => fetch('/api/模块名/' + id).then(r => r.json()),
-     create: (data) => fetch('/api/模块名', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) }).then(r => r.json()),
-     update: (id, data) => fetch('/api/模块名/' + id, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) }).then(r => r.json()),
-     remove: (id) => fetch('/api/模块名/' + id, { method: 'DELETE' }).then(r => r.json()),
-   };
-4. 在 useEffect 中调用 API 加载数据，处理 loading 和 error 状态
-5. 同时内置一份 MOCK_DATA 作为降级数据，当 API 返回空数组时使用 mock 数据展示
-6. 示例模式：
-   const [data, setData] = useState(MOCK_DATA); // 初始用 mock 数据
-   const [loading, setLoading] = useState(false);
-   useEffect(() => {
-     setLoading(true);
-     api.getList({ page: 1, limit: 20 })
-       .then(res => {
-         if (res.success && res.data && res.data.length > 0) setData(res.data);
-         // 如果 API 返回空数据，保持 mock 数据
-       })
-       .catch(() => { /* API 未部署时静默降级到 mock 数据 */ })
-       .finally(() => setLoading(false));
-   }, []);
+【架构设计 - 极其重要】
+必须严格按照以下架构，确保代码紧凑且所有模块完整：
 
-【页面结构要求】
-1. 侧边栏导航：根据菜单配置生成，支持一级/二级菜单
-2. 顶部栏：应用名称、用户信息、退出按钮
-3. 内容区：根据当前路由渲染对应页面
-4. 每个 CRUD 页面必须包含：
-   - 数据表格（带分页、搜索、筛选）
-   - 新增/编辑弹窗（表单验证）
-   - 删除确认弹窗
-   - 状态标签（不同状态不同颜色）
-   - 操作按钮（编辑、删除、查看详情）
-5. MOCK_DATA 至少 8 条，字段与后端 Model 完全一致
+\`\`\`
+// 1. 样式常量（一个 S 对象包含所有样式）
+const S = { bg:'#0f172a', card:'#1e293b', border:'#334155', primary:'#7c3aed', ... };
 
-【UI 设计要求】
-1. 深色主题，配色协调美观
-2. 表格行悬停高亮
-3. 按钮有 hover 效果
-4. 弹窗有遮罩和动画
-5. 加载状态有 loading 指示器
-6. 空数据有友好提示
+// 2. API 工厂函数（一个函数生成所有 CRUD 方法）
+const api = (name) => ({ list:(p)=>fetch(...), create:(d)=>fetch(...), update:(id,d)=>fetch(...), del:(id)=>fetch(...) });
 
-请直接输出完整的 React 组件代码，不要输出解释文字。`;
+// 3. 通用组件（Table, Modal, Pagination）— 所有页面复用
+const Table = ({columns, data, onEdit, onDel}) => ...;
+const Modal = ({show, title, onClose, children, onOk}) => ...;
+const Pagination = ({page, total, onChange}) => ...;
+
+// 4. ⭐ CrudPage 工厂组件（核心！接收配置自动生成完整 CRUD 页面）
+const CrudPage = ({apiName, title, columns, fields, mockData}) => {
+  // 内置：列表查询、搜索、分页、新增弹窗、编辑弹窗、删除确认
+  // 所有 CRUD 逻辑只写一次！
+};
+
+// 5. 各模块配置（每个模块只需定义 columns 和 fields）
+const orderColumns = [...]; const orderFields = [...];
+const productColumns = [...]; const productFields = [...];
+// ... 其他模块
+
+// 6. App 主组件（侧边栏 + 页面切换）
+const App = () => {
+  const [page, setPage] = useState('order');
+  const pages = { order: <CrudPage apiName="order" .../>, product: <CrudPage .../>, ... };
+  return <div>侧边栏 + {pages[page]}</div>;
+};
+export default App;
+\`\`\`
+
+【CrudPage 工厂组件 - 必须实现的功能】
+CrudPage 接收以下 props：
+- apiName: string — API 实体名（如 'order'）
+- title: string — 页面标题
+- columns: Array<{key, label, render?}> — 表格列配置
+- fields: Array<{key, label, type, options?}> — 表单字段配置（type: 'text'|'number'|'select'|'textarea'）
+- mockData?: Array — 降级 mock 数据（至少 3 条）
+
+CrudPage 内部自动实现：
+a. 列表查询 + 搜索 + 分页
+b. 新增弹窗 + 表单
+c. 编辑弹窗 + 数据回填
+d. 删除确认
+e. API 失败时降级到 mockData
+
+【⚠️ 防御性编程 - 极其重要】
+所有从 API 获取的数据必须做防御性处理：
+1. fetch 返回的 data 可能是 undefined/null，必须用 || [] 兜底
+2. 示例：const list = (res.data || []);  // 而不是直接 res.data.map(...)
+3. Table 组件的 data prop 必须有默认值：const Table = ({columns, data = [], ...}) => ...
+4. 分页的 total 也要兜底：const total = res.pagination?.total || res.total || 0;
+5. 所有 .map() 调用前必须确保目标是数组：(Array.isArray(data) ? data : []).map(...)
+
+【代码规范】
+1. React 函数组件 + Hooks
+2. 原生 CSS 内联样式（style 对象），禁止 className
+3. 深色主题，配色美观
+4. export default App
+5. 【极其重要】确保所有括号（圆括号、花括号、方括号）严格配对闭合，尤其是多层嵌套的 React.createElement 调用和箭头函数。每个 ( 必须有对应的 )，每个 { 必须有对应的 }，每个 [ 必须有对应的 ]。括号不匹配会导致编译失败。
+
+【禁止事项】
+- ❌ 禁止 import/require 语句
+- ❌ 禁止外部库（antd、axios、lodash 等）
+- ❌ 禁止 className
+- ❌ 禁止 React Router（用 state 切换）
+- ❌ 禁止为每个模块重复写 CRUD 逻辑（必须用 CrudPage 工厂）
+
+【API 路径格式】
+fetch('/api/' + apiName + '?page=1&limit=20')
+fetch('/api/' + apiName, {method:'POST', ...})
+fetch('/api/' + apiName + '/' + id, {method:'PUT', ...})
+fetch('/api/' + apiName + '/' + id, {method:'DELETE'})
+
+【UI 设计】
+1. 深色主题（#0f172a / #1e293b / #334155）
+2. 主色调紫色（#7c3aed）
+3. 左侧边栏 + 顶部栏 + 内容区
+4. 表格行悬停高亮，按钮有 hover 效果
+
+请直接输出完整代码，不要解释。`;
 
 const FS_PERMISSION_ARCHITECT_PROMPT = `你是一个权限系统架构师，专精于 RBAC（基于角色的访问控制）。
 请根据需求分析，生成完整的菜单和权限配置。
@@ -267,95 +304,73 @@ const FS_PERMISSION_ARCHITECT_PROMPT = `你是一个权限系统架构师，专�
 
 const FS_REVIEWER_PROMPT = `你是一个全栈代码质检专家，负责审查和修复全栈项目的所有代码。
 
-【审查范围】
-你将收到以下代码：
-1. 数据库 Model 代码（Mongoose）
-2. 后端路由和 Service 代码（Koa）
-3. 前端 React 组件代码
-4. 权限配置 JSON
+【⚠️ 最高优先级 — 代码长度控制】
+你的输出 token 有限！请遵循以下原则：
+1. **前端代码如果基本完整，直接原样输出**，不要重写
+2. 只修复明确的 bug（如 import 语句、className 使用、API 路径错误）
+3. 后端代码同理，只修复问题，不要重构
+4. 如果代码已经正确，直接复制粘贴原代码到对应代码块中
 
-【检查项目 - 必须逐项执行】
+【审查清单 — 快速检查】
 
-一、安全审查（最高优先级）：
-1. 密码是否使用 bcrypt 加密
-2. 是否有 SQL/NoSQL 注入风险
-3. 是否有 XSS 风险（前端输出是否转义）
-4. 敏感路由是否有认证中间件
-5. 分页 limit 是否有上限限制
-6. 文件上传是否有类型和大小限制
+一、前端硬性规则（违反必修复）：
+- ❌ 有 import/require 语句 → 删除
+- ❌ 有 className → 改为 style
+- ❌ 用了 axios → 改为 fetch
+- ❌ 缺少 export default → 补上
+- ❌ 缺少 CRUD 功能 → 补全（使用 CrudPage 工厂模式）
+- ❌ data.map() 没有防御 → 改为 (data || []).map() 或 (Array.isArray(data) ? data : []).map()
+- ❌ 直接使用 res.data 没有兜底 → 改为 (res.data || [])
+- ❌ 括号不匹配（圆括号/花括号/方括号未正确闭合）→ 逐行检查并修复，尤其是多层嵌套的 React.createElement 和箭头函数
 
-二、代码完整性：
-1. 所有 CRUD 操作是否完整实现
-2. 前后端 API 路径是否一致
-3. 数据库字段与前端表单字段是否匹配
-4. 权限配置是否覆盖所有路由
+二、API 路径一致性：
+- 前端 fetch 路径以 /api/ 开头
+- 实体名小写（/api/order、/api/product）
 
-三、代码质量：
-1. TypeScript 类型是否完整
-2. 错误处理是否完善
-3. 是否有未使用的变量或导入
-4. 命名是否规范（camelCase 变量、PascalCase 组件）
+三、后端检查：
+- 路由有认证中间件
+- 密码 bcrypt 加密
+- 分页 limit 上限 100
 
-四、前端专项（极其重要）：
-1. React 组件是否使用函数组件 + Hooks
-2. 样式是否使用内联 style 对象
-3. 是否有 key prop 缺失
-4. 事件处理函数是否以 handle 前缀命名
-5. **禁止 import 语句**：前端代码中不能有任何 import 语句（代码运行在浏览器 script 标签中）
-6. **禁止 require 语句**
-7. **禁止引用外部库**（antd、axios、lodash、moment 等都不能用）
-8. **必须使用 fetch 调用 API**：每个 CRUD 操作都必须有对应的 fetch('/api/xxx') 调用
-9. **必须内置 MOCK_DATA**：作为 API 未部署时的降级数据
+【输出格式 — 每个文件一个代码块】
 
-【输出要求】
-按以下格式输出修复后的完整代码（每个文件一个代码块）：
-
-数据库代码：
 \`\`\`typescript:models/ALL_MODELS
-// 所有 Model 代码合并输出
+// Model 代码（如无修改，原样输出）
 \`\`\`
 
-后端路由代码：
 \`\`\`typescript:routes/ALL_ROUTES
-// 所有路由代码合并输出
+// 路由代码
 \`\`\`
 
-后端 Service 代码：
 \`\`\`typescript:services/ALL_SERVICES
-// 所有 Service 代码合并输出
+// Service 代码
 \`\`\`
 
-中间件代码：
 \`\`\`typescript:middleware/ALL_MIDDLEWARE
-// 所有中间件代码合并输出
+// 中间件代码
 \`\`\`
 
-环境变量模板：
 \`\`\`env:.env.template
 // 环境变量
 \`\`\`
 
-前端代码：
 \`\`\`jsx
-// 完整的 React 前端代码（禁止 import 语句）
+// 前端 React 代码（⚠️ 如果原代码基本正确，直接原样输出！不要重写！）
 \`\`\`
 
-菜单配置：
 \`\`\`json:menus.json
 // 菜单配置
 \`\`\`
 
-权限配置：
 \`\`\`json:permissions.json
 // 权限配置
 \`\`\`
 
-角色配置：
 \`\`\`json:roles.json
 // 角色配置
 \`\`\`
 
-如果代码已经完整正确，直接原样输出。不要输出任何解释文字，只输出代码块。`;
+只输出代码块，不要输出解释文字。`;
 
 // =============================================================================
 // § 7d-b  工具函数
@@ -548,11 +563,11 @@ vibeFullStackPipelineRouter.post('/vibe/fullstack-pipeline', async (ctx) => {
   send({ type: 'start' });
 
   // 上下文长度限制（Ollama 本地模型上下文窗口有限）
-  const MAX_ANALYSIS_CHARS = 3000;   // 需求分析最大字符数
-  const MAX_DB_CHARS = 4000;         // 数据库 Schema 最大字符数
-  const MAX_BACKEND_CHARS = 5000;    // 后端代码最大字符数
-  const MAX_FRONTEND_CHARS = 5000;   // 前端代码最大字符数
-  const MAX_PERMISSION_CHARS = 2000; // 权限配置最大字符数
+    const MAX_ANALYSIS_CHARS = 3000;   // 需求分析最大字符数
+    const MAX_DB_CHARS = 4000;         // 数据库 Schema 最大字符数
+    const MAX_BACKEND_CHARS = 6000;    // 后端代码最大字符数
+    const MAX_FRONTEND_CHARS = 8000;   // 前端代码最大字符数（增大以保留更多页面）
+    const MAX_PERMISSION_CHARS = 2000; // 权限配置最大字符数
   const STEP_TIMEOUT = 300_000;      // 每步超时 5 分钟
 
   const stepHeartbeat = () => send({ type: 'heartbeat' });
@@ -648,26 +663,20 @@ ${truncateText(analysisResult, MAX_ANALYSIS_CHARS)}
 【后端 API 代码（参考接口路径和数据结构）】
 ${truncateText(backendResult, MAX_BACKEND_CHARS)}
 
-【强制要求 - 必须严格遵守】
-- 使用 React 函数组件 + Hooks
-- 使用原生 CSS 内联样式（style 对象），禁止使用 Tailwind/className
-- 每个 CRUD 页面都必须完整实现（表格+弹窗+搜索+分页）
-- 侧边栏导航根据模块自动生成
-- 深色主题，配色美观
-- 代码必须完整，不能有 TODO 或省略号
-- 组件必须默认导出（export default）
+【⚠️ 最重要的要求 — 使用 CrudPage 工厂模式】
+你必须写一个通用的 CrudPage 组件，内置完整的 CRUD 逻辑（列表、搜索、分页、新增、编辑、删除）。
+然后每个模块只需传入 columns/fields/apiName 配置即可，不要为每个模块重复写 CRUD 代码！
+这是确保所有模块都能完整生成的关键策略。
 
-【API 调用 - 极其重要】
-- 必须使用 fetch('/api/xxx') 调用后端 API，路径与后端路由完全一致
-- 每个模块的 CRUD 操作都必须有对应的 fetch 调用
-- 同时内置 MOCK_DATA 作为降级数据（至少 8 条）
-- useEffect 中调用 API 加载数据，API 失败时静默降级到 mock 数据
-
-【禁止事项】
-- 禁止使用 import 语句（代码运行在浏览器 script 标签中）
-- 禁止使用 require 语句
-- 禁止引用任何外部库（antd、axios、lodash 等都不能用）
-- 只能使用 React 内置 Hooks 和原生 DOM API`,
+【强制要求】
+1. React 函数组件 + Hooks，原生 CSS 内联样式（禁止 className）
+2. 深色主题，export default App
+3. 代码必须完整，不能有 TODO 或省略号
+4. 禁止 import/require/外部库
+5. API 路径：/api/order、/api/product、/api/user 等小写实体名
+6. 【极其重要】确保所有括号（圆括号、花括号、方括号）严格配对闭合，括号不匹配会导致编译失败
+7. 【空值保护】遍历数组数据时必须做空值过滤：使用 (data || []).filter(Boolean).map(...) 而非直接 data.map(...)。访问对象属性时使用可选链 item?.name 或默认值 item.name || ''，防止后端返回 null 数据导致运行时崩溃
+8. 【style 规范】style 属性必须是纯对象（如 style={{ color: 'red', padding: 8 }}），绝对禁止传入数组（如 style={[{}, {}]}），禁止传入字符串。多个样式对象请用展开运算符合并：style={{ ...baseStyle, ...activeStyle }}`,
       },
     ], opts, makeStepOpts(4, 'Step4-前端工程'));
 
@@ -767,6 +776,46 @@ ${truncateText(permissionResult, MAX_PERMISSION_CHARS)}
       isFullHtml: false,
     };
 
+    // ── 质检完成后自动保存到数据库并部署后端 ─────────────────────────────
+    let savedAppId: string | undefined;
+    let runtimeApiBase: string | undefined;
+
+    try {
+      // 从原始 prompt 中提取标题（取前 30 个字符）
+      const autoTitle = prompt.trim().slice(0, 30) || '全栈应用';
+
+      // 保存到数据库（isActive: false，不在模板市场展示）
+      const savedApp = await VibeTemplate.create({
+        title: autoTitle,
+        description: `由全栈 Pipeline 自动生成`,
+        category: '后台管理',
+        author: 'pipeline',
+        codeParts,
+        isFullStack: true,
+        serverParts,
+        dbSchema,
+        menuConfig,
+        isActive: false,
+        publishedAt: new Date(),
+      });
+
+      savedAppId = savedApp._id.toString();
+      console.log(`✅ Pipeline 自动保存应用: ${savedAppId}`);
+
+      // 自动部署后端（创建动态路由 + Mongoose Model）
+      if (serverParts.model) {
+        try {
+          const deployResult = await deployAppBackend(savedAppId);
+          runtimeApiBase = deployResult.basePath;
+          console.log(`✅ Pipeline 自动部署后端成功: ${runtimeApiBase}，${deployResult.collections.length} 个集合`);
+        } catch (deployErr: any) {
+          console.warn(`⚠️ Pipeline 自动部署后端失败（不影响保存）: ${deployErr?.message}`);
+        }
+      }
+    } catch (saveErr: any) {
+      console.warn(`⚠️ Pipeline 自动保存失败: ${saveErr?.message}`);
+    }
+
     send({
       type: 'done',
       content: jsxCode ? `\`\`\`jsx\n${jsxCode}\n\`\`\`` : '',
@@ -776,6 +825,9 @@ ${truncateText(permissionResult, MAX_PERMISSION_CHARS)}
       menuConfig,
       analysis: analysisResult,
       isFullStack: true,
+      // 新增：返回自动保存和部署的信息
+      appId: savedAppId,
+      runtimeApiBase,
     });
   } catch (err: any) {
     const errMsg = err?.message || '全栈生成失败，请重试';

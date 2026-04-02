@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { Loader2, AlertTriangle } from 'lucide-react';
-import { fetchVibeApp, fetchVibeTemplate } from '../api';
+import { fetchVibeApp, fetchVibeTemplate, fetchVibeAppRuntimeStatus } from '../api';
 import { buildHtmlFromParts } from './vibe-coding/utils';
 import { compileJsx, buildReactIframeHtml } from './vibe-coding/ReactPreview';
 import type { CodeParts } from './vibe-coding/types';
@@ -11,6 +11,8 @@ interface AppData {
   _id: string;
   title: string;
   codeParts: CodeParts;
+  isFullStack?: boolean;
+  deployPath?: string;
 }
 
 const PreviewPage = () => {
@@ -18,6 +20,7 @@ const PreviewPage = () => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const [appData, setAppData] = useState<AppData | null>(null);
+  const [runtimeApiBase, setRuntimeApiBase] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -47,29 +50,70 @@ const PreviewPage = () => {
       .finally(() => setLoading(false));
   }, [id]);
 
-  // 构建预览 HTML 并写入 iframe
+  // 全栈应用：查询部署状态，获取 runtimeApiBase
   useEffect(() => {
-    if (!appData || !iframeRef.current) return;
+    if (!appData || !id) return;
 
-    let html: string;
-    const { codeParts } = appData;
-
-    if (codeParts.isReact && codeParts.jsx) {
-      // React 模式：编译 JSX
-      const compiled = compileJsx(codeParts.jsx);
-      if (compiled.error) {
-        setError(`JSX 编译失败：${compiled.error}`);
-        return;
-      }
-      html = buildReactIframeHtml(compiled.code!);
-    } else {
-      // HTML 模式
-      html = buildHtmlFromParts(codeParts);
+    // 如果数据库中已有 deployPath，直接使用
+    if (appData.deployPath) {
+      setRuntimeApiBase(appData.deployPath);
+      return;
     }
 
-    // 使用 srcdoc 写入 iframe，避免 blob URL 问题
-    iframeRef.current.srcdoc = html;
-  }, [appData]);
+    // 全栈应用：查询运行时部署状态
+    if (appData.isFullStack) {
+      fetchVibeAppRuntimeStatus(id)
+        .then((status) => {
+          if (status.deployed && status.basePath) {
+            setRuntimeApiBase(status.basePath);
+          }
+        })
+        .catch((err) => {
+          console.warn('查询部署状态失败（将使用 Mock 模式）:', err);
+        });
+    }
+  }, [appData, id]);
+
+  // 构建预览 HTML 并写入 iframe（异步编译）
+  useEffect(() => {
+    if (!appData || !iframeRef.current) return;
+    // 全栈应用等待 runtimeApiBase 就绪（deployPath 存在或已查询部署状态）
+    // 非全栈应用不需要等待
+    if (appData.isFullStack && !runtimeApiBase && appData.deployPath) return;
+
+    const { codeParts } = appData;
+
+    // 写入 iframe 的通用函数
+    const writeHtml = (html: string) => {
+      if (!iframeRef.current) return;
+      const blob = new Blob([html], { type: 'text/html; charset=utf-8' });
+      const prevSrc = iframeRef.current.src;
+      if (prevSrc?.startsWith('blob:')) URL.revokeObjectURL(prevSrc);
+      iframeRef.current.src = URL.createObjectURL(blob);
+    };
+
+    if (codeParts.isReact && codeParts.jsx) {
+      // React 模式：异步编译 JSX，传入 runtimeApiBase
+      let cancelled = false;
+      compileJsx(codeParts.jsx).then((compiled) => {
+        if (cancelled) return;
+        if (compiled.error) {
+          setError(`JSX 编译失败：${compiled.error}`);
+          return;
+        }
+        const html = buildReactIframeHtml(compiled.code!, { runtimeApiBase });
+        writeHtml(html);
+      }).catch((err) => {
+        if (cancelled) return;
+        setError(`JSX 编译异常：${err instanceof Error ? err.message : String(err)}`);
+      });
+      // cleanup：如果 effect 重新执行，取消上一次的异步编译
+      return () => { cancelled = true; };
+    } else {
+      // HTML 模式（同步）
+      writeHtml(buildHtmlFromParts(codeParts));
+    }
+  }, [appData, runtimeApiBase]);
 
   // 加载中状态
   if (loading) {

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { flushSync } from 'react-dom';
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   Zap, Send, Bot, Cpu, Eye, MessageSquare,
@@ -315,20 +316,12 @@ const [isReactMode, setIsReactMode] = useState(true);
             )
           );
         } else if (event.type === 'done') {
-          // 提取前端代码（只展示前端）
-          if (event.codeParts) {
-            const parts: CodeParts = {
-              html: event.codeParts.html || '',
-              css: event.codeParts.css || '',
-              js: event.codeParts.js || '',
-              jsx: event.codeParts.jsx || '',
-              isReact: event.codeParts.isReact ?? true,
-              isFullHtml: event.codeParts.isFullHtml ?? false,
-            };
-            setCodeParts(parts);
-            setIsFromPreviousSession(false);
-            handleSaveHistory(trimmed, parts);
-          }
+          console.info('[VibeCoding] done 事件:', {
+            hasRuntimeApiBase: !!event.runtimeApiBase,
+            runtimeApiBase: event.runtimeApiBase,
+            hasCodeParts: !!event.codeParts,
+            hasJsx: !!event.codeParts?.jsx,
+          });
 
           // 保存后端代码（不展示给用户，但保存在状态中）
           if (event.serverParts) {
@@ -341,15 +334,45 @@ const [isReactMode, setIsReactMode] = useState(true);
             setMenuConfig(event.menuConfig as MenuConfig);
           }
 
+          // ⚠️ 关键：使用 flushSync 确保 runtimeApiBase 和 codeParts 在同一次同步渲染中更新
+          // 这样 ReactPreview 首次渲染时就能同时拿到 jsx 和正确的 API 代理路径
+          flushSync(() => {
+            if (event.runtimeApiBase) {
+              setRuntimeApiBase(event.runtimeApiBase);
+            }
+
+            // 提取前端代码（只展示前端）
+            if (event.codeParts) {
+              const parts: CodeParts = {
+                html: event.codeParts.html || '',
+                css: event.codeParts.css || '',
+                js: event.codeParts.js || '',
+                jsx: event.codeParts.jsx || '',
+                isReact: event.codeParts.isReact ?? true,
+                isFullHtml: event.codeParts.isFullHtml ?? false,
+              };
+              setCodeParts(parts);
+              setIsFromPreviousSession(false);
+              handleSaveHistory(trimmed, parts);
+            }
+          });
+
           const analysisPreview = event.analysis
             ? event.analysis.slice(0, 300) + (event.analysis.length > 300 ? '...' : '')
+            : '';
+
+          const deployStatus = event.runtimeApiBase
+            ? `\n- ✅ 后端已自动部署到 \`${event.runtimeApiBase}\``
+            : '\n- ⚠️ 后端自动部署失败，可稍后在 Admin 后台手动部署';
+          const appIdInfo = event.appId
+            ? `\n- 📦 应用 ID: \`${event.appId}\``
             : '';
 
           setMessages((prev) => [
             ...prev,
             {
               role: 'assistant' as const,
-              content: `✅ 全栈 Pipeline 完成！已通过 6 个 Agent 协作生成完整全栈应用。\n\n📋 **需求分析摘要**\n${analysisPreview}\n\n🗂️ 生成内容：\n- ✅ MongoDB 数据库 Schema\n- ✅ Koa 后端路由 + Service\n- ✅ React 前端页面\n- ✅ RBAC 权限配置\n\n💡 前端代码已在右侧预览面板中展示，后端代码可在 Admin 后台查看和编辑。`,
+              content: `✅ 全栈 Pipeline 完成！已通过 6 个 Agent 协作生成完整全栈应用。\n\n📋 **需求分析摘要**\n${analysisPreview}\n\n🗂️ 生成内容：\n- ✅ MongoDB 数据库 Schema\n- ✅ Koa 后端路由 + Service\n- ✅ React 前端页面\n- ✅ RBAC 权限配置${deployStatus}${appIdInfo}\n\n💡 前端代码已在右侧预览面板中展示，后端代码可在 Admin 后台查看和编辑。`,
               timestamp: new Date().toISOString(),
               provider,
             },
@@ -533,10 +556,10 @@ const [isReactMode, setIsReactMode] = useState(true);
         setIsAgentPlanMode(false);
         if (analysis.intent === 'qa') {
           // 问答类（查询/解释/分析）→ 走 chat/stream 对话模式，不强制生成 HTML
-          handleSendWithContent(trimmed);
+          handleSendWithContent(trimmed, true);
         } else {
           // 操作类（修改样式/元素）→ 走 vibe/stream 生成/修改 HTML
-          handleVibeStream(trimmed);
+          handleVibeStream(trimmed, undefined, true);
         }
         return;
       }
@@ -793,15 +816,18 @@ const [isReactMode, setIsReactMode] = useState(true);
   // ─── Vibe Stream 生成（供 simple 任务 / Pipeline 直接调用）────────────────────
   // currentHtml：传入时走"修改模式"，AI 在现有代码基础上做局部修改；不传时走"全新生成"
 
-  const handleVibeStream = async (content: string, currentHtml?: string) => {
+  const handleVibeStream = async (content: string, currentHtml?: string, skipUserMsg = false) => {
     if (!content || streaming) return;
 
-    const userMsg: ChatMessage = {
-      role: 'user',
-      content,
-      timestamp: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, userMsg]);
+    // skipUserMsg=true 时跳过添加用户消息（由 handlePipeline 等上层调用方已添加）
+    if (!skipUserMsg) {
+      const userMsg: ChatMessage = {
+        role: 'user',
+        content,
+        timestamp: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, userMsg]);
+    }
     setStreaming(true);
 
     const aiMsg: ChatMessage = {
@@ -897,15 +923,18 @@ const [isReactMode, setIsReactMode] = useState(true);
 
   // ─── 带内容的普通发送（供 handlePipeline simple 分支调用）──────────────────
 
-  const handleSendWithContent = async (content: string) => {
+  const handleSendWithContent = async (content: string, skipUserMsg = false) => {
     if (!content || streaming) return;
 
-    const userMsg: ChatMessage = {
-      role: 'user',
-      content,
-      timestamp: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, userMsg]);
+    // skipUserMsg=true 时跳过添加用户消息（由 handlePipeline 等上层调用方已添加）
+    if (!skipUserMsg) {
+      const userMsg: ChatMessage = {
+        role: 'user',
+        content,
+        timestamp: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, userMsg]);
+    }
     setStreaming(true);
 
     const aiMsg: ChatMessage = {

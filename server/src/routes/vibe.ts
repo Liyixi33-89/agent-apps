@@ -80,6 +80,9 @@ vibeRouter.post('/vibe/stream', async (ctx) => {
 9. 禁止引用任何外部库（antd、axios、lodash 等都不能用，只能使用 React 内置 Hooks）
 10. 禁止输出任何解释文字，只输出代码块
 11. 如果需要调用 API，使用原生 fetch 函数
+12. 【极其重要】确保所有括号（圆括号、花括号、方括号）严格配对闭合，尤其是多层嵌套的 React.createElement 调用和箭头函数。每个 ( 必须有对应的 )，每个 { 必须有对应的 }，每个 [ 必须有对应的 ]。括号不匹配会导致编译失败。
+13. 【空值保护】遍历数组数据时必须做空值过滤和安全访问：使用 (data || []).filter(Boolean).map(...) 而非直接 data.map(...)。访问对象属性时使用可选链 item?.name 或默认值 item.name || ''，防止后端返回 null 数据导致运行时崩溃。
+14. 【style 规范】style 属性必须是纯对象（如 style={{ color: 'red', padding: 8 }}），绝对禁止传入数组（如 style={[{}, {}]}），禁止传入字符串。多个样式对象请用展开运算符合并：style={{ ...baseStyle, ...activeStyle }}。
 
 【示例结构】
 \`\`\`jsx

@@ -35,3 +35,6 @@ Thumbs.db
 
 # Vite 缓存
 .vite/
+
+# esbuild WASM（从 node_modules 复制到 public，不提交到 git）
+*.wasm

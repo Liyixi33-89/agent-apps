@@ -125,6 +125,7 @@ const FALLBACK_REVIEWER_PROMPT = `你是一个代码质检专家，专门检查�
    - 不完整的语句（如 'const a' 后面没有赋值、函数体未闭合、括号不匹配）
    - 截断的代码（代码在中间突然结束，必须补全）
    - 多余的或缺失的花括号/圆括号/方括号
+   - 【极其重要】逐行检查所有括号（圆括号、花括号、方括号）是否严格配对闭合，尤其是多层嵌套的 React.createElement 调用和箭头函数。括号不匹配会导致编译失败。
    - 将所有 <form> 标签替换为 <div>，将 </form> 替换为 </div>，删除所有 form.onsubmit、document.querySelector('form')、document.getElementById('xxx-form').onsubmit 等 form 相关 JS 代码
 2. 函数定义顺序检查（重点！）：
    - 找出所有在 bindEvents、init、DOMContentLoaded 等初始化函数中调用的函数名

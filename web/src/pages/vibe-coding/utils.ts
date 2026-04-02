@@ -73,7 +73,9 @@ export const extractCodeParts = (markdown: string): CodeParts => {
   };
 };
 
-// 全局错误捕获脚本 —— 注入到每个预览 HTML 中，防止 AI 生成代码的运行时错误导致白屏
+// 全局错误捕获 + 导航拦截脚本 —— 注入到每个预览 HTML 中
+// 1. 防止 AI 生成代码的运行时错误导致白屏
+// 2. 防止 AI 生成代码中的导航操作（location/a/form）导致父页面刷新
 const ERROR_GUARD_SCRIPT = `
 <script>
 (function() {
@@ -93,6 +95,62 @@ const ERROR_GUARD_SCRIPT = `
   window.addEventListener('unhandledrejection', function(e) {
     window.onerror && window.onerror(String(e.reason), '', 0, 0, null);
   });
+
+  /* ── 导航拦截：防止 AI 代码导致父页面刷新 ────────────────────────── */
+  // 拦截 window.open
+  window.open = function(url) {
+    console.warn('[Vibe] 已拦截 window.open:', url);
+    return null;
+  };
+
+  // 拦截 form submit
+  document.addEventListener('submit', function(e) { e.preventDefault(); }, true);
+
+  // 拦截 <a> 外链跳转
+  var patchLinks = function() {
+    try {
+      var anchors = document.querySelectorAll('a[href]');
+      if (!anchors || !anchors.length) return;
+      anchors.forEach(function(a) {
+        try {
+          var href = a.getAttribute('href');
+          if (!href) return;
+          href = href.trim();
+          if (/^https?:\\/\\//i.test(href) || /^\\/\\//i.test(href) || /^\\/[^/]/i.test(href) || href === '/') {
+            a.removeAttribute('href');
+            a.style.cursor = 'pointer';
+            a.addEventListener('click', function(e) {
+              e.preventDefault();
+              e.stopPropagation();
+              console.warn('[Vibe] 已拦截链接跳转:', href);
+            });
+          }
+        } catch(err) { /* 忽略 */ }
+      });
+    } catch(err) { /* 忽略 */ }
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', patchLinks);
+  } else {
+    patchLinks();
+  }
+  // MutationObserver 监听动态添加的 <a>
+  try {
+    var observer = new MutationObserver(function() { patchLinks(); });
+    if (document.body) {
+      observer.observe(document.body, { childList: true, subtree: true });
+    } else {
+      document.addEventListener('DOMContentLoaded', function() {
+        observer.observe(document.body, { childList: true, subtree: true });
+      });
+    }
+  } catch(e) { /* 忽略 */ }
+
+  // 拦截 history.pushState / replaceState
+  try {
+    history.pushState = function() { console.warn('[Vibe] 已拦截 history.pushState'); };
+    history.replaceState = function() { console.warn('[Vibe] 已拦截 history.replaceState'); };
+  } catch(e) { /* 忽略 */ }
 })();
 <\/script>`;
 

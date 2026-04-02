@@ -116,6 +116,9 @@ export interface FullStackPipelineSSEEvent {
   analysis?: string;
   isFullStack?: boolean;
   message?: string;
+  // 质检完成后自动保存+部署的结果
+  appId?: string;
+  runtimeApiBase?: string;
 }
 
 /**

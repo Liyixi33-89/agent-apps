@@ -86,15 +86,20 @@ export interface StepExecutionResult {
 // 复杂度分析
 // =============================================================================
 
-/** 问答类关键词（不生成 HTML，走对话模式） */
+/** 问答类关键词（不生成 HTML，走对话模式）
+ *  注意：这些模式要求是"独立的问答动词"，而非功能描述中的词汇。
+ *  例如"帮我查询一下订单"是问答，但"订单查询、修改、取消"是功能描述。
+ *  策略：用 ^ 或前置断言确保是句首/独立使用，或要求后面紧跟具体对象而非逗号/顿号。
+ */
 const QA_PATTERNS = [
-  /什么是|怎么|如何|为什么|解释/,
-  /帮我看看|查询|查找|搜索/,
-  /是什么|有哪些|有那些|有什么|告诉我|介绍一下/,
+  /^(什么是|怎么|如何|为什么|解释)/,
+  /^(帮我|请).{0,5}(看看|查询|查找|搜索|分析)/,
+  /(是什么|有哪些|有那些|有什么|告诉我|介绍一下)$/,
+  /^(是什么|有哪些|有那些|有什么|告诉我|介绍一下)/,
   /都有哪些|都有那些|都有什么|有几个|有多少/,
   /复杂程度|调用了|用了哪些|用了那些|哪些agent|那些agent|哪些工具|那些工具|哪些步骤|那些步骤/,
-  /分析一下|说明一下|描述一下/,
-  /列出|列举|展示一下|看看有/,
+  /^(分析一下|说明一下|描述一下)/,
+  /^(列出|列举|展示一下|看看有)/,
   /agent.*有|有.*agent/i,
   /分类.*有|有.*分类/,
 ];
@@ -131,18 +136,18 @@ const COMPLEX_PATTERNS = [
  * 返回复杂度等级、判断理由、以及意图类型（qa=问答 / action=操作生成）
  */
 export const analyzeComplexity = (prompt: string): { complexity: TaskComplexity; reason: string; intent: 'qa' | 'action' } => {
-  // 问答类检测（优先级最高，不生成 HTML）
-  for (const pattern of QA_PATTERNS) {
+  // ── 1. 复杂任务检测（优先级最高：复杂需求描述中可能包含"查询""分析"等词汇，不应误判为 QA）
+  for (const pattern of COMPLEX_PATTERNS) {
     if (pattern.test(prompt)) {
       return {
-        complexity: 'simple',
-        reason: `检测到问答意图（${pattern.source.slice(0, 20)}...），走对话模式`,
-        intent: 'qa',
+        complexity: 'complex',
+        reason: `检测到复杂系统需求（${pattern.source.slice(0, 20)}...），需要多步规划`,
+        intent: 'action',
       };
     }
   }
 
-  // 简单操作类检测（直接执行，输出 HTML）
+  // ── 2. 简单操作类检测（直接执行，输出 HTML）
   for (const pattern of SIMPLE_PATTERNS) {
     if (pattern.test(prompt)) {
       return {
@@ -153,13 +158,13 @@ export const analyzeComplexity = (prompt: string): { complexity: TaskComplexity;
     }
   }
 
-  // 复杂任务检测
-  for (const pattern of COMPLEX_PATTERNS) {
+  // ── 3. 问答类检测（不生成 HTML，走对话模式）
+  for (const pattern of QA_PATTERNS) {
     if (pattern.test(prompt)) {
       return {
-        complexity: 'complex',
-        reason: `检测到复杂系统需求（${pattern.source.slice(0, 20)}...），需要多步规划`,
-        intent: 'action',
+        complexity: 'simple',
+        reason: `检测到问答意图（${pattern.source.slice(0, 20)}...），走对话模式`,
+        intent: 'qa',
       };
     }
   }
@@ -395,7 +400,10 @@ export const executeStep = async (
 6. 代码必须完整可运行，不能有省略或占位符
 7. 禁止 import React（使用 React 17+ 新 JSX 转换）
 8. 禁止 import 外部库（只能使用 React 内置 Hooks）
-9. 禁止输出任何解释文字，只输出代码块`;
+9. 禁止输出任何解释文字，只输出代码块
+10. 【极其重要】确保所有括号（圆括号、花括号、方括号）严格配对闭合，尤其是多层嵌套的 React.createElement 调用和箭头函数。括号不匹配会导致编译失败。
+11. 【空值保护】遍历数组数据时必须做空值过滤：使用 (data || []).filter(Boolean).map(...) 而非直接 data.map(...)。访问对象属性时使用可选链 item?.name 或默认值 item.name || ''，防止后端返回 null 数据导致运行时崩溃。
+12. 【style 规范】style 属性必须是纯对象（如 style={{ color: 'red', padding: 8 }}），绝对禁止传入数组（如 style={[{}, {}]}），禁止传入字符串。多个样式对象请用展开运算符合并：style={{ ...baseStyle, ...activeStyle }}。`;
   } else if (isLastStep) {
     // HTML 模式：生成完整 HTML 页面
     systemPrompt = `你是一个专业的前端开发工程师。请根据用户需求和前置步骤的分析结果，生成完整的单文件 HTML 页面。
