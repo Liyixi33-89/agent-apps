@@ -7,11 +7,6 @@ import type { PipelineStep, VibeSession, CodeParts, VibeHistoryItem, ServerParts
 import { useVibeHistory } from './useVibeHistory';
 import { useFavoritePrompts } from './useFavoritePrompts';
 
-// ─── sessionStorage 持久化 Key ──────────────────────────────────────────────
-const STORAGE_KEY_DEPLOYED_APP_ID = 'vibe_deployed_app_id';
-const STORAGE_KEY_RUNTIME_API_BASE = 'vibe_runtime_api_base';
-const STORAGE_KEY_FULLSTACK_MODE = 'vibe_fullstack_mode';
-
 /** Agent Plan 步骤 */
 export interface AgentPlanStep {
   id: string;
@@ -29,7 +24,7 @@ export type SideView = 'chat' | 'history';
  * useVibeSession — 集中管理 VibeCodingPage 的所有状态和会话逻辑
  */
 export const useVibeSession = () => {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { lang, activeProvider } = useAppStore();
 
   // ─── 会话状态 ──────────────────────────────────────────────────────────────
@@ -58,18 +53,12 @@ export const useVibeSession = () => {
   // ─── React 模式 ────────────────────────────────────────────────────────────
   const [isReactMode, setIsReactMode] = useState(true);
 
-  // ─── 全栈模式（从 sessionStorage 恢复） ──────────────────────────────────
-  const [isFullStackMode, setIsFullStackMode] = useState(() => {
-    return sessionStorage.getItem(STORAGE_KEY_FULLSTACK_MODE) === 'true';
-  });
+  // ─── 全栈模式（从 URL ?appId= 恢复） ──────────────────────────────────────
+  const [isFullStackMode, setIsFullStackMode] = useState(false);
   const [serverParts, setServerParts] = useState<ServerParts | null>(null);
   const [dbSchema, setDbSchema] = useState<DbSchema | null>(null);
-  const [runtimeApiBase, setRuntimeApiBase] = useState<string>(() => {
-    return sessionStorage.getItem(STORAGE_KEY_RUNTIME_API_BASE) || '';
-  });
-  const [deployedAppId, setDeployedAppId] = useState<string>(() => {
-    return sessionStorage.getItem(STORAGE_KEY_DEPLOYED_APP_ID) || '';
-  });
+  const [runtimeApiBase, setRuntimeApiBase] = useState<string>('');
+  const [deployedAppId, setDeployedAppId] = useState<string>('');
   const fullStackAbortRef = useRef<(() => void) | null>(null);
 
   // ─── Pipeline 模式状态 ─────────────────────────────────────────────────────
@@ -99,57 +88,56 @@ export const useVibeSession = () => {
   const { history, saveHistory, removeHistory, clearHistory } = useVibeHistory();
   const { favorites, addFavorite, removeFavorite, isFavorite } = useFavoritePrompts();
 
-  // ─── 持久化同步：状态变化时写入 sessionStorage ─────────────────────────────
+  // ─── URL 同步：deployedAppId 变化时更新 URL 查询参数 ─────────────────────
   useEffect(() => {
-    if (runtimeApiBase) {
-      sessionStorage.setItem(STORAGE_KEY_RUNTIME_API_BASE, runtimeApiBase);
-    } else {
-      sessionStorage.removeItem(STORAGE_KEY_RUNTIME_API_BASE);
+    const currentAppId = searchParams.get('appId') || '';
+    if (deployedAppId && deployedAppId !== currentAppId) {
+      // 有新的 appId，写入 URL
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('appId', deployedAppId);
+        return next;
+      }, { replace: true });
+    } else if (!deployedAppId && currentAppId) {
+      // appId 被清除，从 URL 移除
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('appId');
+        return next;
+      }, { replace: true });
     }
-  }, [runtimeApiBase]);
+  }, [deployedAppId, searchParams, setSearchParams]);
 
+  // ─── 初始化：从 URL ?appId= 读取，查询后端部署状态恢复 runtimeApiBase ──────
   useEffect(() => {
-    if (deployedAppId) {
-      sessionStorage.setItem(STORAGE_KEY_DEPLOYED_APP_ID, deployedAppId);
-    } else {
-      sessionStorage.removeItem(STORAGE_KEY_DEPLOYED_APP_ID);
-    }
-  }, [deployedAppId]);
-
-  useEffect(() => {
-    sessionStorage.setItem(STORAGE_KEY_FULLSTACK_MODE, String(isFullStackMode));
-  }, [isFullStackMode]);
-
-  // ─── 初始化：查询后端部署状态，恢复 runtimeApiBase ─────────────────────────
-  useEffect(() => {
-    const savedAppId = sessionStorage.getItem(STORAGE_KEY_DEPLOYED_APP_ID);
-    if (!savedAppId) return;
+    const urlAppId = searchParams.get('appId');
+    if (!urlAppId) return;
 
     let cancelled = false;
 
     const restoreRuntime = async () => {
       try {
-        const status = await fetchVibeAppRuntimeStatus(savedAppId);
+        const status = await fetchVibeAppRuntimeStatus(urlAppId);
         if (cancelled) return;
 
         if (status.deployed && status.basePath) {
-          // 后端确认已部署，恢复 runtimeApiBase
+          // 后端确认已部署，恢复全栈状态
           setRuntimeApiBase(status.basePath);
-          setDeployedAppId(savedAppId);
+          setDeployedAppId(urlAppId);
           setIsFullStackMode(true);
-          console.log(`🔄 已恢复全栈应用部署状态: ${status.title} → ${status.basePath}`);
+          console.log(`🔄 已从服务端恢复全栈应用部署状态: ${status.title} → ${status.basePath}`);
         } else {
-          // 后端未部署（可能服务器重启后未恢复），清理本地缓存
-          console.warn('⚠️ 后端应用未部署，清理本地缓存');
+          // 后端未部署，清除 URL 参数
+          console.warn('⚠️ 后端应用未部署，清除 URL 参数');
           setRuntimeApiBase('');
           setDeployedAppId('');
-          sessionStorage.removeItem(STORAGE_KEY_RUNTIME_API_BASE);
-          sessionStorage.removeItem(STORAGE_KEY_DEPLOYED_APP_ID);
         }
       } catch (err) {
         if (cancelled) return;
-        console.warn('⚠️ 查询部署状态失败，保留本地缓存:', err);
-        // 查询失败时保留 sessionStorage 中的值（可能是网络暂时不可用）
+        console.warn('⚠️ 查询部署状态失败:', err);
+        // 查询失败时不做任何假设，保持初始空状态
+        setRuntimeApiBase('');
+        setDeployedAppId('');
       }
     };
 
@@ -211,11 +199,10 @@ export const useVibeSession = () => {
     setIsAgentPlanMode(false);
     agentPlanAbortRef.current?.();
     setSideView('chat');
-    // 清理全栈部署持久化数据
+    // 清理全栈部署状态（URL 参数会通过 useEffect 自动清除）
     setRuntimeApiBase('');
     setDeployedAppId('');
-    sessionStorage.removeItem(STORAGE_KEY_RUNTIME_API_BASE);
-    sessionStorage.removeItem(STORAGE_KEY_DEPLOYED_APP_ID);
+    setIsFullStackMode(false);
   }, [streaming, codeParts]);
 
   // ─── 保存历史 ─────────────────────────────────────────────────────────────
