@@ -22,6 +22,7 @@ export const useVibePipeline = (
     isReactMode, isFullStackMode,
     setServerParts, setDbSchema,
     setRuntimeApiBase,
+    setDeployedAppId,
     setCodeParts, setIsFromPreviousSession,
     setPipelineSteps, setPipelineRunning,
     setPlanComplexity, setPlanGoal,
@@ -178,6 +179,9 @@ export const useVibePipeline = (
             if (event.runtimeApiBase) {
               setRuntimeApiBase(event.runtimeApiBase);
             }
+            if (event.appId) {
+              setDeployedAppId(event.appId);
+            }
 
             if (event.codeParts) {
               const parts: CodeParts = {
@@ -241,7 +245,7 @@ export const useVibePipeline = (
     );
 
     fullStackAbortRef.current = cleanup;
-  }, [provider, modelType, setPipelineSteps, setIsAgentPlanMode, setMessages, setServerParts, setDbSchema, setRuntimeApiBase, setCodeParts, setIsFromPreviousSession, handleSaveHistory, setPipelineRunning, fullStackAbortRef]);
+  }, [provider, modelType, setPipelineSteps, setIsAgentPlanMode, setMessages, setServerParts, setDbSchema, setRuntimeApiBase, setDeployedAppId, setCodeParts, setIsFromPreviousSession, handleSaveHistory, setPipelineRunning, fullStackAbortRef]);
 
   // ─── Agent Plan-Execute 流程 ────────────────────────────────────────────────
 

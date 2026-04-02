@@ -29,6 +29,7 @@ const VibeCodingPage = () => {
     isReactMode, setIsReactMode,
     isFullStackMode,
     runtimeApiBase, setRuntimeApiBase,
+    setDeployedAppId,
     streaming,
     serverParts,
     dbSchema,
@@ -140,6 +141,9 @@ const VibeCodingPage = () => {
             setPublishTarget(null);
             if (deployInfo?.runtimeApiBase) {
               setRuntimeApiBase(deployInfo.runtimeApiBase);
+            }
+            if (deployInfo?.appId) {
+              setDeployedAppId(deployInfo.appId);
             }
           }}
           onClose={() => setPublishTarget(null)}

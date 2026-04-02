@@ -1,11 +1,16 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../../store';
-import { fetchAgents, createChatSession } from '../../api';
+import { fetchAgents, createChatSession, fetchVibeAppRuntimeStatus } from '../../api';
 import type { Agent, Provider, ModelType, ChatMessage, TaskComplexity, StepStatus } from '../../types';
 import type { PipelineStep, VibeSession, CodeParts, VibeHistoryItem, ServerParts, DbSchema } from './types';
 import { useVibeHistory } from './useVibeHistory';
 import { useFavoritePrompts } from './useFavoritePrompts';
+
+// ─── sessionStorage 持久化 Key ──────────────────────────────────────────────
+const STORAGE_KEY_DEPLOYED_APP_ID = 'vibe_deployed_app_id';
+const STORAGE_KEY_RUNTIME_API_BASE = 'vibe_runtime_api_base';
+const STORAGE_KEY_FULLSTACK_MODE = 'vibe_fullstack_mode';
 
 /** Agent Plan 步骤 */
 export interface AgentPlanStep {
@@ -53,11 +58,18 @@ export const useVibeSession = () => {
   // ─── React 模式 ────────────────────────────────────────────────────────────
   const [isReactMode, setIsReactMode] = useState(true);
 
-  // ─── 全栈模式 ──────────────────────────────────────────────────────────────
-  const [isFullStackMode, setIsFullStackMode] = useState(false);
+  // ─── 全栈模式（从 sessionStorage 恢复） ──────────────────────────────────
+  const [isFullStackMode, setIsFullStackMode] = useState(() => {
+    return sessionStorage.getItem(STORAGE_KEY_FULLSTACK_MODE) === 'true';
+  });
   const [serverParts, setServerParts] = useState<ServerParts | null>(null);
   const [dbSchema, setDbSchema] = useState<DbSchema | null>(null);
-  const [runtimeApiBase, setRuntimeApiBase] = useState<string>('');
+  const [runtimeApiBase, setRuntimeApiBase] = useState<string>(() => {
+    return sessionStorage.getItem(STORAGE_KEY_RUNTIME_API_BASE) || '';
+  });
+  const [deployedAppId, setDeployedAppId] = useState<string>(() => {
+    return sessionStorage.getItem(STORAGE_KEY_DEPLOYED_APP_ID) || '';
+  });
   const fullStackAbortRef = useRef<(() => void) | null>(null);
 
   // ─── Pipeline 模式状态 ─────────────────────────────────────────────────────
@@ -86,6 +98,66 @@ export const useVibeSession = () => {
   // ─── 历史 & 收藏 ──────────────────────────────────────────────────────────
   const { history, saveHistory, removeHistory, clearHistory } = useVibeHistory();
   const { favorites, addFavorite, removeFavorite, isFavorite } = useFavoritePrompts();
+
+  // ─── 持久化同步：状态变化时写入 sessionStorage ─────────────────────────────
+  useEffect(() => {
+    if (runtimeApiBase) {
+      sessionStorage.setItem(STORAGE_KEY_RUNTIME_API_BASE, runtimeApiBase);
+    } else {
+      sessionStorage.removeItem(STORAGE_KEY_RUNTIME_API_BASE);
+    }
+  }, [runtimeApiBase]);
+
+  useEffect(() => {
+    if (deployedAppId) {
+      sessionStorage.setItem(STORAGE_KEY_DEPLOYED_APP_ID, deployedAppId);
+    } else {
+      sessionStorage.removeItem(STORAGE_KEY_DEPLOYED_APP_ID);
+    }
+  }, [deployedAppId]);
+
+  useEffect(() => {
+    sessionStorage.setItem(STORAGE_KEY_FULLSTACK_MODE, String(isFullStackMode));
+  }, [isFullStackMode]);
+
+  // ─── 初始化：查询后端部署状态，恢复 runtimeApiBase ─────────────────────────
+  useEffect(() => {
+    const savedAppId = sessionStorage.getItem(STORAGE_KEY_DEPLOYED_APP_ID);
+    if (!savedAppId) return;
+
+    let cancelled = false;
+
+    const restoreRuntime = async () => {
+      try {
+        const status = await fetchVibeAppRuntimeStatus(savedAppId);
+        if (cancelled) return;
+
+        if (status.deployed && status.basePath) {
+          // 后端确认已部署，恢复 runtimeApiBase
+          setRuntimeApiBase(status.basePath);
+          setDeployedAppId(savedAppId);
+          setIsFullStackMode(true);
+          console.log(`🔄 已恢复全栈应用部署状态: ${status.title} → ${status.basePath}`);
+        } else {
+          // 后端未部署（可能服务器重启后未恢复），清理本地缓存
+          console.warn('⚠️ 后端应用未部署，清理本地缓存');
+          setRuntimeApiBase('');
+          setDeployedAppId('');
+          sessionStorage.removeItem(STORAGE_KEY_RUNTIME_API_BASE);
+          sessionStorage.removeItem(STORAGE_KEY_DEPLOYED_APP_ID);
+        }
+      } catch (err) {
+        if (cancelled) return;
+        console.warn('⚠️ 查询部署状态失败，保留本地缓存:', err);
+        // 查询失败时保留 sessionStorage 中的值（可能是网络暂时不可用）
+      }
+    };
+
+    restoreRuntime();
+
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // 仅在组件挂载时执行一次
 
   // ─── 加载 Agents ──────────────────────────────────────────────────────────
   const loadAgents = useCallback(async () => {
@@ -139,6 +211,11 @@ export const useVibeSession = () => {
     setIsAgentPlanMode(false);
     agentPlanAbortRef.current?.();
     setSideView('chat');
+    // 清理全栈部署持久化数据
+    setRuntimeApiBase('');
+    setDeployedAppId('');
+    sessionStorage.removeItem(STORAGE_KEY_RUNTIME_API_BASE);
+    sessionStorage.removeItem(STORAGE_KEY_DEPLOYED_APP_ID);
   }, [streaming, codeParts]);
 
   // ─── 保存历史 ─────────────────────────────────────────────────────────────
@@ -188,6 +265,7 @@ export const useVibeSession = () => {
     serverParts, setServerParts,
     dbSchema, setDbSchema,
     runtimeApiBase, setRuntimeApiBase,
+    deployedAppId, setDeployedAppId,
     fullStackAbortRef,
     pipelineMode, setPipelineMode,
     pipelineSteps, setPipelineSteps,
