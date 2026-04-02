@@ -25,7 +25,7 @@ export interface Agent {
   };
   modelPreferences: {
     primary: 'text' | 'vision';
-    recommendedProvider: 'ollama' | 'codebuddy';
+    recommendedProvider: 'ollama' | 'openai';
   };
   stats: {
     sectionCount: number;
@@ -84,7 +84,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: string;
-  provider?: 'ollama' | 'codebuddy';
+  provider?: 'ollama' | 'openai';
   imageUrl?: string;
 }
 
@@ -95,7 +95,7 @@ export interface ChatSession {
   agentName?: string;
   title: string;
   messages: ChatMessage[];
-  provider: 'ollama' | 'codebuddy';
+  provider: 'ollama' | 'openai';
   modelType: 'text' | 'vision';
   updatedAt: string;
 }
@@ -120,7 +120,7 @@ export interface OverviewStats {
   knowledgeCount: number;
 }
 
-export type Provider = 'ollama' | 'codebuddy';
+export type Provider = 'ollama' | 'openai';
 export type ModelType = 'text' | 'vision';
 export type Lang = 'zh' | 'en';
 

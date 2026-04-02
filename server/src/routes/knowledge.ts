@@ -78,7 +78,7 @@ knowledgeRouter.post('/knowledge/rag', async (ctx) => {
   const result = await ragQuery(question, {
     categoryKey,
     agentSlug,
-    provider: provider as 'ollama' | 'codebuddy',
+    provider: provider as 'ollama' | 'openai',
     lang: lang as 'zh' | 'en',
     history: Array.isArray(history) ? history : [],
     rewrite: rewrite !== false,
@@ -125,7 +125,7 @@ knowledgeRouter.post('/knowledge/rag/stream', async (ctx) => {
     const stream = ragQueryStream(question, {
       categoryKey,
       agentSlug,
-      provider: provider as 'ollama' | 'codebuddy',
+    provider: provider as 'ollama' | 'openai',
       lang: lang as 'zh' | 'en',
       history: Array.isArray(history) ? history : [],
       rewrite: rewrite !== false,

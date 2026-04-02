@@ -268,7 +268,7 @@ export const generatePlan = async (
         content: `任务复杂度：${complexityDesc}\n\n用户需求：${userPrompt}\n\n请生成执行计划（JSON格式）：`,
       },
     ],
-    { provider: options.provider as 'ollama' | 'codebuddy', modelType: 'text' }
+      { provider: options.provider as 'ollama' | 'openai', modelType: 'text' }
   );
 
   // 解析 LLM 返回的 JSON
@@ -425,7 +425,7 @@ export const executeStep = async (
       { role: 'system', content: systemPrompt },
       { role: 'user', content: contextParts.join('\n\n') },
     ],
-    { provider: options.provider as 'ollama' | 'codebuddy', modelType: options.modelType as 'text' | 'vision' }
+      { provider: options.provider as 'ollama' | 'openai', modelType: options.modelType as 'text' | 'vision' }
   );
 
   return {

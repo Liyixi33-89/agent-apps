@@ -106,7 +106,7 @@ adminRouter.get('/dashboard', requireAdmin, async (ctx) => {
     data: {
       stats: { agentCount, categoryCount, pipelineCount, knowledgeCount, chatCount },
       recentChats,
-      provider: { active: env.activeProvider, ollama: env.ollamaTextModel, codebuddy: env.codebuddyTextModel }
+      provider: { active: env.activeProvider, ollama: env.ollamaTextModel, openai: env.openaiTextModel }
     }
   };
 });
@@ -305,7 +305,7 @@ adminRouter.get('/settings', requireAdmin, async (ctx) => {
     data: {
       activeProvider: env.activeProvider,
       ollama: { baseUrl: env.ollamaBaseUrl, textModel: env.ollamaTextModel, visionModel: env.ollamaVisionModel },
-      codebuddy: { baseUrl: env.codebuddyBaseUrl, textModel: env.codebuddyTextModel, visionModel: env.codebuddyVisionModel }
+      openai: { baseUrl: env.openaiBaseUrl, textModel: env.openaiTextModel, visionModel: env.openaiVisionModel }
     }
   };
 });

@@ -49,7 +49,7 @@ export const useAppStore = create<AppState>((set) => ({
   lang: 'zh',
   setLang: (lang) => set({ lang }),
 
-  activeProvider: 'ollama',
+  activeProvider: 'openai',
   setActiveProvider: (activeProvider) => set({ activeProvider }),
 
   overview: null,

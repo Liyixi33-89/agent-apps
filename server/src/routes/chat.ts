@@ -198,7 +198,7 @@ chatRouter.post('/chat/stream', async (ctx) => {
       let toolResponse;
       try {
         toolResponse = await callLLMWithTools(toolMessages, AGENT_TOOLS, {
-          provider: chat.provider as 'ollama' | 'codebuddy',
+          provider: chat.provider as 'ollama' | 'openai',
           modelType: chat.modelType as 'text' | 'vision',
         });
       } catch (toolErr: unknown) {

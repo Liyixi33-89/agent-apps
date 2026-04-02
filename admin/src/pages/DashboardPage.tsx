@@ -11,7 +11,7 @@ const { Title, Text } = Typography;
 interface DashboardData {
   stats: { agentCount: number; categoryCount: number; pipelineCount: number; knowledgeCount: number; chatCount: number };
   recentChats: Array<{ _id: string; agentName?: string; updatedAt: string }>;
-  provider: { active: string; ollama: string; codebuddy: string };
+  provider: { active: string; ollama: string; openai: string };
 }
 
 const DashboardPage = () => {
@@ -129,9 +129,9 @@ const DashboardPage = () => {
           <Space>
             <ApiOutlined className="text-sky-600" />
             <Text type="secondary">当前提供商：</Text>
-            <Tag color="blue">{data.provider.active === 'ollama' ? '🦙 Ollama' : '🤖 CodeBuddy'}</Tag>
+            <Tag color="blue">{data.provider.active === 'ollama' ? '🦙 Ollama' : '🤖 OpenAI'}</Tag>
             <Text type="secondary" className="text-xs">
-              Ollama: {data.provider.ollama} · CodeBuddy: {data.provider.codebuddy}
+              Ollama: {data.provider.ollama} · OpenAI: {data.provider.openai}
             </Text>
           </Space>
         </Card>

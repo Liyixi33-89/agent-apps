@@ -96,7 +96,7 @@ agentsRouter.get('/overview', async (ctx) => {
       providers: {
         active: env.activeProvider,
         ollama: { baseUrl: env.ollamaBaseUrl, textModel: env.ollamaTextModel, visionModel: env.ollamaVisionModel },
-        codebuddy: { baseUrl: env.codebuddyBaseUrl, textModel: env.codebuddyTextModel, visionModel: env.codebuddyVisionModel }
+        openai: { baseUrl: env.openaiBaseUrl, textModel: env.openaiTextModel, visionModel: env.openaiVisionModel }
       },
       categories,
       featuredAgents

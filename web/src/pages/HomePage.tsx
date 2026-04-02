@@ -199,13 +199,13 @@ const HomePage = () => {
             {lang === 'zh' ? '当前提供商' : 'Active Provider'}：
           </Text>
           <Tag icon={<ApiOutlined />} color="blue">
-            {activeProvider === 'ollama' ? '🦙 Ollama' : '🤖 CodeBuddy'}
+            {activeProvider === 'ollama' ? '🦙 Ollama' : '🤖 OpenAI'}
           </Tag>
           {overview && (
             <Text type="secondary" className="text-xs">
-              Text: {activeProvider === 'ollama' ? overview.providers.ollama.textModel : overview.providers.codebuddy.textModel}
+              Text: {activeProvider === 'ollama' ? overview.providers.ollama.textModel : overview.providers.openai.textModel}
               {' · '}
-              Vision: {activeProvider === 'ollama' ? overview.providers.ollama.visionModel : overview.providers.codebuddy.visionModel}
+              Vision: {activeProvider === 'ollama' ? overview.providers.ollama.visionModel : overview.providers.openai.visionModel}
             </Text>
           )}
         </Space>

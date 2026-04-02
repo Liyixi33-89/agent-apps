@@ -33,7 +33,7 @@ const AppLayout = ({ children }: LayoutProps) => {
   const { lang, setLang, activeProvider, setActiveProvider } = useAppStore();
 
   const handleToggleLang = () => setLang(lang === 'zh' ? 'en' : 'zh');
-  const handleToggleProvider = () => setActiveProvider(activeProvider === 'ollama' ? 'codebuddy' : 'ollama');
+  const handleToggleProvider = () => setActiveProvider(activeProvider === 'ollama' ? 'openai' : 'ollama');
 
   const selectedKey = navItems.find(({ path, exact }) =>
     exact ? location.pathname === path : location.pathname === path || location.pathname.startsWith(path + '/')
@@ -81,7 +81,7 @@ const AppLayout = ({ children }: LayoutProps) => {
             aria-label="切换 AI 提供商"
           >
             <span className="flex-1 text-left text-xs">
-              {activeProvider === 'ollama' ? '🦙 Ollama' : '🤖 CodeBuddy'}
+              {activeProvider === 'ollama' ? '🦙 Ollama' : '🤖 OpenAI'}
             </span>
             <Tag color="default" className="text-xs ml-auto">切换</Tag>
           </Button>

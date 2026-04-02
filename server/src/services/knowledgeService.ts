@@ -258,7 +258,7 @@ const searchKnowledgeWithScore = async (
  */
 const rewriteQuestion = async (
   question: string,
-  options: { provider?: 'ollama' | 'codebuddy'; lang?: 'zh' | 'en' } = {}
+  options: { provider?: 'ollama' | 'openai'; lang?: 'zh' | 'en' } = {}
 ): Promise<string> => {
   try {
     const prompt =
@@ -473,7 +473,7 @@ export const ragQuery = async (
   options: {
     categoryKey?: string;
     agentSlug?: string;
-    provider?: 'ollama' | 'codebuddy';
+    provider?: 'ollama' | 'openai';
     lang?: 'zh' | 'en';
     /** 多轮对话历史 */
     history?: Array<{ role: 'user' | 'assistant'; content: string }>;
@@ -580,7 +580,7 @@ export const ragQueryStream = async function* (
   options: {
     categoryKey?: string;
     agentSlug?: string;
-    provider?: 'ollama' | 'codebuddy';
+    provider?: 'ollama' | 'openai';
     lang?: 'zh' | 'en';
     history?: Array<{ role: 'user' | 'assistant'; content: string }>;
     rewrite?: boolean;

@@ -371,7 +371,7 @@ export async function* streamWithContinuation(
     let finishReason: string | undefined;
 
     const stream = streamLLM(currentMessages, {
-      provider: options.provider as 'ollama' | 'codebuddy',
+      provider: options.provider as 'ollama' | 'openai',
       modelType: options.modelType as 'text' | 'vision',
     });
 

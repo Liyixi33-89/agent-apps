@@ -214,12 +214,12 @@ const ChatSidebar = ({ ctx, onSend, onPipeline }: ChatSidebarProps) => {
               className={`text-[10px] flex items-center gap-1 px-2 py-1.5 rounded-lg bg-gray-800/80 border border-gray-700/40 flex-shrink-0 transition-all hover:border-gray-600/60 ${
                 provider === 'ollama' ? 'text-emerald-400' : 'text-sky-400'
               }`}
-              onClick={() => setProvider(provider === 'ollama' ? 'codebuddy' : 'ollama')}
+            onClick={() => setProvider(provider === 'ollama' ? 'openai' : 'ollama')}
               aria-label="切换提供商"
               tabIndex={0}
             >
               <Cpu className="w-3 h-3" />
-              {provider === 'ollama' ? 'Ollama' : 'CB'}
+              {provider === 'ollama' ? 'Ollama' : 'OpenAI'}
             </button>
 
             {/* 模型类型 */}

@@ -10,7 +10,7 @@ export const fetchOverview = async () => {
     success: boolean;
     data: {
       stats: OverviewStats;
-      providers: { active: Provider; ollama: { textModel: string; visionModel: string }; codebuddy: { textModel: string; visionModel: string } };
+  providers: { active: Provider; ollama: { textModel: string; visionModel: string }; openai: { textModel: string; visionModel: string } };
       categories: Category[];
       featuredAgents: Agent[];
     };

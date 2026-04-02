@@ -41,7 +41,7 @@ export interface IAgent extends Document {
   };
   modelPreferences: {
     primary: 'text' | 'vision';
-    recommendedProvider: 'ollama' | 'codebuddy';
+    recommendedProvider: 'ollama' | 'openai';
   };
   stats: {
     sectionCount: number;
@@ -99,7 +99,7 @@ const agentSchema = new Schema<IAgent>(
     },
     modelPreferences: {
       primary: { type: String, enum: ['text', 'vision'], default: 'text' },
-      recommendedProvider: { type: String, enum: ['ollama', 'codebuddy'], default: 'ollama' }
+      recommendedProvider: { type: String, enum: ['ollama', 'openai'], default: 'openai' }
     },
     stats: {
       sectionCount: { type: Number, default: 0 },

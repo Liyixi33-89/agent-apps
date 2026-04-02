@@ -135,8 +135,8 @@ const bootstrap = async () => {
   const server = app.listen(env.port, () => {
     console.log(`🚀 Agency Agents Platform v2.0 running on http://127.0.0.1:${env.port}`);
     console.log(`📦 Provider: ${env.activeProvider}`);
-    console.log(`🤖 Text Model: ${env.activeProvider === 'ollama' ? env.ollamaTextModel : env.codebuddyTextModel}`);
-    console.log(`👁️  Vision Model: ${env.activeProvider === 'ollama' ? env.ollamaVisionModel : env.codebuddyVisionModel}`);
+    console.log(`🤖 Text Model: ${env.activeProvider === 'ollama' ? env.ollamaTextModel : env.openaiTextModel}`);
+    console.log(`👁️  Vision Model: ${env.activeProvider === 'ollama' ? env.ollamaVisionModel : env.openaiVisionModel}`);
   });
 
   const shutdown = async () => {

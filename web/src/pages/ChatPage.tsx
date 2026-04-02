@@ -231,11 +231,11 @@ const ChatPage = () => {
             </Button>
             <Button
               size="small"
-              type={provider === 'codebuddy' ? 'primary' : 'default'}
-              onClick={() => setProvider('codebuddy')}
+              type={provider === 'openai' ? 'primary' : 'default'}
+              onClick={() => setProvider('openai')}
               className="flex-1"
             >
-              🤖 CB
+              🤖 OpenAI
             </Button>
           </Space.Compact>
         </div>

@@ -43,7 +43,7 @@ vibeRouter.post('/vibe/generate', async (ctx) => {
       { role: 'system', content: systemPrompt },
       { role: 'user', content: prompt }
     ],
-    { provider: provider as 'ollama' | 'codebuddy', modelType: modelType as 'text' | 'vision' }
+    { provider: provider as 'ollama' | 'openai', modelType: modelType as 'text' | 'vision' }
   );
 
   ctx.body = { success: true, data: { content: response.content, provider: response.provider, model: response.model } };

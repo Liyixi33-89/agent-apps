@@ -10,18 +10,18 @@ const { Title, Text } = Typography;
 interface SettingsData {
   activeProvider: string;
   ollama: { baseUrl: string; textModel: string; visionModel: string };
-  codebuddy: { baseUrl: string; textModel: string; visionModel: string };
+  openai: { baseUrl: string; textModel: string; visionModel: string };
 }
 
 const ENV_VARS = [
-  ['ACTIVE_PROVIDER', 'ollama | codebuddy'],
+  ['ACTIVE_PROVIDER', 'ollama | openai'],
   ['OLLAMA_BASE_URL', 'http://127.0.0.1:11434'],
   ['OLLAMA_TEXT_MODEL', 'gpt-oss'],
   ['OLLAMA_VISION_MODEL', 'qwen3-vl'],
-  ['CODEBUDDY_BASE_URL', 'https://codebuddy.woa.com/apigw/xcode'],
-  ['CODEBUDDY_API_KEY', 'your-api-key'],
-  ['CODEBUDDY_TEXT_MODEL', 'gpt-oss'],
-  ['CODEBUDDY_VISION_MODEL', 'qwen3-vl'],
+  ['OPENAI_BASE_URL', 'https://api.chatanywhere.tech/v1'],
+  ['OPENAI_API_KEY', 'your-api-key'],
+  ['OPENAI_TEXT_MODEL', 'gpt-5.4-ca'],
+  ['OPENAI_VISION_MODEL', 'gpt-4o-ca'],
   ['MONGODB_URI', 'mongodb://127.0.0.1:27017/agency_agents'],
   ['JWT_SECRET', 'your-secret-key'],
 ];
@@ -71,14 +71,14 @@ const SettingsPage = () => {
                 🦙 Ollama
               </Tag>
               <Tag
-                color={settings.activeProvider === 'codebuddy' ? 'blue' : 'default'}
+                color={settings.activeProvider === 'openai' ? 'blue' : 'default'}
                 className="text-sm px-3 py-1"
               >
-                🤖 CodeBuddy
+                🤖 OpenAI
               </Tag>
             </Space>
             <Text type="secondary" className="text-xs block mt-3">
-              通过环境变量 <code className="text-sky-600 bg-sky-50 px-1 rounded">ACTIVE_PROVIDER</code> 切换提供商（ollama / codebuddy）
+              通过环境变量 <code className="text-sky-600 bg-sky-50 px-1 rounded">ACTIVE_PROVIDER</code> 切换提供商（ollama / openai）
             </Text>
           </Card>
 
@@ -101,21 +101,21 @@ const SettingsPage = () => {
             </Descriptions>
           </Card>
 
-          {/* CodeBuddy 配置 */}
+          {/* OpenAI 配置 */}
           <Card
-            title={<Space><span className="text-lg">🤖</span><span>CodeBuddy 配置</span></Space>}
+            title={<Space><span className="text-lg">🤖</span><span>OpenAI 配置</span></Space>}
             className="border-slate-200 rounded-xl shadow-sm"
             size="small"
           >
             <Descriptions column={1} size="small" bordered>
               <Descriptions.Item label="Base URL">
-                <code className="text-sky-600 bg-sky-50 px-2 py-0.5 rounded text-xs truncate max-w-xs block">{settings.codebuddy.baseUrl}</code>
+                <code className="text-sky-600 bg-sky-50 px-2 py-0.5 rounded text-xs truncate max-w-xs block">{settings.openai.baseUrl}</code>
               </Descriptions.Item>
               <Descriptions.Item label={<Space size={4}><MessageOutlined />文本模型</Space>}>
-                <code className="text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded text-xs">{settings.codebuddy.textModel}</code>
+                <code className="text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded text-xs">{settings.openai.textModel}</code>
               </Descriptions.Item>
               <Descriptions.Item label={<Space size={4}><EyeOutlined />视觉模型</Space>}>
-                <code className="text-violet-600 bg-violet-50 px-2 py-0.5 rounded text-xs">{settings.codebuddy.visionModel}</code>
+                <code className="text-violet-600 bg-violet-50 px-2 py-0.5 rounded text-xs">{settings.openai.visionModel}</code>
               </Descriptions.Item>
             </Descriptions>
           </Card>

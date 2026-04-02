@@ -14,7 +14,7 @@ export interface LLMMessage {
 
 export interface LLMResponse {
   content: string;
-  provider: 'ollama' | 'codebuddy';
+  provider: 'ollama' | 'openai';
   model: string;
   usage?: { promptTokens: number; completionTokens: number };
 }
@@ -50,21 +50,21 @@ const callOllama = async (
   return { content, provider: 'ollama', model };
 };
 
-// ─── CodeBuddy 调用 ────────────────────────────────────────────────────────────
+// ─── OpenAI 调用 ───────────────────────────────────────────────────────────────
 
-const callCodeBuddy = async (
+const callOpenAI = async (
   messages: LLMMessage[],
   modelType: 'text' | 'vision' = 'text'
 ): Promise<LLMResponse> => {
-  const model = modelType === 'vision' ? env.codebuddyVisionModel : env.codebuddyTextModel;
-  const url = `${env.codebuddyBaseUrl}/v1/chat/completions`;
+  const model = modelType === 'vision' ? env.openaiVisionModel : env.openaiTextModel;
+  const url = `${env.openaiBaseUrl}/chat/completions`;
 
   const response = await axios.post(
     url,
     { model, messages, stream: false },
     {
       headers: {
-        Authorization: `Bearer ${env.codebuddyApiKey}`,
+        Authorization: `Bearer ${env.openaiApiKey}`,
         'Content-Type': 'application/json'
       },
       timeout: 120_000
@@ -79,7 +79,7 @@ const callCodeBuddy = async (
       }
     : undefined;
 
-  return { content, provider: 'codebuddy', model, usage };
+  return { content, provider: 'openai', model, usage };
 };
 
 // ─── 流式 Ollama ───────────────────────────────────────────────────────────────
@@ -161,21 +161,21 @@ export const streamOllama = async function* (
   }
 };
 
-// ─── 流式 CodeBuddy ────────────────────────────────────────────────────────────
+// ─── 流式 OpenAI ───────────────────────────────────────────────────────────────
 
-export const streamCodeBuddy = async function* (
+export const streamOpenAI = async function* (
   messages: LLMMessage[],
   modelType: 'text' | 'vision' = 'text'
 ): AsyncGenerator<LLMStreamChunk> {
-  const model = modelType === 'vision' ? env.codebuddyVisionModel : env.codebuddyTextModel;
-  const url = `${env.codebuddyBaseUrl}/v1/chat/completions`;
+  const model = modelType === 'vision' ? env.openaiVisionModel : env.openaiTextModel;
+  const url = `${env.openaiBaseUrl}/chat/completions`;
 
   const response = await axios.post(
     url,
     { model, messages, stream: true, max_tokens: 16384 },
     {
       headers: {
-        Authorization: `Bearer ${env.codebuddyApiKey}`,
+        Authorization: `Bearer ${env.openaiApiKey}`,
         'Content-Type': 'application/json'
       },
       responseType: 'stream',
@@ -223,7 +223,7 @@ export interface ToolCall {
 export interface LLMToolResponse {
   content: string;
   toolCalls?: ToolCall[];
-  provider: 'ollama' | 'codebuddy';
+  provider: 'ollama' | 'openai';
   model: string;
   finishReason?: string;
 }
@@ -235,22 +235,22 @@ export const callLLMWithTools = async (
   tools: unknown[],
   options: {
     modelType?: 'text' | 'vision';
-    provider?: 'ollama' | 'codebuddy';
+  provider?: 'ollama' | 'openai';
   } = {}
 ): Promise<LLMToolResponse> => {
   const provider = options.provider || env.activeProvider;
   const modelType = options.modelType || 'text';
 
-  if (provider === 'codebuddy') {
-    const model = modelType === 'vision' ? env.codebuddyVisionModel : env.codebuddyTextModel;
-    const url = `${env.codebuddyBaseUrl}/v1/chat/completions`;
+  if (provider === 'openai') {
+    const model = modelType === 'vision' ? env.openaiVisionModel : env.openaiTextModel;
+    const url = `${env.openaiBaseUrl}/chat/completions`;
 
     const response = await axios.post(
       url,
       { model, messages, tools, tool_choice: 'auto', stream: false },
       {
         headers: {
-          Authorization: `Bearer ${env.codebuddyApiKey}`,
+          Authorization: `Bearer ${env.openaiApiKey}`,
           'Content-Type': 'application/json',
         },
         timeout: 120_000,
@@ -262,7 +262,7 @@ export const callLLMWithTools = async (
     const toolCalls: ToolCall[] | undefined = choice?.message?.tool_calls;
     const finishReason: string | undefined = choice?.finish_reason;
 
-    return { content, toolCalls, provider: 'codebuddy', model, finishReason };
+    return { content, toolCalls, provider: 'openai', model, finishReason };
   }
 
   // Ollama tool calling
@@ -304,14 +304,14 @@ export const callLLM = async (
   messages: LLMMessage[],
   options: {
     modelType?: 'text' | 'vision';
-    provider?: 'ollama' | 'codebuddy';
+  provider?: 'ollama' | 'openai';
   } = {}
 ): Promise<LLMResponse> => {
   const provider = options.provider || env.activeProvider;
   const modelType = options.modelType || 'text';
 
-  if (provider === 'codebuddy') {
-    return callCodeBuddy(messages, modelType);
+  if (provider === 'openai') {
+    return callOpenAI(messages, modelType);
   }
   return callOllama(messages, modelType);
 };
@@ -320,14 +320,14 @@ export const streamLLM = (
   messages: LLMMessage[],
   options: {
     modelType?: 'text' | 'vision';
-    provider?: 'ollama' | 'codebuddy';
+  provider?: 'ollama' | 'openai';
   } = {}
 ): AsyncGenerator<LLMStreamChunk> => {
   const provider = options.provider || env.activeProvider;
   const modelType = options.modelType || 'text';
 
-  if (provider === 'codebuddy') {
-    return streamCodeBuddy(messages, modelType);
+  if (provider === 'openai') {
+    return streamOpenAI(messages, modelType);
   }
   return streamOllama(messages, modelType);
 };
