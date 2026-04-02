@@ -40,19 +40,11 @@ export interface DbSchema {
   seedData: string;    // 种子数据
 }
 
-/** 菜单权限配置（全栈模式） */
-export interface MenuConfig {
-  menus: string;       // 菜单配置 JSON
-  permissions: string; // 权限配置 JSON
-  roles: string;       // 角色配置 JSON
-}
-
 /** 全栈项目完整数据 */
 export interface FullStackParts {
   codeParts: CodeParts;
   serverParts: ServerParts;
   dbSchema: DbSchema;
-  menuConfig: MenuConfig;
 }
 
 export type PreviewTab = 'preview' | 'code' | 'history';
@@ -73,7 +65,6 @@ export interface VibeHistoryItem {
   codeParts: CodeParts;
   serverParts?: ServerParts;   // 全栈模式下的后端代码
   dbSchema?: DbSchema;         // 全栈模式下的数据库 Schema
-  menuConfig?: MenuConfig;     // 全栈模式下的菜单权限
   isFullStack?: boolean;       // 是否为全栈项目
   createdAt: string;      // ISO 时间
   thumbnail?: string;     // base64 截图（可选）

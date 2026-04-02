@@ -13,5 +13,5 @@ export { historyDB, favoriteDB } from './db';
 export type {
   PipelineStep, VibeSession, CodeParts, PreviewTab, CodeTab,
   PromptCategory, VibeHistoryItem, FavoritePrompt,
-  ServerParts, DbSchema, MenuConfig, FullStackParts,
+  ServerParts, DbSchema, FullStackParts,
 } from './types';

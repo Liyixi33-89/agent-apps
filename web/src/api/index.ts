@@ -112,7 +112,6 @@ export interface FullStackPipelineSSEEvent {
   codeParts?: { html: string; css: string; js: string; jsx?: string; isReact?: boolean; isFullHtml?: boolean };
   serverParts?: { model: string; route: string; service: string; middleware: string; envTemplate: string };
   dbSchema?: { collections: string; indexes: string; seedData: string };
-  menuConfig?: { menus: string; permissions: string; roles: string };
   analysis?: string;
   isFullStack?: boolean;
   message?: string;

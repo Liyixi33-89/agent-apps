@@ -1,14 +1,13 @@
 /**
  * @file routes/vibeFullStackPipeline.ts
- * @description § 7d  Vibe Coding — 全栈 CRUD Pipeline（6步流水线）
+ * @description § 7d  Vibe Coding — 全栈 CRUD Pipeline（5步流水线）
  *
  * 执行顺序：
  *   Step 1 - 需求分析 Agent    → 拆解功能模块、数据实体、API 清单
  *   Step 2 - 数据库架构 Agent  → 设计 MongoDB Schema + 索引 + 验证
  *   Step 3 - 后端工程 Agent    → 生成 Koa 路由 + Service + 中间件
  *   Step 4 - 前端工程 Agent    → 生成 React 页面 + API 调用层
- *   Step 5 - 权限配置 Agent    → 生成菜单 + RBAC 权限模型
- *   Step 6 - 质检整合 Agent    → 审查全部代码 → 安全 + 一致性 + 完整性
+ *   Step 5 - 质检整合 Agent    → 审查全部代码 → 安全 + 一致性 + 完整性
  *
  * 路由列表：
  *   POST /api/vibe/fullstack-pipeline  → 全栈 Pipeline 流式生成（SSE）
@@ -40,12 +39,6 @@ const FS_ANALYST_PROMPT = `你是一个资深全栈需求分析师，专精于 N
 4. 【API 接口清单】
    - 格式：HTTP方法 路径 - 功能描述 - 请求参数 - 返回数据
    - 按模块分组列出所有 RESTful API
-5. 【权限模型】
-   - 角色列表（如 admin、user、guest）
-   - 每个角色可访问的模块和操作
-6. 【菜单结构】
-   - 侧边栏菜单层级（一级菜单 → 二级菜单）
-   - 每个菜单项对应的路由路径和权限
 
 要求：分析要全面、具体、可执行，总字数不超过 1500 字。`;
 
@@ -243,64 +236,7 @@ fetch('/api/' + apiName + '/' + id, {method:'DELETE'})
 
 请直接输出完整代码，不要解释。`;
 
-const FS_PERMISSION_ARCHITECT_PROMPT = `你是一个权限系统架构师，专精于 RBAC（基于角色的访问控制）。
-请根据需求分析，生成完整的菜单和权限配置。
 
-【输出格式要求】
-输出三个 JSON 配置，每个用独立代码块：
-
-1. 菜单配置：
-\`\`\`json:menus.json
-[
-  {
-    "key": "dashboard",
-    "label": "仪表盘",
-    "icon": "DashboardOutlined",
-    "path": "/dashboard",
-    "permission": "dashboard:view",
-    "children": []
-  }
-]
-\`\`\`
-
-2. 权限配置：
-\`\`\`json:permissions.json
-[
-  {
-    "key": "dashboard:view",
-    "label": "查看仪表盘",
-    "module": "dashboard",
-    "action": "view"
-  }
-]
-\`\`\`
-
-3. 角色配置：
-\`\`\`json:roles.json
-[
-  {
-    "key": "admin",
-    "label": "管理员",
-    "description": "拥有所有权限",
-    "permissions": ["*"]
-  },
-  {
-    "key": "user",
-    "label": "普通用户",
-    "description": "基本操作权限",
-    "permissions": ["dashboard:view", "..."]
-  }
-]
-\`\`\`
-
-【设计规范】
-1. 菜单层级不超过 2 级
-2. 权限粒度到操作级别（view/create/update/delete）
-3. 每个模块至少包含 CRUD 四个权限
-4. admin 角色拥有所有权限（使用 "*" 通配符）
-5. 菜单 icon 使用 Ant Design 图标名称
-
-请直接输出三个 JSON 配置，不要输出解释文字。`;
 
 const FS_REVIEWER_PROMPT = `你是一个全栈代码质检专家，负责审查和修复全栈项目的所有代码。
 
@@ -358,18 +294,6 @@ const FS_REVIEWER_PROMPT = `你是一个全栈代码质检专家，负责审查�
 // 前端 React 代码（⚠️ 如果原代码基本正确，直接原样输出！不要重写！）
 \`\`\`
 
-\`\`\`json:menus.json
-// 菜单配置
-\`\`\`
-
-\`\`\`json:permissions.json
-// 权限配置
-\`\`\`
-
-\`\`\`json:roles.json
-// 角色配置
-\`\`\`
-
 只输出代码块，不要输出解释文字。`;
 
 // =============================================================================
@@ -388,7 +312,6 @@ const getFullStackAgents = async () => ({
   dbArchitect: await getPrompt('fs_pipeline_db_architect', FS_DB_ARCHITECT_PROMPT),
   backend:     await getPrompt('fs_pipeline_backend',     FS_BACKEND_ENGINEER_PROMPT),
   frontend:    await getPrompt('fs_pipeline_frontend',    FS_FRONTEND_ENGINEER_PROMPT),
-  permission:  await getPrompt('fs_pipeline_permission',  FS_PERMISSION_ARCHITECT_PROMPT),
   reviewer:    await getPrompt('fs_pipeline_reviewer',    FS_REVIEWER_PROMPT),
 });
 
@@ -567,7 +490,6 @@ vibeFullStackPipelineRouter.post('/vibe/fullstack-pipeline', async (ctx) => {
     const MAX_DB_CHARS = 4000;         // 数据库 Schema 最大字符数
     const MAX_BACKEND_CHARS = 6000;    // 后端代码最大字符数
     const MAX_FRONTEND_CHARS = 8000;   // 前端代码最大字符数（增大以保留更多页面）
-    const MAX_PERMISSION_CHARS = 2000; // 权限配置最大字符数
   const STEP_TIMEOUT = 300_000;      // 每步超时 5 分钟
 
   const stepHeartbeat = () => send({ type: 'heartbeat' });
@@ -581,10 +503,10 @@ vibeFullStackPipelineRouter.post('/vibe/fullstack-pipeline', async (ctx) => {
       send({
         type: 'step',
         step,
-        total: 6,
+        total: 5,
         title: info.continuations > 0
-          ? `${['📋', '🗄️', '⚙️', '🎨', '🔐', '🔧'][step - 1]} 续写中（第${info.continuations}次）... 已生成 ${info.chars} 字符`
-          : `${['📋', '🗄️', '⚙️', '🎨', '🔐', '🔧'][step - 1]} 生成中... 已生成 ${info.chars} 字符`,
+          ? `${['📋', '🗄️', '⚙️', '🎨', ''][step - 1]} 续写中（第${info.continuations}次）... 已生成 ${info.chars} 字符`
+          : `${['📋', '🗄️', '⚙️', '🎨', ''][step - 1]} 生成中... 已生成 ${info.chars} 字符`,
         status: 'running',
       });
     },
@@ -594,17 +516,17 @@ vibeFullStackPipelineRouter.post('/vibe/fullstack-pipeline', async (ctx) => {
     const AGENTS = await getFullStackAgents();
 
     // ── Step 1: 需求分析 ──────────────────────────────────────────────────
-    send({ type: 'step', step: 1, total: 6, title: '📋 全栈需求分析中...', status: 'running' });
+    send({ type: 'step', step: 1, total: 5, title: '📋 全栈需求分析中...', status: 'running' });
 
     const analysisResult = await runStep([
       { role: 'system', content: AGENTS.analyst },
       { role: 'user', content: `请分析以下全栈应用需求：\n\n${prompt}` },
     ], opts, makeStepOpts(1, 'Step1-需求分析'));
 
-    send({ type: 'step', step: 1, total: 6, title: '📋 需求分析完成', status: 'done', content: analysisResult });
+    send({ type: 'step', step: 1, total: 5, title: '📋 需求分析完成', status: 'done', content: analysisResult });
 
     // ── Step 2: 数据库架构设计 ────────────────────────────────────────────
-    send({ type: 'step', step: 2, total: 6, title: '🗄️ 数据库架构设计中...', status: 'running' });
+    send({ type: 'step', step: 2, total: 5, title: '🗄️ 数据库架构设计中...', status: 'running' });
 
     const dbResult = await runStep([
       { role: 'system', content: AGENTS.dbArchitect },
@@ -614,10 +536,10 @@ vibeFullStackPipelineRouter.post('/vibe/fullstack-pipeline', async (ctx) => {
       },
     ], opts, makeStepOpts(2, 'Step2-数据库架构'));
 
-    send({ type: 'step', step: 2, total: 6, title: '🗄️ 数据库架构完成', status: 'done', content: dbResult });
+    send({ type: 'step', step: 2, total: 5, title: '🗄️ 数据库架构完成', status: 'done', content: dbResult });
 
     // ── Step 3: 后端工程 ──────────────────────────────────────────────────
-    send({ type: 'step', step: 3, total: 6, title: '⚙️ 后端代码生成中...', status: 'running' });
+    send({ type: 'step', step: 3, total: 5, title: '⚙️ 后端代码生成中...', status: 'running' });
 
     const backendResult = await runStep([
       { role: 'system', content: AGENTS.backend },
@@ -643,10 +565,10 @@ ${truncateText(dbResult, MAX_DB_CHARS)}
       },
     ], opts, makeStepOpts(3, 'Step3-后端工程'));
 
-    send({ type: 'step', step: 3, total: 6, title: '⚙️ 后端代码完成', status: 'done', content: backendResult });
+    send({ type: 'step', step: 3, total: 5, title: '⚙️ 后端代码完成', status: 'done', content: backendResult });
 
     // ── Step 4: 前端工程 ──────────────────────────────────────────────────
-    send({ type: 'step', step: 4, total: 6, title: '🎨 前端代码生成中...', status: 'running' });
+    send({ type: 'step', step: 4, total: 5, title: '🎨 前端代码生成中...', status: 'running' });
 
     const frontendResult = await runStep([
       { role: 'system', content: AGENTS.frontend },
@@ -680,23 +602,10 @@ ${truncateText(backendResult, MAX_BACKEND_CHARS)}
       },
     ], opts, makeStepOpts(4, 'Step4-前端工程'));
 
-    send({ type: 'step', step: 4, total: 6, title: '🎨 前端代码完成', status: 'done', content: frontendResult });
+    send({ type: 'step', step: 4, total: 5, title: '🎨 前端代码完成', status: 'done', content: frontendResult });
 
-    // ── Step 5: 权限配置 ──────────────────────────────────────────────────
-    send({ type: 'step', step: 5, total: 6, title: '🔐 权限配置生成中...', status: 'running' });
-
-    const permissionResult = await runStep([
-      { role: 'system', content: AGENTS.permission },
-      {
-        role: 'user',
-        content: `请根据以下需求分析，生成完整的菜单和权限配置。\n\n【原始需求】\n${prompt}\n\n【需求分析】\n${truncateText(analysisResult, MAX_ANALYSIS_CHARS)}`,
-      },
-    ], opts, makeStepOpts(5, 'Step5-权限配置'));
-
-    send({ type: 'step', step: 5, total: 6, title: '🔐 权限配置完成', status: 'done', content: permissionResult });
-
-    // ── Step 6: 质检整合 ──────────────────────────────────────────────────
-    send({ type: 'step', step: 6, total: 6, title: '🔧 全栈质检中...', status: 'running' });
+    // ── Step 5: 质检整合 ──────────────────────────────────────────────────
+    send({ type: 'step', step: 5, total: 5, title: '🔧 全栈质检中...', status: 'running' });
 
     const reviewResult = await runStep([
       { role: 'system', content: AGENTS.reviewer },
@@ -713,14 +622,11 @@ ${truncateText(backendResult, MAX_BACKEND_CHARS)}
 【前端 React 代码】
 ${truncateText(frontendResult, MAX_FRONTEND_CHARS)}
 
-【权限配置】
-${truncateText(permissionResult, MAX_PERMISSION_CHARS)}
-
 请按照审查清单逐项检查，修复所有问题后输出完整代码。`,
       },
-    ], opts, makeStepOpts(6, 'Step6-质检整合'));
+    ], opts, makeStepOpts(5, 'Step5-质检整合'));
 
-    send({ type: 'step', step: 6, total: 6, title: '🔧 质检完成', status: 'done' });
+    send({ type: 'step', step: 5, total: 5, title: '🔧 质检完成', status: 'done' });
 
     // ── 解析质检后的最终代码 ──────────────────────────────────────────────
 
@@ -739,11 +645,6 @@ ${truncateText(permissionResult, MAX_PERMISSION_CHARS)}
     // 前端代码提取
     const jsxCode = extractJsxBlock(reviewResult) || extractJsxBlock(frontendResult);
 
-    // 权限配置提取（优先从质检结果，降级到原始结果）
-    const menusJson = extractJsonBlock(reviewResult, 'menus.json') || extractJsonBlock(permissionResult, 'menus.json');
-    const permissionsJson = extractJsonBlock(reviewResult, 'permissions.json') || extractJsonBlock(permissionResult, 'permissions.json');
-    const rolesJson = extractJsonBlock(reviewResult, 'roles.json') || extractJsonBlock(permissionResult, 'roles.json');
-
     // ── 构建最终输出 ──────────────────────────────────────────────────────
 
     const serverParts = {
@@ -758,12 +659,6 @@ ${truncateText(permissionResult, MAX_PERMISSION_CHARS)}
       collections: modelCode, // Model 代码即为集合定义
       indexes: '',            // 索引已包含在 Model 代码中
       seedData: '',           // 种子数据可后续扩展
-    };
-
-    const menuConfig = {
-      menus: menusJson,
-      permissions: permissionsJson,
-      roles: rolesJson,
     };
 
     // 前端代码作为 codeParts 返回
@@ -794,7 +689,6 @@ ${truncateText(permissionResult, MAX_PERMISSION_CHARS)}
         isFullStack: true,
         serverParts,
         dbSchema,
-        menuConfig,
         isActive: false,
         publishedAt: new Date(),
       });
@@ -822,7 +716,6 @@ ${truncateText(permissionResult, MAX_PERMISSION_CHARS)}
       codeParts,
       serverParts,
       dbSchema,
-      menuConfig,
       analysis: analysisResult,
       isFullStack: true,
       // 新增：返回自动保存和部署的信息

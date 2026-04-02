@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { Globe, X, Tag, Plus, Loader2, ImagePlus, Trash2, Rocket, Store } from 'lucide-react';
 import { publishVibeTemplate, uploadTemplateImage, saveVibeApp, deployVibeApp } from '../../api';
 
-import type { VibeHistoryItem, ServerParts, DbSchema, MenuConfig } from './types';
+import type { VibeHistoryItem, ServerParts, DbSchema } from './types';
 
 interface PublishModalProps {
   item: VibeHistoryItem;
@@ -10,7 +10,6 @@ interface PublishModalProps {
   isFullStack?: boolean;
   serverParts?: ServerParts | null;
   dbSchema?: DbSchema | null;
-  menuConfig?: MenuConfig | null;
   onSuccess: (publishedToMarket: boolean, deployInfo?: { appId: string; runtimeApiBase: string }) => void;
   onClose: () => void;
 }
@@ -25,7 +24,7 @@ const CATEGORY_OPTIONS = [
   { key: '其他',       label: { zh: '其他', en: 'Other' } },
 ];
 
-const PublishModal = ({ item, lang, isFullStack = false, serverParts, dbSchema, menuConfig, onSuccess, onClose }: PublishModalProps) => {
+const PublishModal = ({ item, lang, isFullStack = false, serverParts, dbSchema, onSuccess, onClose }: PublishModalProps) => {
   const [title, setTitle]               = useState(item.label.slice(0, 30));
   const [description, setDesc]          = useState('');
   const [category, setCategory]         = useState('官网/落地页');
@@ -90,7 +89,6 @@ const PublishModal = ({ item, lang, isFullStack = false, serverParts, dbSchema, 
           isFullStack: true,
           serverParts: serverParts || undefined,
           dbSchema: dbSchema || undefined,
-          menuConfig: menuConfig || undefined,
         }),
       };
 
@@ -175,8 +173,8 @@ const PublishModal = ({ item, lang, isFullStack = false, serverParts, dbSchema, 
                 </p>
                 <p className="text-[10px] text-emerald-400/60 mt-0.5">
                   {lang === 'zh'
-                    ? '包含 Node 后端 + React 前端 + MongoDB Schema + 权限配置'
-                    : 'Includes Node backend + React frontend + MongoDB Schema + RBAC config'}
+                    ? '包含 Node 后端 + React 前端 + MongoDB Schema'
+                    : 'Includes Node backend + React frontend + MongoDB Schema'}
                 </p>
               </div>
             </div>

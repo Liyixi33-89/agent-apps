@@ -24,7 +24,7 @@ import {
   useVibeHistory,
   useFavoritePrompts,
 } from './vibe-coding';
-import type { PipelineStep, VibeSession, CodeParts, VibeHistoryItem, ServerParts, DbSchema, MenuConfig } from './vibe-coding';
+import type { PipelineStep, VibeSession, CodeParts, VibeHistoryItem, ServerParts, DbSchema } from './vibe-coding';
 
 // ─── 侧边栏视图类型 ───────────────────────────────────────────────────────────
 
@@ -64,11 +64,10 @@ const VibeCodingPage = () => {
   // React 模式：告知 AI 生成 JSX 组件代码
 const [isReactMode, setIsReactMode] = useState(true);
 
-  // 全栈模式：生成 Node 后端 + React 前端 + MongoDB + 权限
+  // 全栈模式：生成 Node 后端 + React 前端 + MongoDB
   const [isFullStackMode, setIsFullStackMode] = useState(false);
   const [serverParts, setServerParts] = useState<ServerParts | null>(null);
   const [dbSchema, setDbSchema] = useState<DbSchema | null>(null);
-  const [menuConfig, setMenuConfig] = useState<MenuConfig | null>(null);
   const [runtimeApiBase, setRuntimeApiBase] = useState<string>('');
   const fullStackAbortRef = useRef<(() => void) | null>(null);
 
@@ -289,16 +288,15 @@ const [isReactMode, setIsReactMode] = useState(true);
     }
   };
 
-  // ─── 全栈 Pipeline（6步流水线：需求分析→数据库→后端→前端→权限→质检）────────
+  // ─── 全栈 Pipeline（5步流水线：需求分析→数据库→后端→前端→质检）────────
 
   const runFullStackPipeline = (trimmed: string) => {
     const initialSteps: PipelineStep[] = [
-      { step: 1, total: 6, title: '📋 全栈需求分析', status: 'pending' },
-      { step: 2, total: 6, title: '🗄️ 数据库架构', status: 'pending' },
-      { step: 3, total: 6, title: '⚙️ 后端代码', status: 'pending' },
-      { step: 4, total: 6, title: '🎨 前端代码', status: 'pending' },
-      { step: 5, total: 6, title: '🔐 权限配置', status: 'pending' },
-      { step: 6, total: 6, title: '🔧 质检整合', status: 'pending' },
+      { step: 1, total: 5, title: '📋 全栈需求分析', status: 'pending' },
+      { step: 2, total: 5, title: '🗄️ 数据库架构', status: 'pending' },
+      { step: 3, total: 5, title: '⚙️ 后端代码', status: 'pending' },
+      { step: 4, total: 5, title: '🎨 前端代码', status: 'pending' },
+      { step: 5, total: 5, title: '🔧 质检整合', status: 'pending' },
     ];
     setPipelineSteps(initialSteps);
     setIsAgentPlanMode(false);
@@ -329,9 +327,6 @@ const [isReactMode, setIsReactMode] = useState(true);
           }
           if (event.dbSchema) {
             setDbSchema(event.dbSchema as DbSchema);
-          }
-          if (event.menuConfig) {
-            setMenuConfig(event.menuConfig as MenuConfig);
           }
 
           // ⚠️ 关键：使用 flushSync 确保 runtimeApiBase 和 codeParts 在同一次同步渲染中更新
@@ -1528,7 +1523,6 @@ const [isReactMode, setIsReactMode] = useState(true);
           isFullStack={isFullStackMode}
           serverParts={serverParts}
           dbSchema={dbSchema}
-          menuConfig={menuConfig}
           onSuccess={(_, deployInfo) => {
             setPublishTarget(null);
             if (deployInfo?.runtimeApiBase) {
