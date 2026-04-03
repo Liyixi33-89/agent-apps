@@ -1,5 +1,49 @@
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 import { env } from '../config/env.js';
+
+// ─── 429 重试工具函数 ──────────────────────────────────────────────────────────
+
+/** 延迟指定毫秒 */
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
+ * 从 429 响应的 Retry-After 头中解析等待时间（秒）
+ * 如果没有该头或解析失败，返回 undefined
+ */
+const parseRetryAfter = (error: AxiosError): number | undefined => {
+  const retryAfter = error.response?.headers?.['retry-after'];
+  if (!retryAfter) return undefined;
+  const seconds = Number(retryAfter);
+  return isNaN(seconds) ? undefined : seconds;
+};
+
+/** 429 重试配置 */
+const RATE_LIMIT_CONFIG = {
+  maxRetries: 5,           // 最大重试次数
+  baseDelayMs: 5_000,      // 基础等待时间 5 秒
+  maxDelayMs: 60_000,      // 最大等待时间 60 秒
+  backoffMultiplier: 2,    // 指数退避倍数
+};
+
+/**
+ * 计算第 N 次重试的等待时间（指数退避 + 随机抖动）
+ * 优先使用 Retry-After 头的值
+ */
+const getRetryDelay = (attempt: number, retryAfterSeconds?: number): number => {
+  if (retryAfterSeconds !== undefined) {
+    // 使用服务器建议的等待时间，加 1 秒余量
+    return Math.min((retryAfterSeconds + 1) * 1000, RATE_LIMIT_CONFIG.maxDelayMs);
+  }
+  // 指数退避：baseDelay * 2^attempt + 随机抖动(0~1秒)
+  const exponentialDelay = RATE_LIMIT_CONFIG.baseDelayMs * Math.pow(RATE_LIMIT_CONFIG.backoffMultiplier, attempt);
+  const jitter = Math.random() * 1000;
+  return Math.min(exponentialDelay + jitter, RATE_LIMIT_CONFIG.maxDelayMs);
+};
+
+/** 判断是否为 429 限流错误 */
+const isRateLimitError = (error: unknown): error is AxiosError => {
+  return axios.isAxiosError(error) && error.response?.status === 429;
+};
 
 export interface LLMMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
@@ -59,27 +103,42 @@ const callOpenAI = async (
   const model = modelType === 'vision' ? env.openaiVisionModel : env.openaiTextModel;
   const url = `${env.openaiBaseUrl}/chat/completions`;
 
-  const response = await axios.post(
-    url,
-    { model, messages, stream: false },
-    {
-      headers: {
-        Authorization: `Bearer ${env.openaiApiKey}`,
-        'Content-Type': 'application/json'
-      },
-      timeout: 120_000
-    }
-  );
+  for (let attempt = 0; attempt <= RATE_LIMIT_CONFIG.maxRetries; attempt++) {
+    try {
+      const response = await axios.post(
+        url,
+        { model, messages, stream: false },
+        {
+          headers: {
+            Authorization: `Bearer ${env.openaiApiKey}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 120_000
+        }
+      );
 
-  const content: string = response.data?.choices?.[0]?.message?.content || '';
-  const usage = response.data?.usage
-    ? {
-        promptTokens: response.data.usage.prompt_tokens || 0,
-        completionTokens: response.data.usage.completion_tokens || 0
+      const content: string = response.data?.choices?.[0]?.message?.content || '';
+      const usage = response.data?.usage
+        ? {
+            promptTokens: response.data.usage.prompt_tokens || 0,
+            completionTokens: response.data.usage.completion_tokens || 0
+          }
+        : undefined;
+
+      return { content, provider: 'openai', model, usage };
+    } catch (error: unknown) {
+      if (isRateLimitError(error) && attempt < RATE_LIMIT_CONFIG.maxRetries) {
+        const retryAfter = parseRetryAfter(error);
+        const delay = getRetryDelay(attempt, retryAfter);
+        console.warn(`[callOpenAI] 429 限流，第 ${attempt + 1}/${RATE_LIMIT_CONFIG.maxRetries} 次重试，等待 ${(delay / 1000).toFixed(1)}s...`);
+        await sleep(delay);
+        continue;
       }
-    : undefined;
+      throw error;
+    }
+  }
 
-  return { content, provider: 'openai', model, usage };
+  throw new Error('[callOpenAI] 超过最大重试次数，API 持续返回 429 限流');
 };
 
 // ─── 流式 Ollama ───────────────────────────────────────────────────────────────
@@ -170,18 +229,38 @@ export const streamOpenAI = async function* (
   const model = modelType === 'vision' ? env.openaiVisionModel : env.openaiTextModel;
   const url = `${env.openaiBaseUrl}/chat/completions`;
 
-  const response = await axios.post(
-    url,
-    { model, messages, stream: true, max_tokens: 16384 },
-    {
-      headers: {
-        Authorization: `Bearer ${env.openaiApiKey}`,
-        'Content-Type': 'application/json'
-      },
-      responseType: 'stream',
-      timeout: 180_000
+  let response;
+  for (let attempt = 0; attempt <= RATE_LIMIT_CONFIG.maxRetries; attempt++) {
+    try {
+      response = await axios.post(
+        url,
+        { model, messages, stream: true, max_tokens: 16384 },
+        {
+          headers: {
+            Authorization: `Bearer ${env.openaiApiKey}`,
+            'Content-Type': 'application/json'
+          },
+          responseType: 'stream',
+          timeout: 180_000
+        }
+      );
+      break; // 请求成功，跳出重试循环
+    } catch (error: unknown) {
+      if (isRateLimitError(error) && attempt < RATE_LIMIT_CONFIG.maxRetries) {
+        const retryAfter = parseRetryAfter(error);
+        const delay = getRetryDelay(attempt, retryAfter);
+        console.warn(`[streamOpenAI] 429 限流，第 ${attempt + 1}/${RATE_LIMIT_CONFIG.maxRetries} 次重试，等待 ${(delay / 1000).toFixed(1)}s...`);
+        await sleep(delay);
+        continue;
+      }
+      // 非 429 错误或超过重试次数，直接抛出
+      throw error;
     }
-  );
+  }
+
+  if (!response) {
+    throw new Error('[streamOpenAI] 超过最大重试次数，API 持续返回 429 限流');
+  }
 
   let buffer = '';
   for await (const chunk of response.data) {
@@ -245,24 +324,39 @@ export const callLLMWithTools = async (
     const model = modelType === 'vision' ? env.openaiVisionModel : env.openaiTextModel;
     const url = `${env.openaiBaseUrl}/chat/completions`;
 
-    const response = await axios.post(
-      url,
-      { model, messages, tools, tool_choice: 'auto', stream: false },
-      {
-        headers: {
-          Authorization: `Bearer ${env.openaiApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        timeout: 120_000,
+    for (let attempt = 0; attempt <= RATE_LIMIT_CONFIG.maxRetries; attempt++) {
+      try {
+        const response = await axios.post(
+          url,
+          { model, messages, tools, tool_choice: 'auto', stream: false },
+          {
+            headers: {
+              Authorization: `Bearer ${env.openaiApiKey}`,
+              'Content-Type': 'application/json',
+            },
+            timeout: 120_000,
+          }
+        );
+
+        const choice = response.data?.choices?.[0];
+        const content: string = choice?.message?.content || '';
+        const toolCalls: ToolCall[] | undefined = choice?.message?.tool_calls;
+        const finishReason: string | undefined = choice?.finish_reason;
+
+        return { content, toolCalls, provider: 'openai', model, finishReason };
+      } catch (error: unknown) {
+        if (isRateLimitError(error) && attempt < RATE_LIMIT_CONFIG.maxRetries) {
+          const retryAfter = parseRetryAfter(error);
+          const delay = getRetryDelay(attempt, retryAfter);
+          console.warn(`[callLLMWithTools] 429 限流，第 ${attempt + 1}/${RATE_LIMIT_CONFIG.maxRetries} 次重试，等待 ${(delay / 1000).toFixed(1)}s...`);
+          await sleep(delay);
+          continue;
+        }
+        throw error;
       }
-    );
+    }
 
-    const choice = response.data?.choices?.[0];
-    const content: string = choice?.message?.content || '';
-    const toolCalls: ToolCall[] | undefined = choice?.message?.tool_calls;
-    const finishReason: string | undefined = choice?.finish_reason;
-
-    return { content, toolCalls, provider: 'openai', model, finishReason };
+    throw new Error('[callLLMWithTools] 超过最大重试次数，API 持续返回 429 限流');
   }
 
   // Ollama tool calling

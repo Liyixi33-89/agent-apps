@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   Layout, Menu, Button, Drawer, Space, Tooltip, Tag,
@@ -9,6 +9,7 @@ import {
   GlobalOutlined, ApiOutlined, SafetyCertificateOutlined, CheckSquareOutlined,
 } from '@ant-design/icons';
 import { useAppStore } from '../store';
+import { fetchOverview } from '../api';
 
 const { Sider, Header, Content } = Layout;
 
@@ -31,6 +32,18 @@ const AppLayout = ({ children }: LayoutProps) => {
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { lang, setLang, activeProvider, setActiveProvider } = useAppStore();
+
+  // 应用启动时从后端同步真实的 activeProvider
+  useEffect(() => {
+    fetchOverview()
+      .then((data) => {
+        if (data.providers?.active) {
+          setActiveProvider(data.providers.active);
+        }
+      })
+      .catch((err) => console.warn('同步 Provider 配置失败:', err));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleToggleLang = () => setLang(lang === 'zh' ? 'en' : 'zh');
   const handleToggleProvider = () => setActiveProvider(activeProvider === 'ollama' ? 'openai' : 'ollama');

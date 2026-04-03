@@ -566,6 +566,7 @@ vibeFullStackPipelineRouter.post('/vibe/fullstack-pipeline', async (ctx) => {
     const MAX_BACKEND_CHARS = 6000;    // 后端代码最大字符数
     const MAX_FRONTEND_CHARS = 8000;   // 前端代码最大字符数（增大以保留更多页面）
   const STEP_TIMEOUT = 300_000;      // 每步超时 5 分钟
+  const STEP_INTERVAL_MS = 3_000;    // 步骤间隔 3 秒，避免触发 API 限流（429）
 
   const stepHeartbeat = () => send({ type: 'heartbeat' });
 
@@ -602,6 +603,9 @@ vibeFullStackPipelineRouter.post('/vibe/fullstack-pipeline', async (ctx) => {
 
     send({ type: 'step', step: 1, total: TOTAL_STEPS, title: '📋 需求分析完成', status: 'done', content: analysisResult });
 
+    // 步骤间隔，避免触发 API 限流
+    await new Promise(r => setTimeout(r, STEP_INTERVAL_MS));
+
     // ── Step 2: 数据库架构设计 ────────────────────────────────────────────
     send({ type: 'step', step: 2, total: TOTAL_STEPS, title: '🗄️ 数据库架构设计中...', status: 'running' });
 
@@ -614,6 +618,9 @@ vibeFullStackPipelineRouter.post('/vibe/fullstack-pipeline', async (ctx) => {
     ], opts, makeStepOpts(2, 'Step2-数据库架构'));
 
     send({ type: 'step', step: 2, total: TOTAL_STEPS, title: '🗄️ 数据库架构完成', status: 'done', content: dbResult });
+
+    // 步骤间隔，避免触发 API 限流
+    await new Promise(r => setTimeout(r, STEP_INTERVAL_MS));
 
     // ── Step 3: 后端工程 ──────────────────────────────────────────────────
     send({ type: 'step', step: 3, total: TOTAL_STEPS, title: '⚙️ 后端代码生成中...', status: 'running' });
@@ -643,6 +650,9 @@ ${truncateText(dbResult, MAX_DB_CHARS)}
     ], opts, makeStepOpts(3, 'Step3-后端工程'));
 
     send({ type: 'step', step: 3, total: TOTAL_STEPS, title: '⚙️ 后端代码完成', status: 'done', content: backendResult });
+
+    // 步骤间隔，避免触发 API 限流
+    await new Promise(r => setTimeout(r, STEP_INTERVAL_MS));
 
     // ── Step 4: 前端工程 ──────────────────────────────────────────────────
     send({ type: 'step', step: 4, total: TOTAL_STEPS, title: '🎨 前端代码生成中...', status: 'running' });
@@ -681,6 +691,9 @@ ${truncateText(backendResult, MAX_BACKEND_CHARS)}
 
     send({ type: 'step', step: 4, total: TOTAL_STEPS, title: '🎨 前端代码完成', status: 'done', content: frontendResult });
 
+    // 步骤间隔，避免触发 API 限流
+    await new Promise(r => setTimeout(r, STEP_INTERVAL_MS));
+
     // ── Step 5: UI/UX 设计增强 ────────────────────────────────────────────
     send({ type: 'step', step: 5, total: TOTAL_STEPS, title: '🎯 UI/UX 设计增强中...', status: 'running' });
 
@@ -716,6 +729,9 @@ ${truncateText(frontendResult, MAX_FRONTEND_FOR_UI)}
 
     // 提取 UI 增强后的前端代码（优先使用增强版本）
     const enhancedFrontendCode = extractJsxBlock(uiDesignResult) || extractJsxBlock(frontendResult);
+
+    // 步骤间隔，避免触发 API 限流
+    await new Promise(r => setTimeout(r, STEP_INTERVAL_MS));
 
     // ── Step 6: 质检整合 ──────────────────────────────────────────────────
     send({ type: 'step', step: 6, total: TOTAL_STEPS, title: '🔧 全栈质检中...', status: 'running' });
