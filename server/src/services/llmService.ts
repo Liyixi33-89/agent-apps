@@ -145,16 +145,26 @@ const callOpenAI = async (
 
 export const streamOllama = async function* (
   messages: LLMMessage[],
-  modelType: 'text' | 'vision' = 'text'
+  modelType: 'text' | 'vision' = 'text',
+  extraOptions?: { temperature?: number; maxTokens?: number; model?: string }
 ): AsyncGenerator<LLMStreamChunk> {
-  const model = modelType === 'vision' ? env.ollamaVisionModel : env.ollamaTextModel;
+  const model = extraOptions?.model || (modelType === 'vision' ? env.ollamaVisionModel : env.ollamaTextModel);
   const url = `${env.ollamaBaseUrl}/api/chat`;
+  const numPredict = extraOptions?.maxTokens ?? 65536;
+  const temperature = extraOptions?.temperature;
 
   let response;
   try {
     response = await axios.post(
       url,
-      { model, messages, stream: true, num_predict: 32768, options: { num_ctx: 65536 } },
+      {
+        model, messages, stream: true,
+        num_predict: numPredict,
+        options: {
+          num_ctx: 65536,
+          ...(temperature !== undefined ? { temperature } : {}),
+        },
+      },
       { responseType: 'stream', timeout: 300_000 }
     );
   } catch (err: any) {
@@ -224,17 +234,23 @@ export const streamOllama = async function* (
 
 export const streamOpenAI = async function* (
   messages: LLMMessage[],
-  modelType: 'text' | 'vision' = 'text'
+  modelType: 'text' | 'vision' = 'text',
+  extraOptions?: { temperature?: number; maxTokens?: number; model?: string }
 ): AsyncGenerator<LLMStreamChunk> {
-  const model = modelType === 'vision' ? env.openaiVisionModel : env.openaiTextModel;
+  const model = extraOptions?.model || (modelType === 'vision' ? env.openaiVisionModel : env.openaiTextModel);
   const url = `${env.openaiBaseUrl}/chat/completions`;
+  const maxTokens = extraOptions?.maxTokens ?? 32768;
 
   let response;
   for (let attempt = 0; attempt <= RATE_LIMIT_CONFIG.maxRetries; attempt++) {
     try {
       response = await axios.post(
         url,
-        { model, messages, stream: true, max_tokens: 16384 },
+        {
+          model, messages, stream: true,
+          max_tokens: maxTokens,
+          ...(extraOptions?.temperature !== undefined ? { temperature: extraOptions.temperature } : {}),
+        },
         {
           headers: {
             Authorization: `Bearer ${env.openaiApiKey}`,
@@ -414,14 +430,25 @@ export const streamLLM = (
   messages: LLMMessage[],
   options: {
     modelType?: 'text' | 'vision';
-  provider?: 'ollama' | 'openai';
+    provider?: 'ollama' | 'openai';
+    /** 可选：覆盖默认 temperature（编程任务建议 0.2-0.4） */
+    temperature?: number;
+    /** 可选：覆盖默认 max_tokens / num_predict */
+    maxTokens?: number;
+    /** 可选：覆盖默认模型名称（用于 Pipeline 分步骤使用不同模型） */
+    model?: string;
   } = {}
 ): AsyncGenerator<LLMStreamChunk> => {
   const provider = options.provider || env.activeProvider;
   const modelType = options.modelType || 'text';
+  const extraOptions = {
+    temperature: options.temperature,
+    maxTokens: options.maxTokens,
+    model: options.model,
+  };
 
   if (provider === 'openai') {
-    return streamOpenAI(messages, modelType);
+    return streamOpenAI(messages, modelType, extraOptions);
   }
-  return streamOllama(messages, modelType);
+  return streamOllama(messages, modelType, extraOptions);
 };

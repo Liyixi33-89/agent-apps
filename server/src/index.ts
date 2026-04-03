@@ -9,6 +9,7 @@ import { env } from './config/env.js';
 import { connectToMongo, disconnectFromMongo } from './db/mongo.js';
 import { agentsRouter } from './routes/agents.js';
 import { adminRouter } from './routes/admin.js';
+import { compileRouter } from './routes/compile.js';
 import { Agent } from './models/Agent.js';
 import { KnowledgeBase } from './models/KnowledgeBase.js';
 import { ingestAgentsFromMarkdown, ingestKnowledgeFromAgents } from './services/agentIngestionService.js';
@@ -64,6 +65,8 @@ app.use(agentsRouter.routes());
 app.use(agentsRouter.allowedMethods());
 app.use(adminRouter.routes());
 app.use(adminRouter.allowedMethods());
+app.use(compileRouter.routes());
+app.use(compileRouter.allowedMethods());
 
 // ─── 启动 ──────────────────────────────────────────────────────────────────────
 

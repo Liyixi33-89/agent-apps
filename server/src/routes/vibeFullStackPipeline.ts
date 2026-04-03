@@ -9,6 +9,7 @@
  *   Step 4 - 前端工程 Agent      → 生成 React 页面 + API 调用层
  *   Step 5 - UI/UX 设计师 Agent  → 增强页面视觉设计、交互体验、动画效果
  *   Step 6 - 质检整合 Agent      → 审查全部代码 → 安全 + 一致性 + 完整性
+ *   Step 7 - 编译验证 + AI 修复  → esbuild 编译前端代码，失败则 AI 自动修复（最多 3 轮）
  *
  * 路由列表：
  *   POST /api/vibe/fullstack-pipeline  → 全栈 Pipeline 流式生成（SSE）
@@ -21,6 +22,7 @@ import { VibeTemplate } from '../models/VibeTemplate.js';
 import { env } from '../config/env.js';
 import { streamWithContinuation } from '../lib/llmUtils.js';
 import { deployAppBackend } from './vibeAppRuntime.js';
+import { compileJsx } from '../services/compileService.js';
 
 export const vibeFullStackPipelineRouter = new Router();
 
@@ -201,13 +203,28 @@ c. 编辑弹窗 + 数据回填
 d. 删除确认
 e. API 失败时降级到 mockData
 
-【⚠️ 防御性编程 - 极其重要】
-所有从 API 获取的数据必须做防御性处理：
-1. fetch 返回的 data 可能是 undefined/null，必须用 || [] 兜底
-2. 示例：const list = (res.data || []);  // 而不是直接 res.data.map(...)
-3. Table 组件的 data prop 必须有默认值：const Table = ({columns, data = [], ...}) => ...
-4. 分页的 total 也要兜底：const total = res.pagination?.total || res.total || 0;
-5. 所有 .map() 调用前必须确保目标是数组：(Array.isArray(data) ? data : []).map(...)
+【⚠️ 防御性编程 - 极其重要（违反必崩溃）】
+所有变量在调用 .map() / .filter() / .forEach() / .find() 之前，必须确保是数组：
+1. **props 解构必须给默认值**：const CrudPage = ({columns = [], fields = [], data = [], mockData = [], ...}) => ...
+2. **API 返回值必须兜底**：const list = (res.data || []); 而不是直接 res.data.map(...)
+3. **所有 .map() 前必须防御**：(Array.isArray(data) ? data : []).map(...) 或 (data || []).map(...)
+4. **对象属性访问用可选链**：item?.name || '' 而不是 item.name
+5. **分页 total 兜底**：const total = res?.pagination?.total || res?.total || 0;
+6. **fetch 响应必须 try-catch**：
+   \`\`\`
+   let list = []; let total = 0;
+   try { const res = await fetch(...).then(r=>r.json()); list = res.data || []; total = res.total || 0; } catch(e) { list = mockData || []; }
+   \`\`\`
+7. **CrudPage 内部所有状态初始化必须有值**：useState([]) 而不是 useState()，useState(0) 而不是 useState()
+8. **render 中的条件渲染**：{(items || []).length > 0 && ...} 而不是 {items.length > 0 && ...}
+9. **useEffect 依赖项禁止使用每次渲染都变化的引用**：
+   - ❌ 错误：useEffect(() => { load() }, [load]) 其中 load 依赖了 props 中的数组/对象
+   - ✅ 正确：用 useRef 保存 props 中的数组/对象，useCallback 依赖 ref 而非 props
+   - ❌ 错误：useCallback(fn, [props.columns, props.mockData]) — 数组 props 每次渲染都是新引用
+   - ✅ 正确：const mockRef = useRef(mockData); mockRef.current = mockData; useCallback(fn, [svc]) — 只依赖稳定引用
+   - ❌ 错误：useEffect(() => { setState(props.data) }, [props.data]) — 对象/数组 props 每次都变
+   - ✅ 正确：useEffect(() => { setState(props.data) }, [JSON.stringify(props.data)]) 或用 useRef
+10. **useEffect 必须有依赖数组**：禁止写 useEffect(() => { ... }) 不带第二个参数，必须写 useEffect(() => { ... }, [])
 
 【代码规范】
 1. React 函数组件 + Hooks
@@ -222,6 +239,7 @@ e. API 失败时降级到 mockData
 - ❌ 禁止 className
 - ❌ 禁止 React Router（用 state 切换）
 - ❌ 禁止为每个模块重复写 CRUD 逻辑（必须用 CrudPage 工厂）
+- ❌ 禁止将业务 props 透传到原生 DOM 元素（如 <button {...props}>），必须解构出业务属性后再传递，例如：const Button = ({dataSource, onDel, children, ...domProps}) => <button {...domProps}>{children}</button>
 
 【API 路径格式】
 fetch('/api/' + apiName + '?page=1&limit=20')
@@ -234,6 +252,60 @@ fetch('/api/' + apiName + '/' + id, {method:'DELETE'})
 2. 主色调紫色（#7c3aed）
 3. 左侧边栏 + 顶部栏 + 内容区
 4. 表格行悬停高亮，按钮有 hover 效果
+
+【✅ 参考骨架 — 照着这个结构写，确保完整】
+以下是一个最小可运行的 CrudPage 工厂骨架，你必须在此基础上扩展：
+
+\`\`\`jsx
+const S={bg:'#0f172a',card:'#1e293b',border:'#334155',primary:'#7c3aed',primaryHover:'#6d28d9',text:'#f1f5f9',textDim:'#94a3b8',danger:'#ef4444',success:'#22c55e'};
+const api=(name)=>({
+  list:async(p=1)=>{try{const r=await fetch('/api/'+name+'?page='+p+'&limit=20');return await r.json()}catch(e){return{data:[],total:0}}},
+  create:async(d)=>{try{const r=await fetch('/api/'+name,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});return await r.json()}catch(e){return null}},
+  update:async(id,d)=>{try{const r=await fetch('/api/'+name+'/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});return await r.json()}catch(e){return null}},
+  del:async(id)=>{try{await fetch('/api/'+name+'/'+id,{method:'DELETE'})}catch(e){}}
+});
+const CrudPage=({apiName='',title='',columns=[],fields=[],mockData=[]})=>{
+  const[data,setData]=React.useState([]);const[total,setTotal]=React.useState(0);
+  const[page,setPage]=React.useState(1);const[showModal,setShowModal]=React.useState(false);
+  const[editItem,setEditItem]=React.useState(null);const[form,setForm]=React.useState({});
+  const[loading,setLoading]=React.useState(false);
+  const svc=React.useMemo(()=>api(apiName),[apiName]);
+  const mockRef=React.useRef(mockData);mockRef.current=mockData;
+  const load=React.useCallback(async(p=1)=>{setLoading(true);try{const r=await svc.list(p);setData(r?.data||mockRef.current||[]);setTotal(r?.total||0);setPage(p)}catch(e){setData(mockRef.current||[])}finally{setLoading(false)}},[svc]);
+  React.useEffect(()=>{load()},[load]);
+  const handleSave=async()=>{if(editItem?._id){await svc.update(editItem._id,form)}else{await svc.create(form)};setShowModal(false);setForm({});setEditItem(null);load(page)};
+  const handleEdit=(item)=>{setEditItem(item);setForm({...item});setShowModal(true)};
+  const handleDel=async(id)=>{if(confirm('确认删除?')){await svc.del(id);load(page)}};
+  return React.createElement('div',{style:{padding:24}},
+    React.createElement('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:16}},
+      React.createElement('h2',{style:{color:S.text,margin:0}},title),
+      React.createElement('button',{onClick:()=>{setEditItem(null);setForm({});setShowModal(true)},style:{background:S.primary,color:'#fff',border:'none',padding:'8px 16px',borderRadius:6,cursor:'pointer'}},'+ 新增')),
+    React.createElement('table',{style:{width:'100%',borderCollapse:'collapse'}},
+      React.createElement('thead',null,React.createElement('tr',null,(columns||[]).map((c,i)=>React.createElement('th',{key:i,style:{padding:12,textAlign:'left',borderBottom:'1px solid '+S.border,color:S.textDim}},c.label)),React.createElement('th',{style:{padding:12,borderBottom:'1px solid '+S.border,color:S.textDim}},'操作'))),
+      React.createElement('tbody',null,(data||[]).map((row,ri)=>React.createElement('tr',{key:row?._id||ri,style:{borderBottom:'1px solid '+S.border}},
+        (columns||[]).map((c,ci)=>React.createElement('td',{key:ci,style:{padding:12,color:S.text}},c.render?c.render(row[c.key],row):String(row?.[c.key]??''))),
+        React.createElement('td',{style:{padding:12}},
+          React.createElement('button',{onClick:()=>handleEdit(row),style:{background:'transparent',color:S.primary,border:'none',cursor:'pointer',marginRight:8}},'编辑'),
+          React.createElement('button',{onClick:()=>handleDel(row?._id),style:{background:'transparent',color:S.danger,border:'none',cursor:'pointer'}},'删除')))))),
+    showModal&&React.createElement('div',{style:{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:999}},
+      React.createElement('div',{style:{background:S.card,padding:24,borderRadius:12,minWidth:400}},
+        React.createElement('h3',{style:{color:S.text,marginTop:0}},editItem?'编辑':'新增'),
+        (fields||[]).map((f,i)=>React.createElement('div',{key:i,style:{marginBottom:12}},
+          React.createElement('label',{style:{color:S.textDim,display:'block',marginBottom:4}},f.label),
+          f.type==='select'?React.createElement('select',{value:form[f.key]||'',onChange:e=>setForm({...form,[f.key]:e.target.value}),style:{width:'100%',padding:8,background:S.bg,color:S.text,border:'1px solid '+S.border,borderRadius:6}},(f.options||[]).map((o,oi)=>React.createElement('option',{key:oi,value:o.value||o},o.label||o))):
+          React.createElement('input',{value:form[f.key]||'',onChange:e=>setForm({...form,[f.key]:e.target.value}),style:{width:'100%',padding:8,background:S.bg,color:S.text,border:'1px solid '+S.border,borderRadius:6,boxSizing:'border-box'}}))),
+        React.createElement('div',{style:{display:'flex',justifyContent:'flex-end',gap:8,marginTop:16}},
+          React.createElement('button',{onClick:()=>setShowModal(false),style:{padding:'8px 16px',background:'transparent',color:S.textDim,border:'1px solid '+S.border,borderRadius:6,cursor:'pointer'}},'取消'),
+          React.createElement('button',{onClick:handleSave,style:{padding:'8px 16px',background:S.primary,color:'#fff',border:'none',borderRadius:6,cursor:'pointer'}},'保存')))))
+};
+// 然后每个模块只需配置 columns 和 fields：
+// const orderColumns=[{key:'orderNo',label:'订单号'},{key:'status',label:'状态'}];
+// const orderFields=[{key:'orderNo',label:'订单号',type:'text'},{key:'status',label:'状态',type:'select',options:['pending','completed']}];
+// <CrudPage apiName="order" title="订单管理" columns={orderColumns} fields={orderFields} mockData={[{_id:'1',orderNo:'ORD001',status:'pending'}]} />
+export default App;
+\`\`\`
+
+请在此骨架基础上扩展，添加更多模块配置、侧边栏导航、搜索功能等。确保每个模块都有 mockData 兜底。
 
 请直接输出完整代码，不要解释。`;
 
@@ -332,6 +404,10 @@ const FS_REVIEWER_PROMPT = `你是一个全栈代码质检专家，负责审查�
 - ❌ data.map() 没有防御 → 改为 (data || []).map() 或 (Array.isArray(data) ? data : []).map()
 - ❌ 直接使用 res.data 没有兜底 → 改为 (res.data || [])
 - ❌ 括号不匹配（圆括号/花括号/方括号未正确闭合）→ 逐行检查并修复，尤其是多层嵌套的 React.createElement 和箭头函数
+- ❌ 组件 props 没有默认值 → 必须给默认值，如 ({columns = [], fields = [], data = []}) => ...
+- ❌ useState() 没有初始值 → 必须给初始值，如 useState([])、useState('')、useState(0)
+- ❌ fetch 没有 try-catch → 必须包裹 try-catch 并提供降级数据
+- ❌ 对象属性直接访问没有可选链 → 改为 item?.name || ''
 
 二、API 路径一致性：
 - 前端 fetch 路径以 /api/ 开头
@@ -419,7 +495,7 @@ const withTimeout = <T>(promise: Promise<T>, ms: number, label: string): Promise
  */
 const runStep = async (
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
-  options: { provider: string; modelType: string },
+  options: { provider: string; modelType: string; temperature?: number; maxTokens?: number; model?: string },
   stepOptions?: {
     timeoutMs?: number;
     onHeartbeat?: () => void;
@@ -434,11 +510,17 @@ const runStep = async (
     let result = '';
     let lastChunkTime = Date.now();
     let continuations = 0;
-    const CHUNK_TIMEOUT = 120_000; // 单个 chunk 间隔超时 2 分钟
+    const CHUNK_TIMEOUT = 60_000; // 单个 chunk 间隔超时 60 秒（更快检测模型卡住）
     const PROGRESS_INTERVAL = 3_000; // 每 3 秒推送一次进度
     let lastProgressTime = 0;
 
-    const stream = streamWithContinuation(messages, options);
+    const stream = streamWithContinuation(messages, {
+      provider: options.provider,
+      modelType: options.modelType,
+      temperature: options.temperature,
+      maxTokens: options.maxTokens,
+      model: options.model,
+    });
     for await (const chunk of stream) {
       const now = Date.now();
 
@@ -517,6 +599,37 @@ const extractJsonBlock = (raw: string, fileTag: string): string => {
   return '';
 };
 
+/**
+ * 从后端代码中提取 API 路径摘要（精简版）
+ * 只提取路由路径和 HTTP 方法，不传完整代码，大幅减少上下文长度
+ */
+const extractApiSummary = (backendCode: string): string => {
+  const lines = backendCode.split('\n');
+  const apiLines: string[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    // 匹配路由定义：router.get('/xxx', ...) 或 router.post('/xxx', ...)
+    const routeMatch = trimmed.match(/router\.(get|post|put|patch|delete)\s*\(\s*['"]([^'"]+)['"]/i);
+    if (routeMatch) {
+      apiLines.push(`${routeMatch[1].toUpperCase()} ${routeMatch[2]}`);
+      continue;
+    }
+    // 匹配 Schema 字段定义（提取数据结构）
+    const fieldMatch = trimmed.match(/^\s*(\w+)\s*:\s*\{\s*type\s*:\s*(String|Number|Boolean|Date|Schema\.Types\.ObjectId)/);
+    if (fieldMatch) {
+      apiLines.push(`  字段: ${fieldMatch[1]} (${fieldMatch[2]})`);
+    }
+  }
+
+  if (apiLines.length === 0) {
+    // 降级：截取后端代码的前 2000 字符
+    return backendCode.slice(0, 2000) + (backendCode.length > 2000 ? '\n... (已截断)' : '');
+  }
+
+  return apiLines.join('\n');
+};
+
 /** 合并同类代码块（如多个 model 文件合并为一个） */
 const mergeCodeBlocks = (blocks: Array<{ tag: string; content: string }>, pathPrefix: string): string => {
   return blocks
@@ -547,7 +660,18 @@ vibeFullStackPipelineRouter.post('/vibe/fullstack-pipeline', async (ctx) => {
   ctx.status = 200;
 
   const res = ctx.res;
-  const opts = { provider, modelType };
+  // 基础选项（所有步骤共享）
+  const baseOpts = { provider, modelType };
+  // 编程任务使用低 temperature（更确定性，减少随机错误）
+  const codingTemperature = env.pipelineTemperature;
+  // 强模型配置（用于前端/质检/编译修复等关键步骤）
+  const strongModel = env.pipelineStrongModel || undefined;
+  // 轻量步骤选项（Step 1-2：需求分析、数据库设计）
+  const lightOpts = { ...baseOpts, temperature: codingTemperature };
+  // 重度步骤选项（Step 3-7：后端/前端/UI/质检/编译修复，使用强模型）
+  const heavyOpts = { ...baseOpts, temperature: codingTemperature, ...(strongModel ? { model: strongModel } : {}) };
+
+  console.log(`[Pipeline] 启动：provider=${provider}, model=${strongModel || '默认'}, temperature=${codingTemperature}`);
 
   const send = (data: Record<string, unknown>) => {
     res.write(`data: ${JSON.stringify(data)}\n\n`);
@@ -561,20 +685,25 @@ vibeFullStackPipelineRouter.post('/vibe/fullstack-pipeline', async (ctx) => {
   send({ type: 'start' });
 
   // 上下文长度限制（Ollama 本地模型上下文窗口有限）
-    const MAX_ANALYSIS_CHARS = 3000;   // 需求分析最大字符数
-    const MAX_DB_CHARS = 4000;         // 数据库 Schema 最大字符数
-    const MAX_BACKEND_CHARS = 6000;    // 后端代码最大字符数
-    const MAX_FRONTEND_CHARS = 8000;   // 前端代码最大字符数（增大以保留更多页面）
-  const STEP_TIMEOUT = 300_000;      // 每步超时 5 分钟
-  const STEP_INTERVAL_MS = 3_000;    // 步骤间隔 3 秒，避免触发 API 限流（429）
+  const MAX_ANALYSIS_CHARS = 2000;   // 需求分析最大字符数（精简以减少上下文）
+  const MAX_DB_CHARS = 3000;         // 数据库 Schema 最大字符数
+  const MAX_BACKEND_CHARS = 4000;    // 后端代码最大字符数
+  const MAX_FRONTEND_CHARS = 8000;   // 前端代码最大字符数
+  // 不同步骤的超时时间（前端/UI/质检步骤需要更多时间，因为生成量大 + 续写）
+  const STEP_TIMEOUT_SHORT = 180_000;  // 分析/数据库/后端：3 分钟
+  const STEP_TIMEOUT_LONG = 480_000;   // 前端/UI/质检：8 分钟（生成量大，续写多）
+  const STEP_INTERVAL_MS = 2_000;      // 步骤间隔 2 秒
 
   const stepHeartbeat = () => send({ type: 'heartbeat' });
 
   /** 创建带进度推送的步骤选项 */
-  const TOTAL_STEPS = 6;
-  const STEP_ICONS = ['📋', '🗄️', '⚙️', '🎨', '🎯', '🔧'];
+  const TOTAL_STEPS = 7;
+  const STEP_ICONS = ['📋', '🗄️', '⚙️', '🎨', '🎯', '🔧', '🧪'];
+  /** 步骤 1-3 用短超时，步骤 4-6 用长超时 */
+  const getStepTimeout = (step: number) => step <= 3 ? STEP_TIMEOUT_SHORT : STEP_TIMEOUT_LONG;
+
   const makeStepOpts = (step: number, label: string) => ({
-    timeoutMs: STEP_TIMEOUT,
+    timeoutMs: getStepTimeout(step),
     onHeartbeat: stepHeartbeat,
     label,
     onProgress: (info: { chars: number; continuations: number }) => {
@@ -599,7 +728,7 @@ vibeFullStackPipelineRouter.post('/vibe/fullstack-pipeline', async (ctx) => {
     const analysisResult = await runStep([
       { role: 'system', content: AGENTS.analyst },
       { role: 'user', content: `请分析以下全栈应用需求：\n\n${prompt}` },
-    ], opts, makeStepOpts(1, 'Step1-需求分析'));
+    ], lightOpts, makeStepOpts(1, 'Step1-需求分析'));
 
     send({ type: 'step', step: 1, total: TOTAL_STEPS, title: '📋 需求分析完成', status: 'done', content: analysisResult });
 
@@ -615,7 +744,7 @@ vibeFullStackPipelineRouter.post('/vibe/fullstack-pipeline', async (ctx) => {
         role: 'user',
         content: `请根据以下需求分析，设计 MongoDB 数据库架构并生成 Mongoose Model 代码。\n\n【原始需求】\n${prompt}\n\n【需求分析】\n${truncateText(analysisResult, MAX_ANALYSIS_CHARS)}`,
       },
-    ], opts, makeStepOpts(2, 'Step2-数据库架构'));
+    ], lightOpts, makeStepOpts(2, 'Step2-数据库架构'));
 
     send({ type: 'step', step: 2, total: TOTAL_STEPS, title: '🗄️ 数据库架构完成', status: 'done', content: dbResult });
 
@@ -647,7 +776,7 @@ ${truncateText(dbResult, MAX_DB_CHARS)}
 - 分页 limit 上限 100
 - 代码必须完整，不能有 TODO 或省略号`,
       },
-    ], opts, makeStepOpts(3, 'Step3-后端工程'));
+    ], heavyOpts, makeStepOpts(3, 'Step3-后端工程'));
 
     send({ type: 'step', step: 3, total: TOTAL_STEPS, title: '⚙️ 后端代码完成', status: 'done', content: backendResult });
 
@@ -669,8 +798,8 @@ ${prompt}
 【需求分析（摘要）】
 ${truncateText(analysisResult, MAX_ANALYSIS_CHARS)}
 
-【后端 API 代码（参考接口路径和数据结构）】
-${truncateText(backendResult, MAX_BACKEND_CHARS)}
+【后端 API 路径清单（仅供参考接口路径和数据结构）】
+${extractApiSummary(backendResult)}
 
 【⚠️ 最重要的要求 — 使用 CrudPage 工厂模式】
 你必须写一个通用的 CrudPage 组件，内置完整的 CRUD 逻辑（列表、搜索、分页、新增、编辑、删除）。
@@ -684,10 +813,16 @@ ${truncateText(backendResult, MAX_BACKEND_CHARS)}
 4. 禁止 import/require/外部库
 5. API 路径：/api/order、/api/product、/api/user 等小写实体名
 6. 【极其重要】确保所有括号（圆括号、花括号、方括号）严格配对闭合，括号不匹配会导致编译失败
-7. 【空值保护】遍历数组数据时必须做空值过滤：使用 (data || []).filter(Boolean).map(...) 而非直接 data.map(...)。访问对象属性时使用可选链 item?.name 或默认值 item.name || ''，防止后端返回 null 数据导致运行时崩溃
+7. 【空值保护 - 最常见的崩溃原因】
+   a. 所有组件 props 必须有默认值：({columns = [], fields = [], data = [], mockData = []}) => ...
+   b. 遍历前必须防御：(data || []).map(...) 或 (Array.isArray(x) ? x : []).map(...)
+   c. API 响应必须 try-catch + 兜底：try { list = res.data || [] } catch(e) { list = mockData || [] }
+   d. 对象属性用可选链：item?.id, item?.name || ''
+   e. useState 必须给初始值：useState([]), useState(''), useState(0), useState(false), useState(null)
+   f. 绝对禁止直接写 xxx.map() 而不做空值检查，这会导致运行时崩溃
 8. 【style 规范】style 属性必须是纯对象（如 style={{ color: 'red', padding: 8 }}），绝对禁止传入数组（如 style={[{}, {}]}），禁止传入字符串。多个样式对象请用展开运算符合并：style={{ ...baseStyle, ...activeStyle }}`,
       },
-    ], opts, makeStepOpts(4, 'Step4-前端工程'));
+    ], heavyOpts, makeStepOpts(4, 'Step4-前端工程'));
 
     send({ type: 'step', step: 4, total: TOTAL_STEPS, title: '🎨 前端代码完成', status: 'done', content: frontendResult });
 
@@ -723,7 +858,7 @@ ${truncateText(frontendResult, MAX_FRONTEND_FOR_UI)}
 
 请在原有代码基础上增强，输出完整的增强后代码。`,
       },
-    ], opts, makeStepOpts(5, 'Step5-UI/UX设计'));
+    ], heavyOpts, makeStepOpts(5, 'Step5-UI/UX设计'));
 
     send({ type: 'step', step: 5, total: TOTAL_STEPS, title: '🎯 UI/UX 设计完成', status: 'done', content: uiDesignResult });
 
@@ -753,7 +888,7 @@ ${truncateText(enhancedFrontendCode || frontendResult, MAX_FRONTEND_CHARS)}
 
 请按照审查清单逐项检查，修复所有问题后输出完整代码。`,
       },
-    ], opts, makeStepOpts(6, 'Step6-质检整合'));
+    ], heavyOpts, makeStepOpts(6, 'Step6-质检整合'));
 
     send({ type: 'step', step: 6, total: TOTAL_STEPS, title: '🔧 质检完成', status: 'done' });
 
@@ -772,7 +907,139 @@ ${truncateText(enhancedFrontendCode || frontendResult, MAX_FRONTEND_CHARS)}
       || '';
 
     // 前端代码提取（优先级：质检结果 > UI增强结果 > 原始前端结果）
-    const jsxCode = extractJsxBlock(reviewResult) || enhancedFrontendCode || extractJsxBlock(frontendResult);
+    let jsxCode = extractJsxBlock(reviewResult) || enhancedFrontendCode || extractJsxBlock(frontendResult);
+
+    // 步骤间隔
+    await new Promise(r => setTimeout(r, STEP_INTERVAL_MS));
+
+    // ── Step 7: 编译验证 + AI 自动修复 ────────────────────────────────────
+    send({ type: 'step', step: 7, total: TOTAL_STEPS, title: '🧪 编译验证中...', status: 'running' });
+
+    const MAX_COMPILE_FIX_ROUNDS = 3;
+    let compileAttempt = 0;
+    let lastCompileError = '';
+
+    while (jsxCode && compileAttempt < MAX_COMPILE_FIX_ROUNDS) {
+      compileAttempt++;
+      send({
+        type: 'step', step: 7, total: TOTAL_STEPS,
+        title: `🧪 编译验证（第 ${compileAttempt} 轮）...`,
+        status: 'running',
+      });
+
+      try {
+        const compileResult = await compileJsx(jsxCode);
+
+        if (compileResult.success) {
+          // 编译成功，跳出循环
+          console.log(`[Step7-编译验证] 第 ${compileAttempt} 轮编译成功（${compileResult.compiler}${compileResult.autoFixed ? ', 自动修复括号' : ''}）`);
+          send({
+            type: 'step', step: 7, total: TOTAL_STEPS,
+            title: `🧪 编译通过${compileAttempt > 1 ? `（第 ${compileAttempt} 轮修复后）` : ''}`,
+            status: 'done',
+          });
+          lastCompileError = '';
+          break;
+        }
+
+        // 编译失败，记录错误
+        lastCompileError = compileResult.error || '未知编译错误';
+        console.warn(`[Step7-编译验证] 第 ${compileAttempt} 轮编译失败: ${lastCompileError.slice(0, 200)}`);
+
+        // 如果已达最大修复轮数，不再尝试 AI 修复
+        if (compileAttempt >= MAX_COMPILE_FIX_ROUNDS) {
+          send({
+            type: 'step', step: 7, total: TOTAL_STEPS,
+            title: `🧪 编译验证完成（${MAX_COMPILE_FIX_ROUNDS} 轮修复后仍有警告，已尽力修复）`,
+            status: 'done',
+          });
+          break;
+        }
+
+        // 让 AI 根据编译错误修复代码
+        send({
+          type: 'step', step: 7, total: TOTAL_STEPS,
+          title: `🧪 AI 修复编译错误（第 ${compileAttempt} 轮）...`,
+          status: 'running',
+        });
+
+        const fixResult = await runStep([
+          {
+            role: 'system',
+            content: `你是一个 JSX/TSX 代码修复专家。你的唯一任务是修复编译错误，不要改变任何业务逻辑。
+
+【修复规则】
+1. 只修复编译器报告的错误，不要重构或优化代码
+2. 禁止添加 import/require 语句
+3. 禁止使用 className（只用 style 内联样式）
+4. 确保所有括号（圆括号、花括号、方括号）严格配对
+5. 确保 export default 存在
+6. 所有 .map()/.filter() 调用前必须有空值防御：(arr || []).map(...)
+7. 所有组件 props 必须有默认值：({columns = [], data = []}) => ...
+8. 所有 useState 必须有初始值：useState([])、useState('')
+
+【输出格式】
+只输出修复后的完整 JSX 代码，用代码块包裹：
+\`\`\`jsx
+// 修复后的完整代码
+\`\`\`
+不要输出任何解释文字。`,
+          },
+          {
+            role: 'user',
+            content: `以下 JSX 代码编译失败，请修复。
+
+【编译错误信息】
+${lastCompileError.slice(0, 1500)}
+
+【需要修复的代码】
+\`\`\`jsx
+${jsxCode}
+\`\`\`
+
+请只修复编译错误，输出完整的修复后代码。`,
+          },
+        ], heavyOpts, {
+          timeoutMs: 300_000, // 修复步骤 5 分钟超时
+          onHeartbeat: stepHeartbeat,
+          label: `Step7-AI修复(第${compileAttempt}轮)`,
+          onProgress: (info) => {
+            send({
+              type: 'step', step: 7, total: TOTAL_STEPS,
+              title: `🧪 AI 修复中... 已生成 ${info.chars} 字符`,
+              status: 'running',
+            });
+          },
+        });
+
+        // 从 AI 修复结果中提取 JSX 代码
+        const fixedJsx = extractJsxBlock(fixResult);
+        if (fixedJsx && fixedJsx.trim().length > 100) {
+          jsxCode = fixedJsx;
+          console.log(`[Step7-编译验证] AI 修复完成，新代码 ${fixedJsx.length} 字符，进入下一轮编译验证`);
+        } else {
+          console.warn('[Step7-编译验证] AI 修复结果为空或过短，跳过');
+          break;
+        }
+      } catch (compileErr: any) {
+        console.warn(`[Step7-编译验证] 编译/修复异常: ${compileErr?.message}`);
+        send({
+          type: 'step', step: 7, total: TOTAL_STEPS,
+          title: '🧪 编译验证完成（有警告但不影响运行）',
+          status: 'done',
+        });
+        break;
+      }
+    }
+
+    // 如果没有 JSX 代码，跳过编译验证
+    if (!jsxCode) {
+      send({
+        type: 'step', step: 7, total: TOTAL_STEPS,
+        title: '🧪 编译验证跳过（无前端代码）',
+        status: 'done',
+      });
+    }
 
     // ── 构建最终输出 ──────────────────────────────────────────────────────
 

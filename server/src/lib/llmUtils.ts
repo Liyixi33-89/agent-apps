@@ -292,7 +292,7 @@ export const isLikelyTruncated = (text: string, finishReason?: string): boolean 
 // 流式续写
 // =============================================================================
 
-export const MAX_CONTINUATIONS = 5;
+export const MAX_CONTINUATIONS = 8;
 
 /** 分析已生成内容的结构，帮助续写时提供上下文 */
 const analyzeGeneratedStructure = (text: string): string => {
@@ -359,7 +359,7 @@ const getTailContext = (text: string, maxChars = 800): string => {
  */
 export async function* streamWithContinuation(
   messages: any[],
-  options: { provider: string; modelType: string }
+  options: { provider: string; modelType: string; temperature?: number; maxTokens?: number; model?: string }
 ): AsyncGenerator<{ delta: string; done: boolean; continuationIndex?: number }> {
   const originalMessages = [...messages]; // 保留原始消息用于续写
   let currentMessages = [...messages];
@@ -373,6 +373,9 @@ export async function* streamWithContinuation(
     const stream = streamLLM(currentMessages, {
       provider: options.provider as 'ollama' | 'openai',
       modelType: options.modelType as 'text' | 'vision',
+      temperature: options.temperature,
+      maxTokens: options.maxTokens,
+      model: options.model,
     });
 
     for await (const chunk of stream) {

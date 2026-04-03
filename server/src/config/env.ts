@@ -41,6 +41,10 @@ export const env = {
   openaiApiKey: process.env.OPENAI_API_KEY || 'sk-87Mx8OS3mraPp72NAGf9EBZJAh5aM2wiou2FFuoRzLfm6g7E',
   openaiTextModel: process.env.OPENAI_TEXT_MODEL || 'gpt-4o-mini',
   openaiVisionModel: process.env.OPENAI_VISION_MODEL || 'gpt-4o-mini',
+  /** Pipeline 专用强模型（用于前端/质检/编译修复等关键步骤） */
+  pipelineStrongModel: process.env.PIPELINE_STRONG_MODEL || '',
+  /** Pipeline 编程任务 temperature（越低越确定性，推荐 0.2-0.4） */
+  pipelineTemperature: Number(process.env.PIPELINE_TEMPERATURE || '0.3'),
   jwtSecret: process.env.JWT_SECRET || 'agency-agents-secret-2026',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
   workspaceRoot,
