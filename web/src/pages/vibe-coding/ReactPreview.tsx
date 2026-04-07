@@ -9,6 +9,8 @@ preInitEsbuild();
 
 interface ReactPreviewProps {
   jsx: string;
+  /** 服务端已编译好的 JS 代码，有则直接渲染，跳过二次编译 */
+  compiledJs?: string;
   lang?: 'zh' | 'en';
   className?: string;
   /** 运行时 API 基础路径，如 /api/vibe-runtime/{appId}，传入后 fetch 会代理到真实后端 */
@@ -62,6 +64,11 @@ export const buildReactIframeHtml = (compiledCode: string, options?: { runtimeAp
     window.addEventListener('unhandledrejection', function(e) {
       window.onerror && window.onerror(String(e.reason), '', 0, 0);
     });
+
+    // ── 拦截原生模态框 API（sandbox 未设置 allow-modals，直接调用会报错）──
+    window.alert   = function(msg) { console.info('[Vibe Mock] alert:', msg); };
+    window.confirm = function(msg) { console.info('[Vibe Mock] confirm:', msg); return true; };
+    window.prompt  = function(msg) { console.info('[Vibe Mock] prompt:', msg); return ''; };
 
     // ── 导航拦截：防止 AI 生成的代码导致父页面刷新 ──────────────────────
     // 锁定 window.location，阻止任何页面跳转
@@ -375,6 +382,8 @@ export const buildReactIframeHtml = (compiledCode: string, options?: { runtimeAp
       var notification = _noopNotify;
       var notify = _noopNotify;
       var alert = _noopNotify;
+      var confirm = function(msg) { console.info('[Vibe Mock] confirm:', msg); return true; };
+      var prompt = function(msg) { console.info('[Vibe Mock] prompt:', msg); return ''; };
       window.toast = toast;
       window.message = message;
       window.notification = notification;
@@ -765,7 +774,7 @@ export const buildReactIframeHtml = (compiledCode: string, options?: { runtimeAp
 
         // 降级：扫描所有局部变量，找首字母大写的函数/类组件
         if (!__VibeRoot__ || !_isRenderable(__VibeRoot__)) {
-          var __candidates__ = [typeof App !== 'undefined' && App, typeof Main !== 'undefined' && Main, typeof Page !== 'undefined' && Page, typeof Dashboard !== 'undefined' && Dashboard, typeof AdminDashboard !== 'undefined' && AdminDashboard, typeof Counter !== 'undefined' && Counter, typeof Home !== 'undefined' && Home, typeof Layout !== 'undefined' && Layout, typeof AdminPanel !== 'undefined' && AdminPanel, typeof ManagementSystem !== 'undefined' && ManagementSystem, typeof EcommerceDashboard !== 'undefined' && EcommerceDashboard, typeof OrderManagement !== 'undefined' && OrderManagement, typeof ProductManagement !== 'undefined' && ProductManagement, typeof UserManagement !== 'undefined' && UserManagement, typeof SystemManagement !== 'undefined' && SystemManagement, typeof BackendManagement !== 'undefined' && BackendManagement, typeof AdminSystem !== 'undefined' && AdminSystem, typeof TodoApp !== 'undefined' && TodoApp, typeof ChatApp !== 'undefined' && ChatApp, typeof TaskManager !== 'undefined' && TaskManager, typeof DataTable !== 'undefined' && DataTable, typeof Calendar !== 'undefined' && Calendar, typeof Editor !== 'undefined' && Editor, typeof Viewer !== 'undefined' && Viewer, typeof Form !== 'undefined' && Form, typeof Table !== 'undefined' && Table, typeof List !== 'undefined' && List, typeof Gallery !== 'undefined' && Gallery, typeof Chart !== 'undefined' && Chart, typeof Sidebar !== 'undefined' && Sidebar, typeof Header !== 'undefined' && Header, typeof Footer !== 'undefined' && Footer, typeof Navigation !== 'undefined' && Navigation, typeof Modal !== 'undefined' && Modal, typeof Card !== 'undefined' && Card, typeof Profile !== 'undefined' && Profile, typeof Settings !== 'undefined' && Settings, typeof Login !== 'undefined' && Login, typeof Register !== 'undefined' && Register, typeof NotFound !== 'undefined' && NotFound, typeof ErrorPage !== 'undefined' && ErrorPage, typeof Landing !== 'undefined' && Landing, typeof Pricing !== 'undefined' && Pricing, typeof About !== 'undefined' && About, typeof Contact !== 'undefined' && Contact, typeof Blog !== 'undefined' && Blog, typeof Article !== 'undefined' && Article, typeof Shop !== 'undefined' && Shop, typeof Cart !== 'undefined' && Cart, typeof Checkout !== 'undefined' && Checkout, typeof Inventory !== 'undefined' && Inventory, typeof Analytics !== 'undefined' && Analytics, typeof Report !== 'undefined' && Report, typeof Monitor !== 'undefined' && Monitor, typeof Kanban !== 'undefined' && Kanban, typeof Board !== 'undefined' && Board, typeof Workspace !== 'undefined' && Workspace, typeof Studio !== 'undefined' && Studio, typeof Builder !== 'undefined' && Builder, typeof Designer !== 'undefined' && Designer, typeof Explorer !== 'undefined' && Explorer, typeof Browser !== 'undefined' && Browser, typeof Player !== 'undefined' && Player, typeof Recorder !== 'undefined' && Recorder, typeof Timer !== 'undefined' && Timer, typeof Clock !== 'undefined' && Clock, typeof Weather !== 'undefined' && Weather, typeof Map !== 'undefined' && Map, typeof Search !== 'undefined' && Search, typeof Feed !== 'undefined' && Feed, typeof Timeline !== 'undefined' && Timeline, typeof Notification !== 'undefined' && Notification, typeof Messenger !== 'undefined' && Messenger, typeof Inbox !== 'undefined' && Inbox].filter(function(c) { return typeof c === 'function'; });
+          var __candidates__ = [typeof CrudPage !== 'undefined' && CrudPage, typeof App !== 'undefined' && App, typeof Main !== 'undefined' && Main, typeof Page !== 'undefined' && Page, typeof Dashboard !== 'undefined' && Dashboard, typeof AdminDashboard !== 'undefined' && AdminDashboard, typeof Counter !== 'undefined' && Counter, typeof Home !== 'undefined' && Home, typeof Layout !== 'undefined' && Layout, typeof AdminPanel !== 'undefined' && AdminPanel, typeof ManagementSystem !== 'undefined' && ManagementSystem, typeof EcommerceDashboard !== 'undefined' && EcommerceDashboard, typeof OrderManagement !== 'undefined' && OrderManagement, typeof ProductManagement !== 'undefined' && ProductManagement, typeof UserManagement !== 'undefined' && UserManagement, typeof SystemManagement !== 'undefined' && SystemManagement, typeof BackendManagement !== 'undefined' && BackendManagement, typeof AdminSystem !== 'undefined' && AdminSystem, typeof CrudApp !== 'undefined' && CrudApp, typeof ManagementApp !== 'undefined' && ManagementApp, typeof AdminApp !== 'undefined' && AdminApp, typeof TodoApp !== 'undefined' && TodoApp, typeof ChatApp !== 'undefined' && ChatApp, typeof TaskManager !== 'undefined' && TaskManager, typeof DataTable !== 'undefined' && DataTable, typeof Calendar !== 'undefined' && Calendar, typeof Editor !== 'undefined' && Editor, typeof Viewer !== 'undefined' && Viewer, typeof Form !== 'undefined' && Form, typeof Table !== 'undefined' && Table, typeof List !== 'undefined' && List, typeof Gallery !== 'undefined' && Gallery, typeof Chart !== 'undefined' && Chart, typeof Sidebar !== 'undefined' && Sidebar, typeof Header !== 'undefined' && Header, typeof Footer !== 'undefined' && Footer, typeof Navigation !== 'undefined' && Navigation, typeof Modal !== 'undefined' && Modal, typeof Card !== 'undefined' && Card, typeof Profile !== 'undefined' && Profile, typeof Settings !== 'undefined' && Settings, typeof Login !== 'undefined' && Login, typeof Register !== 'undefined' && Register, typeof NotFound !== 'undefined' && NotFound, typeof ErrorPage !== 'undefined' && ErrorPage, typeof Landing !== 'undefined' && Landing, typeof Pricing !== 'undefined' && Pricing, typeof About !== 'undefined' && About, typeof Contact !== 'undefined' && Contact, typeof Blog !== 'undefined' && Blog, typeof Article !== 'undefined' && Article, typeof Shop !== 'undefined' && Shop, typeof Cart !== 'undefined' && Cart, typeof Checkout !== 'undefined' && Checkout, typeof Inventory !== 'undefined' && Inventory, typeof Analytics !== 'undefined' && Analytics, typeof Report !== 'undefined' && Report, typeof Monitor !== 'undefined' && Monitor, typeof Kanban !== 'undefined' && Kanban, typeof Board !== 'undefined' && Board, typeof Workspace !== 'undefined' && Workspace, typeof Studio !== 'undefined' && Studio, typeof Builder !== 'undefined' && Builder, typeof Designer !== 'undefined' && Designer, typeof Explorer !== 'undefined' && Explorer, typeof Browser !== 'undefined' && Browser, typeof Player !== 'undefined' && Player, typeof Recorder !== 'undefined' && Recorder, typeof Timer !== 'undefined' && Timer, typeof Clock !== 'undefined' && Clock, typeof Weather !== 'undefined' && Weather, typeof Map !== 'undefined' && Map, typeof Search !== 'undefined' && Search, typeof Feed !== 'undefined' && Feed, typeof Timeline !== 'undefined' && Timeline, typeof Notification !== 'undefined' && Notification, typeof Messenger !== 'undefined' && Messenger, typeof Inbox !== 'undefined' && Inbox].filter(function(c) { return typeof c === 'function'; });
           if (__candidates__.length > 0) {
             __VibeRoot__ = __candidates__[0];
             console.info('[Vibe] 降级使用候选组件:', __VibeRoot__.name || __VibeRoot__);
@@ -873,7 +882,7 @@ export const buildReactIframeHtml = (compiledCode: string, options?: { runtimeAp
 
 // ─── ReactPreview 组件 ───────────────────────────────────────────────────────
 
-const ReactPreview = ({ jsx, lang = 'zh', className = '', runtimeApiBase }: ReactPreviewProps) => {
+const ReactPreview = ({ jsx, compiledJs, lang = 'zh', className = '', runtimeApiBase }: ReactPreviewProps) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [compileError, setCompileError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -895,6 +904,12 @@ const ReactPreview = ({ jsx, lang = 'zh', className = '', runtimeApiBase }: Reac
       iframeRef.current.src = URL.createObjectURL(blob);
     }
   }, []);
+
+  // 用 ref 追踪最新的 runtimeApiBase，解决编译异步完成后闭包捕获旧值的问题
+  const runtimeApiBaseRef = useRef(runtimeApiBase || '');
+  useEffect(() => {
+    runtimeApiBaseRef.current = runtimeApiBase || '';
+  }, [runtimeApiBase]);
 
   /**
    * 统一的渲染 effect：
@@ -935,6 +950,19 @@ const ReactPreview = ({ jsx, lang = 'zh', className = '', runtimeApiBase }: Reac
     setIsLoading(true);
     setCompileError(null);
 
+    // 🔧 核心优化：如果服务端已编译好代码（compiledJs），直接使用，跳过二次编译
+    if (compiledJs && jsxChanged && !lastJsxRef.current) {
+      // 仅在首次加载（lastJsxRef 为空）且有 compiledJs 时使用
+      // 用户手动编辑代码后 compiledJs 不再适用，需要重新编译
+      const latestApiBase = runtimeApiBaseRef.current;
+      console.info('[ReactPreview] 使用服务端预编译代码，跳过二次编译。runtimeApiBase:', latestApiBase || '(空)');
+      lastJsxRef.current = jsx;
+      lastApiBaseRef.current = latestApiBase;
+      compiledCodeRef.current = compiledJs;
+      writeToIframe(compiledJs, latestApiBase);
+      return;
+    }
+
     // 递增编译 ID，用于取消过期的编译任务
     const currentCompileId = ++compileIdRef.current;
 
@@ -952,11 +980,14 @@ const ReactPreview = ({ jsx, lang = 'zh', className = '', runtimeApiBase }: Reac
         return;
       }
 
-      console.info('[ReactPreview] 编译完成，runtimeApiBase:', apiBase || '(空，将使用 Mock)');
+      // 🔧 关键修复：编译完成后使用 ref 获取最新的 runtimeApiBase
+      // 而不是使用闭包捕获的旧值（解决 jsx 和 runtimeApiBase 同时变化时的时序问题）
+      const latestApiBase = runtimeApiBaseRef.current;
+      console.info('[ReactPreview] 编译完成，runtimeApiBase:', latestApiBase || '(空，将使用 Mock)', apiBase !== latestApiBase ? `(已从 "${apiBase}" 更新为 "${latestApiBase}")` : '');
       lastJsxRef.current = jsx;
-      lastApiBaseRef.current = apiBase;
+      lastApiBaseRef.current = latestApiBase;
       compiledCodeRef.current = result.code;
-      writeToIframe(result.code!, apiBase);
+      writeToIframe(result.code!, latestApiBase);
     }).catch((err) => {
       if (currentCompileId !== compileIdRef.current) return;
       const message = err instanceof Error ? err.message : String(err);
@@ -964,7 +995,7 @@ const ReactPreview = ({ jsx, lang = 'zh', className = '', runtimeApiBase }: Reac
       setCompileError(message);
       setIsLoading(false);
     });
-  }, [jsx, runtimeApiBase, writeToIframe]);
+  }, [jsx, compiledJs, runtimeApiBase, writeToIframe]);
 
   return (
     <div className={`relative w-full h-full ${className}`}>

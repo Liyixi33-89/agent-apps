@@ -20,6 +20,7 @@ export interface CodeParts {
   css: string;
   js: string;
   jsx?: string;         // React JSX 代码
+  compiledJs?: string;  // 服务端预编译后的 JS 代码（有则浏览器直接渲染，跳过二次编译）
   isFullHtml?: boolean;
   isReact?: boolean;    // 标记为 React 渲染模式
 }

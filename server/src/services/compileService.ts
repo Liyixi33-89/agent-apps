@@ -40,6 +40,7 @@ const preprocess = (code: string): string => {
   let inMultiLineImport = false;
   let inMultiLineRender = false;
   let renderParenDepth = 0;
+  let multiLineImportStartLine = 0; // 追踪多行 import 开始行号
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -47,6 +48,13 @@ const preprocess = (code: string): string => {
 
     // ── 多行 import 状态机 ──
     if (inMultiLineImport) {
+      // 安全阀：如果超过 20 行还没闭合，说明可能误判了，回退
+      if (i - multiLineImportStartLine > 20) {
+        console.warn(`[preprocess] 多行 import 超过 20 行未闭合（起始行 ${multiLineImportStartLine}），可能误判，回退`);
+        inMultiLineImport = false;
+        result.push(line);
+        continue;
+      }
       if (/\}\s*from\s+['"][^'"]+['"]\s*;?\s*$/.test(trimmed)) {
         inMultiLineImport = false;
       } else if (/^\}\s*$/.test(trimmed)) {
@@ -75,6 +83,7 @@ const preprocess = (code: string): string => {
     // ── 检测多行 import 开始 ──
     if (/^\s*import\s+\{/.test(line) && !/\}\s*from\s+['"][^'"]+['"]\s*;?\s*$/.test(trimmed)) {
       inMultiLineImport = true;
+      multiLineImportStartLine = i;
       continue;
     }
 
@@ -110,7 +119,30 @@ const preprocess = (code: string): string => {
     result.push(line);
   }
 
-  return result.join('\n').trim();
+  let processed = result.join('\n').trim();
+
+  // ── 修复"函数仅返回对象字面量"的模式 ──
+  // AI 有时会生成 function Design() { return { ... } } 但后续代码以 Design.xxx 方式使用
+  // 这会导致运行时 TypeError（函数的属性是 undefined）
+  // 检测模式：function X() { return { ... }; } 且 X 不是 React 组件（不含 React.createElement / useState 等）
+  processed = processed.replace(
+    /^(function\s+([A-Z][A-Za-z0-9_]*)\s*\(\s*\)\s*\{[\s\n]*return\s+)(\{[\s\S]*?\})(;?\s*\n?\})/gm,
+    (match, prefix, funcName, objBody, suffix) => {
+      // 检查对象体内是否包含 React API 调用（如果有，说明是 React 组件，不应转换）
+      const reactPatterns = /React\.|useState|useEffect|useCallback|useMemo|useRef|createElement/;
+      if (reactPatterns.test(objBody)) return match;
+
+      // 检查后续代码中是否以 funcName.xxx 方式使用（说明被当作对象使用）
+      const usagePattern = new RegExp(`\\b${funcName}\\.(\\w+)`, 'g');
+      const usedAsObject = usagePattern.test(processed);
+      if (!usedAsObject) return match;
+
+      console.log(`[preprocess] 修复: function ${funcName}() { return {...} } → const ${funcName} = {...}（被当作对象使用）`);
+      return `const ${funcName} = ${objBody};`;
+    }
+  );
+
+  return processed;
 };
 
 // ─── 后处理：export default → __VibeApp__ ───────────────────────────────────
@@ -168,14 +200,43 @@ const postprocess = (code: string): string => {
   result = result.replace(/^export\s+\{[^}]*\}\s*;?\s*$/gm, '');
   result = result.replace(/^export\s+(const|let|var|function|class)\s+/gm, '$1 ');
 
-  // 推断组件名
+  // 推断组件名：收集所有大写字母开头的组件定义，优先选择最后一个
+  // 原因：AI 生成的代码通常先定义子组件（Button、Table 等），最后定义主入口组件（App、CrudPage 等）
   if (!result.includes('__VibeApp__')) {
-    const arrowMatch = result.match(/(?:const|let|var)\s+([A-Z][A-Za-z0-9_]*)\s*=\s*(?:\([^)]*\)|[A-Za-z_]\w*)\s*=>/m);
-    if (arrowMatch) {
-      result += `\nvar __VibeApp__ = ${arrowMatch[1]};`;
-    } else {
-      const componentMatch = result.match(/(?:const|function|class)\s+([A-Z][A-Za-z0-9_]*)\s*(?:=|\(|\{|extends)/m);
-      if (componentMatch) result += `\nvar __VibeApp__ = ${componentMatch[1]};`;
+    // 已知的"子组件"名称（不应作为主入口）
+    const subComponentNames = new Set([
+      'Button', 'Input', 'Select', 'Checkbox', 'Radio', 'Switch', 'Slider',
+      'Modal', 'Dialog', 'Drawer', 'Popover', 'Tooltip', 'Toast', 'Alert',
+      'Card', 'Badge', 'Tag', 'Chip', 'Avatar', 'Icon', 'Spinner', 'Loader',
+      'Skeleton', 'SkeletonRow', 'SkeletonCard',
+      'Header', 'Footer', 'Sidebar', 'Navbar', 'Nav', 'Menu', 'Breadcrumb',
+      'Tab', 'Tabs', 'TabPanel', 'Accordion', 'Collapse',
+      'Pagination', 'Progress', 'ProgressBar', 'Stepper',
+      'EmptyState', 'ErrorState', 'LoadingState', 'NotFound',
+      'FormField', 'FormGroup', 'FormItem', 'Label', 'FieldError',
+      'Divider', 'Spacer', 'Container', 'Row', 'Col', 'Grid',
+      'StatusBadge', 'StatusTag', 'PriorityBadge',
+    ]);
+
+    // 收集所有组件定义（箭头函数 + function + class）
+    const allComponents: string[] = [];
+    const arrowRegex = /(?:const|let|var)\s+([A-Z][A-Za-z0-9_]*)\s*=\s*(?:\([^)]*\)|[A-Za-z_]\w*)\s*=>/gm;
+    const funcRegex = /(?:function|class)\s+([A-Z][A-Za-z0-9_]*)\s*(?:\(|\{|extends)/gm;
+    let cm: RegExpExecArray | null;
+    while ((cm = arrowRegex.exec(result)) !== null) allComponents.push(cm[1]);
+    while ((cm = funcRegex.exec(result)) !== null) allComponents.push(cm[1]);
+
+    if (allComponents.length > 0) {
+      // 策略：优先选择最后一个非子组件名称的组件（主入口组件通常定义在最后）
+      let chosen = allComponents[allComponents.length - 1]; // 默认取最后一个
+      for (let i = allComponents.length - 1; i >= 0; i--) {
+        if (!subComponentNames.has(allComponents[i])) {
+          chosen = allComponents[i];
+          break;
+        }
+      }
+      console.log(`[postprocess] 推断主入口组件: ${chosen}（共 ${allComponents.length} 个组件: ${allComponents.join(', ')}）`);
+      result += `\nvar __VibeApp__ = ${chosen};`;
     }
   }
 

@@ -93,7 +93,13 @@ const PreviewPage = () => {
     };
 
     if (codeParts.isReact && codeParts.jsx) {
-      // React 模式：异步编译 JSX，传入 runtimeApiBase
+      // React 模式：优先使用服务端预编译代码，跳过二次编译
+      if (codeParts.compiledJs) {
+        const html = buildReactIframeHtml(codeParts.compiledJs, { runtimeApiBase });
+        writeHtml(html);
+        return;
+      }
+      // 降级：没有预编译代码时，异步编译 JSX
       let cancelled = false;
       compileJsx(codeParts.jsx).then((compiled) => {
         if (cancelled) return;

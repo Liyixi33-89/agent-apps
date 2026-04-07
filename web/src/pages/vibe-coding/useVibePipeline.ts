@@ -190,6 +190,7 @@ export const useVibePipeline = (
                 css: event.codeParts.css || '',
                 js: event.codeParts.js || '',
                 jsx: event.codeParts.jsx || '',
+                compiledJs: event.codeParts.compiledJs || '',
                 isReact: event.codeParts.isReact ?? true,
                 isFullHtml: event.codeParts.isFullHtml ?? false,
               };

@@ -109,7 +109,7 @@ export interface FullStackPipelineSSEEvent {
   status?: 'pending' | 'running' | 'done' | 'error';
   content?: string;
   // done 事件的完整数据
-  codeParts?: { html: string; css: string; js: string; jsx?: string; isReact?: boolean; isFullHtml?: boolean };
+  codeParts?: { html: string; css: string; js: string; jsx?: string; compiledJs?: string; isReact?: boolean; isFullHtml?: boolean };
   serverParts?: { model: string; route: string; service: string; middleware: string; envTemplate: string };
   dbSchema?: { collections: string; indexes: string; seedData: string };
   analysis?: string;
@@ -184,7 +184,7 @@ export interface VibeTemplateItem {
 }
 
 export interface VibeTemplateDetail extends VibeTemplateItem {
-  codeParts: { html: string; css: string; js: string; jsx?: string; isFullHtml?: boolean; isReact?: boolean };
+  codeParts: { html: string; css: string; js: string; jsx?: string; compiledJs?: string; isFullHtml?: boolean; isReact?: boolean };
 }
 
 export const fetchVibeTemplates = async (params?: { page?: number; limit?: number; category?: string }) => {

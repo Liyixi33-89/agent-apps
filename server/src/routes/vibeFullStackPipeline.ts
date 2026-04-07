@@ -399,7 +399,11 @@ const FS_REVIEWER_PROMPT = `你是一个全栈代码质检专家，负责审查�
 - ❌ 有 import/require 语句 → 删除
 - ❌ 有 className → 改为 style
 - ❌ 用了 axios → 改为 fetch
-- ❌ 缺少 export default → 补上
+- ❌ 缺少 export default → 补上（必须 export default App，不是 CrudPage）
+- ❌ 只有子组件（Button/Table/Modal 等）没有主入口组件 → 必须补全主入口组件并 export default
+- ❌ 只有 CrudPage 工厂组件没有 App 包装组件 → 必须补全 App 组件（内含模块配置和侧边栏切换），export default App
+- ❌ CrudPage 直接作为 export default 但没有传入 apiName/columns/fields → 必须创建 App 包装组件传入配置
+- ❌ 设计常量（S/Design/Theme 等）定义为 function 而非 const 对象 → 改为 const S = {...}（function 会导致 S.xxx === undefined）
 - ❌ 缺少 CRUD 功能 → 补全（使用 CrudPage 工厂模式）
 - ❌ data.map() 没有防御 → 改为 (data || []).map() 或 (Array.isArray(data) ? data : []).map()
 - ❌ 直接使用 res.data 没有兜底 → 改为 (res.data || [])
@@ -408,6 +412,7 @@ const FS_REVIEWER_PROMPT = `你是一个全栈代码质检专家，负责审查�
 - ❌ useState() 没有初始值 → 必须给初始值，如 useState([])、useState('')、useState(0)
 - ❌ fetch 没有 try-catch → 必须包裹 try-catch 并提供降级数据
 - ❌ 对象属性直接访问没有可选链 → 改为 item?.name || ''
+- ❌ 配置/样式对象用 function 定义（如 function Design() { return {...} }）但后续以 Design.xxx 方式使用 → 改为 const Design = {...}（函数不能直接访问属性，必须用对象字面量或 IIFE）
 
 二、API 路径一致性：
 - 前端 fetch 路径以 /api/ 开头
@@ -442,9 +447,14 @@ const FS_REVIEWER_PROMPT = `你是一个全栈代码质检专家，负责审查�
 
 \`\`\`jsx
 // 前端 React 代码（⚠️ 如果原代码基本正确，直接原样输出！不要重写！）
+// ⚠️ 严禁重复输出代码！只输出一份完整代码！
+// ⚠️ 必须包含主入口组件（如 CrudPage / App）并在最后 export default
 \`\`\`
 
-只输出代码块，不要输出解释文字。`;
+⚠️ 重要提醒：
+- 每个代码块只输出一次，绝不重复！
+- 前端 jsx 代码块必须包含完整的主入口组件和 export default
+- 只输出代码块，不要输出解释文字。`;
 
 // =============================================================================
 // § 7d-b  工具函数
@@ -725,9 +735,16 @@ const extractTaggedCodeBlocks = (raw: string): Array<{ tag: string; content: str
 
 /** 从 LLM 输出中提取 JSX 代码块 */
 const extractJsxBlock = (raw: string): string => {
-  const match = raw.match(/```(?:jsx|tsx)\n([\s\S]*?)```/i);
-  if (match) return match[1].trim();
-  // 降级：尝试匹配未闭合的代码块
+  // 匹配所有 jsx/tsx 代码块，取最长的那个（最完整的代码）
+  const regex = /```(?:jsx|tsx)\n([\s\S]*?)```/gi;
+  let best = '';
+  let m: RegExpExecArray | null;
+  while ((m = regex.exec(raw)) !== null) {
+    const block = m[1].trim();
+    if (block.length > best.length) best = block;
+  }
+  if (best) return best;
+  // 降级：尝试匹配未闭合的代码块（AI 输出被截断时）
   const openMatch = raw.match(/```(?:jsx|tsx)\n([\s\S]+)$/i);
   if (openMatch) return openMatch[1].trim();
   return '';
@@ -965,6 +982,28 @@ ${extractApiSummary(backendResult)}
 然后每个模块只需传入 columns/fields/apiName 配置即可，不要为每个模块重复写 CRUD 代码！
 这是确保所有模块都能完整生成的关键策略。
 
+【⚠️ 必须生成 App 入口组件 — 不能只导出 CrudPage】
+CrudPage 是工厂组件，不能直接作为入口！你必须在代码最后定义一个 App 组件：
+- App 组件内部用 useState 管理当前激活的模块（Tab/侧边栏切换）
+- App 组件内部为每个模块创建 CrudPage 实例，传入具体的 apiName、title、columns、fields、mockData
+- 最后 export default App（不是 export default CrudPage！）
+示例结构：
+  const App = () => {
+    const [active, setActive] = useState('user');
+    const modules = { user: { apiName: 'user', title: '用户管理', columns: [...], fields: [...] }, ... };
+    const mod = modules[active];
+    return React.createElement('div', null,
+      /* 侧边栏 */,
+      React.createElement(CrudPage, { key: active, ...mod })
+    );
+  };
+  export default App;
+
+【⚠️ 样式/设计常量必须是对象，不能是函数】
+定义颜色/间距等设计常量时，必须用 const 对象，绝对不能用 function：
+  ✅ const S = { bg: '#0f172a', primary: '#7c3aed', sp: n => n * 8 };
+  ❌ function S() { return { bg: '#0f172a', ... }; }  // 这会导致 S.bg === undefined！
+
 ${tierCfg.frontendExtra}
 
 【强制要求】
@@ -1089,6 +1128,7 @@ ${truncateText(enhancedFrontendCode || frontendResult, MAX_FRONTEND_CHARS)}
     const MAX_COMPILE_FIX_ROUNDS = 3;
     let compileAttempt = 0;
     let lastCompileError = '';
+    let compiledJsCode = '';  // 保存编译后的代码，避免浏览器二次编译
 
     while (jsxCode && compileAttempt < MAX_COMPILE_FIX_ROUNDS) {
       compileAttempt++;
@@ -1102,8 +1142,9 @@ ${truncateText(enhancedFrontendCode || frontendResult, MAX_FRONTEND_CHARS)}
         const compileResult = await compileJsx(jsxCode);
 
         if (compileResult.success) {
-          // 编译成功，跳出循环
-          console.log(`[Step7-编译验证] 第 ${compileAttempt} 轮编译成功（${compileResult.compiler}${compileResult.autoFixed ? ', 自动修复括号' : ''}）`);
+          // 编译成功，保存编译后的代码并跳出循环
+          compiledJsCode = compileResult.code || '';
+          console.log(`[Step7-编译验证] 第 ${compileAttempt} 轮编译成功（${compileResult.compiler}${compileResult.autoFixed ? ', 自动修复括号' : ''}），编译后代码 ${compiledJsCode.length} 字符`);
           send({
             type: 'step', step: 7, total: TOTAL_STEPS,
             title: `🧪 编译通过${compileAttempt > 1 ? `（第 ${compileAttempt} 轮修复后）` : ''}`,
@@ -1214,6 +1255,54 @@ ${jsxCode}
 
     // ── 构建最终输出 ──────────────────────────────────────────────────────
 
+    // 去重：检测 jsxCode 是否被完整重复（质检 LLM 有时会输出两遍完整代码）
+    if (jsxCode) {
+      const trimmedJsx = jsxCode.trim();
+      const halfLen = Math.floor(trimmedJsx.length / 2);
+      // 只在代码长度 > 500 时检测（太短的代码不太可能是重复）
+      if (trimmedJsx.length > 500) {
+        // 策略 1：精确前后半段匹配
+        const firstHalf = trimmedJsx.slice(0, halfLen);
+        const secondHalf = trimmedJsx.slice(halfLen).trim();
+        // 如果后半段以前半段的前 200 字符开头，说明代码被重复了
+        const checkLen = Math.min(200, firstHalf.length);
+        const firstStart = firstHalf.slice(0, checkLen).trim();
+        if (firstStart.length > 50 && secondHalf.startsWith(firstStart)) {
+          console.warn(`[Pipeline] 检测到 jsxCode 被重复（前 ${checkLen} 字符匹配），截取前半段`);
+          // 找到第二段代码的起始位置，截取第一段完整代码
+          const secondStartIdx = trimmedJsx.indexOf(firstStart, checkLen);
+          if (secondStartIdx > 0) {
+            jsxCode = trimmedJsx.slice(0, secondStartIdx).trim();
+            console.log(`[Pipeline] 去重后代码长度: ${jsxCode.length}（原始: ${trimmedJsx.length}）`);
+          }
+        }
+
+        // 策略 2：检测是否有两个相同的顶层 const 声明（如 const S = { ... } 出现两次）
+        const topLevelConsts = trimmedJsx.match(/^const\s+([A-Z_][A-Za-z0-9_]*)\s*=/gm);
+        if (topLevelConsts && topLevelConsts.length > 0) {
+          const seen = new Set<string>();
+          let hasDuplicate = false;
+          for (const decl of topLevelConsts) {
+            if (seen.has(decl)) { hasDuplicate = true; break; }
+            seen.add(decl);
+          }
+          if (hasDuplicate) {
+            console.warn(`[Pipeline] 检测到重复的顶层 const 声明: ${topLevelConsts.join(', ')}，尝试去重`);
+            // 找到第一个重复声明的位置，截取到该位置之前
+            const firstDuplDecl = topLevelConsts.find((d, i) => topLevelConsts.indexOf(d) !== i);
+            if (firstDuplDecl) {
+              const firstIdx = trimmedJsx.indexOf(firstDuplDecl);
+              const secondIdx = trimmedJsx.indexOf(firstDuplDecl, firstIdx + firstDuplDecl.length);
+              if (secondIdx > firstIdx) {
+                jsxCode = trimmedJsx.slice(0, secondIdx).trim();
+                console.log(`[Pipeline] 去重后代码长度: ${jsxCode.length}（原始: ${trimmedJsx.length}）`);
+              }
+            }
+          }
+        }
+      }
+    }
+
     const serverParts = {
       model: modelCode,
       route: routeCode,
@@ -1234,6 +1323,7 @@ ${jsxCode}
       css: '',
       js: '',
       jsx: jsxCode,
+      compiledJs: compiledJsCode,  // 服务端编译后的代码，浏览器可直接渲染，无需二次编译
       isReact: true,
       isFullHtml: false,
     };

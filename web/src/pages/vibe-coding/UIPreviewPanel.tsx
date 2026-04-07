@@ -762,7 +762,7 @@ const UIPreviewPanel = ({
                         <span className="w-8 h-1 rounded-full bg-gray-700" />
                       </div>
                       <div className="flex-1 overflow-hidden mt-5">
-                <ReactPreview jsx={codeParts?.jsx ?? ''} lang={lang} className="w-full h-full" runtimeApiBase={runtimeApiBase} />
+<ReactPreview jsx={codeParts?.jsx ?? ''} compiledJs={codeParts?.compiledJs} lang={lang} className="w-full h-full" runtimeApiBase={runtimeApiBase} />
                       </div>
                       <div className="flex-shrink-0 h-6 flex items-center justify-center bg-gray-900">
                         <span className="w-24 h-1 rounded-full bg-gray-700" />
@@ -771,7 +771,7 @@ const UIPreviewPanel = ({
                     <p className="mt-2 text-[10px] text-gray-600">Mobile · {MOBILE_WIDTH}px</p>
                   </div>
                 ) : (
-                <ReactPreview jsx={codeParts?.jsx ?? ''} lang={lang} className="w-full h-full" runtimeApiBase={runtimeApiBase} />
+<ReactPreview jsx={codeParts?.jsx ?? ''} compiledJs={codeParts?.compiledJs} lang={lang} className="w-full h-full" runtimeApiBase={runtimeApiBase} />
                 )
               ) : isMobile ? (
                 /* 手机外框 */

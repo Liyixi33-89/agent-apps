@@ -96,6 +96,11 @@ const ERROR_GUARD_SCRIPT = `
     window.onerror && window.onerror(String(e.reason), '', 0, 0, null);
   });
 
+  /* ── 拦截原生模态框 API（sandbox 未设置 allow-modals） ────────── */
+  window.alert   = function(msg) { console.info('[Vibe Mock] alert:', msg); };
+  window.confirm = function(msg) { console.info('[Vibe Mock] confirm:', msg); return true; };
+  window.prompt  = function(msg) { console.info('[Vibe Mock] prompt:', msg); return ''; };
+
   /* ── 导航拦截：防止 AI 代码导致父页面刷新 ────────────────────────── */
   // 拦截 window.open
   window.open = function(url) {
