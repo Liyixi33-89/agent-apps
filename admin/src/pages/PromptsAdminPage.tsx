@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   FileText, Plus, Pencil, Trash2, RefreshCw,
   ChevronDown, ChevronUp, Save, X, Loader2, Sparkles,
@@ -8,15 +8,24 @@ import { App } from 'antd';
 import {
   fetchAdminPrompts, createAdminPrompt, updateAdminPrompt,
   deleteAdminPrompt, seedAdminPrompts,
-  type SystemPrompt,
+  type SystemPrompt, type PromptCategory,
 } from '../api';
 
 // ─── 常量 ──────────────────────────────────────────────────────────────────────
 
-const CATEGORY_LABELS: Record<SystemPrompt['category'], { label: string; color: string }> = {
-  vibe:     { label: 'Vibe Coding', color: 'bg-violet-50 text-violet-600 border-violet-200' },
-  pipeline: { label: 'Pipeline',    color: 'bg-sky-50 text-sky-600 border-sky-200' },
+const CATEGORY_LABELS: Record<PromptCategory, { label: string; color: string }> = {
+  vibe:               { label: 'Vibe Coding',   color: 'bg-violet-50 text-violet-600 border-violet-200' },
+  pipeline:           { label: '固定 Pipeline', color: 'bg-sky-50 text-sky-600 border-sky-200' },
+  fullstack_pipeline: { label: '全栈 Pipeline', color: 'bg-amber-50 text-amber-600 border-amber-200' },
+  agent_plan:         { label: 'Agent 规划',    color: 'bg-emerald-50 text-emerald-600 border-emerald-200' },
+  knowledge:          { label: '知识库',        color: 'bg-pink-50 text-pink-600 border-pink-200' },
+  system:             { label: '系统',          color: 'bg-slate-50 text-slate-500 border-slate-200' },
 };
+
+/** 所有分类 key 列表（保持顺序） */
+const ALL_CATEGORIES: PromptCategory[] = [
+  'vibe', 'pipeline', 'fullstack_pipeline', 'agent_plan', 'knowledge', 'system',
+];
 
 // ─── 子组件：提示词编辑器 ──────────────────────────────────────────────────────
 
@@ -28,7 +37,7 @@ interface PromptEditorProps {
 
 const PromptEditor = ({ initial, onSave, onCancel }: PromptEditorProps) => {
   const [key, setKey]             = useState(initial?.key ?? '');
-  const [category, setCategory]   = useState<SystemPrompt['category']>(initial?.category ?? 'vibe');
+  const [category, setCategory]   = useState<PromptCategory>(initial?.category ?? 'vibe');
   const [name, setName]           = useState(initial?.name ?? '');
   const [description, setDesc]    = useState(initial?.description ?? '');
   const [content, setContent]     = useState(initial?.content ?? '');
@@ -91,12 +100,13 @@ const PromptEditor = ({ initial, onSave, onCancel }: PromptEditorProps) => {
           <select
             className="input w-full"
             value={category}
-            onChange={(e) => setCategory(e.target.value as SystemPrompt['category'])}
+            onChange={(e) => setCategory(e.target.value as PromptCategory)}
             aria-label="分类"
             tabIndex={0}
           >
-            <option value="vibe">Vibe Coding</option>
-            <option value="pipeline">Pipeline</option>
+            {ALL_CATEGORIES.map((cat) => (
+              <option key={cat} value={cat}>{CATEGORY_LABELS[cat].label}</option>
+            ))}
           </select>
         </div>
 
@@ -270,10 +280,13 @@ const PromptsAdminPage = () => {
   const { message, modal } = App.useApp();
   const [prompts, setPrompts]       = useState<SystemPrompt[]>([]);
   const [loading, setLoading]       = useState(false);
-  const [filterCat, setFilterCat]   = useState<'all' | 'vibe' | 'pipeline'>('all');
+  const [filterCat, setFilterCat]   = useState<'all' | PromptCategory>('all');
   const [editTarget, setEditTarget] = useState<SystemPrompt | null | 'new'>(null);
   const [seeding, setSeeding]       = useState(false);
   const [seedMsg, setSeedMsg]       = useState('');
+
+  /** 是否已完成首次初始化（seed） */
+  const initDoneRef = React.useRef(false);
 
   const loadPrompts = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -286,32 +299,29 @@ const PromptsAdminPage = () => {
     }
   }, [filterCat]);
 
-  // 首次加载：若数据库无提示词则自动初始化默认数据
+  // 首次加载：若数据库无提示词则自动 seed；之后仅在 filterCat 变化时重新加载
   useEffect(() => {
-    const init = async () => {
+    let cancelled = false;
+
+    const run = async () => {
       setLoading(true);
       try {
-        const data = await fetchAdminPrompts(undefined);
-        if (data.length === 0) {
+        // 首次进入页面时，先尝试 seed（不会覆盖已有数据，只补充缺失的）
+        if (!initDoneRef.current) {
+          initDoneRef.current = true;
           await seedAdminPrompts(false);
-          const seeded = await fetchAdminPrompts(filterCat === 'all' ? undefined : filterCat);
-          setPrompts(seeded);
-        } else {
-          const filtered = filterCat === 'all' ? data : data.filter((p) => p.category === filterCat);
-          setPrompts(filtered);
         }
+        // 按当前分类加载数据
+        const data = await fetchAdminPrompts(filterCat === 'all' ? undefined : filterCat);
+        if (!cancelled) setPrompts(data);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
-    init();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
-  // 分类切换时重新加载
-  useEffect(() => {
-    loadPrompts();
-  }, [loadPrompts]);
+    run();
+    return () => { cancelled = true; };
+  }, [filterCat]);
 
   const handleSave = async (data: Omit<SystemPrompt, '_id' | 'createdAt' | 'updatedAt'>) => {
     if (editTarget === 'new') {
@@ -360,8 +370,6 @@ const PromptsAdminPage = () => {
     }
   };
 
-  const filtered = filterCat === 'all' ? prompts : prompts.filter((p) => p.category === filterCat);
-
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
       {/* 头部 */}
@@ -372,7 +380,7 @@ const PromptsAdminPage = () => {
             系统提示词管理
           </h1>
           <p className="text-slate-400 text-sm mt-1">
-            管理 Vibe Coding 和 Pipeline 各步骤的系统提示词，修改后实时生效
+            管理所有 AI Prompt Skill，按分类浏览、编辑和新建，修改后实时生效
           </p>
         </div>
       </div>
@@ -380,8 +388,20 @@ const PromptsAdminPage = () => {
       {/* 工具栏 */}
       <div className="flex items-center gap-3 flex-wrap">
         {/* 分类过滤 */}
-        <div className="flex gap-1 bg-slate-100 rounded-lg p-1">
-          {(['all', 'vibe', 'pipeline'] as const).map((cat) => (
+        <div className="flex gap-1 bg-slate-100 rounded-lg p-1 flex-wrap">
+          <button
+            className={clsx(
+              'px-3 py-1.5 text-xs rounded-md transition-colors font-medium',
+              filterCat === 'all' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+            )}
+            onClick={() => setFilterCat('all')}
+            onKeyDown={(e) => e.key === 'Enter' && setFilterCat('all')}
+            aria-label="过滤：全部"
+            tabIndex={0}
+          >
+            全部
+          </button>
+          {ALL_CATEGORIES.map((cat) => (
             <button
               key={cat}
               className={clsx(
@@ -390,10 +410,10 @@ const PromptsAdminPage = () => {
               )}
               onClick={() => setFilterCat(cat)}
               onKeyDown={(e) => e.key === 'Enter' && setFilterCat(cat)}
-              aria-label={`过滤：${cat}`}
+              aria-label={`过滤：${CATEGORY_LABELS[cat].label}`}
               tabIndex={0}
             >
-              {cat === 'all' ? '全部' : cat === 'vibe' ? 'Vibe Coding' : 'Pipeline'}
+              {CATEGORY_LABELS[cat].label}
             </button>
           ))}
         </div>
@@ -458,7 +478,7 @@ const PromptsAdminPage = () => {
         <div className="flex justify-center py-16">
           <Loader2 className="w-8 h-8 text-sky-500 animate-spin" />
         </div>
-      ) : filtered.length === 0 ? (
+      ) : prompts.length === 0 ? (
         <div className="text-center py-16 text-slate-400">
           <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
           <p className="text-sm">暂无提示词</p>
@@ -466,7 +486,7 @@ const PromptsAdminPage = () => {
         </div>
       ) : (
         <div className="space-y-3">
-          {filtered.map((p) => (
+          {prompts.map((p) => (
             <PromptCard
               key={p._id}
               prompt={p}

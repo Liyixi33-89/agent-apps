@@ -136,10 +136,19 @@ export const fetchSettings = async () => {
 
 // ─── 提示词管理 ────────────────────────────────────────────────────────────────
 
+/** Prompt 分类类型 */
+export type PromptCategory =
+  | 'vibe'               // Vibe Coding 对话/流式生成
+  | 'pipeline'           // 固定 4 步 Pipeline
+  | 'fullstack_pipeline' // 全栈 Pipeline
+  | 'agent_plan'         // Agent 任务规划与执行
+  | 'knowledge'          // 知识库 RAG
+  | 'system';            // 通用系统级 Prompt
+
 export interface SystemPrompt {
   _id: string;
   key: string;
-  category: 'vibe' | 'pipeline';
+  category: PromptCategory;
   name: string;
   description: string;
   content: string;

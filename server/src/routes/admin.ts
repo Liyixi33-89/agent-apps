@@ -8,6 +8,8 @@ import { KnowledgeBase } from '../models/KnowledgeBase.js';
 import { Chat } from '../models/Chat.js';
 import { User } from '../models/User.js';
 import { SystemPrompt } from '../models/SystemPrompt.js';
+import type { PromptCategory } from '../models/SystemPrompt.js';
+import { DEFAULT_PROMPTS } from '../config/defaultPrompts.js';
 import { VibeTemplate } from '../models/VibeTemplate.js';
 import { ingestAgentsFromMarkdown, ingestKnowledgeFromAgents, getTranslateStatus, translateAgentsInBackground, processMarkdownFile, syncCategories } from '../services/agentIngestionService.js';
 import { createKnowledgeEntry } from '../services/knowledgeService.js';
@@ -60,7 +62,6 @@ adminRouter.post('/login', async (ctx) => {
     return;
   }
 
-  // 首次使用时自动创建管理员账号，固定默认密码 123456
   const DEFAULT_PASSWORD = '123456';
   let user = await User.findOne({ username });
   if (!user) {
@@ -141,7 +142,6 @@ adminRouter.delete('/agents/:id', requireAdmin, async (ctx) => {
   ctx.body = { success: true, message: 'Agent deleted' };
 });
 
-// 上传 MD 文件解析生成 Agent
 adminRouter.post('/agents/upload-md', requireAdmin, mdUpload.single('file'), async (ctx) => {
   const file = (ctx as any).file as Express.Multer.File | undefined;
   if (!file) {
@@ -151,19 +151,14 @@ adminRouter.post('/agents/upload-md', requireAdmin, mdUpload.single('file'), asy
   }
 
   try {
-    // 使用上传文件的临时路径，rootDir 设为临时目录
     const tmpDir = path.dirname(file.path);
-    // 将临时文件重命名为 .md 后缀（processMarkdownFile 依赖文件名）
     const mdPath = file.path + '.md';
     fs.renameSync(file.path, mdPath);
 
-    // 解析 MD 文件
     const agentData = await processMarkdownFile(mdPath, tmpDir, true);
 
-    // 清理临时文件
     try { fs.unlinkSync(mdPath); } catch { /* ignore */ }
 
-    // 使用原始文件名作为 slug 的备选
     const originalName = path.basename(file.originalname, '.md');
     if (!agentData.slug || agentData.slug === path.basename(mdPath, '.md')) {
       const slugify = (await import('slugify')).default;
@@ -172,7 +167,6 @@ adminRouter.post('/agents/upload-md', requireAdmin, mdUpload.single('file'), asy
       }) || originalName.toLowerCase().replace(/[^a-z0-9-]/g, '-');
     }
 
-    // 检查是否已存在同 slug 的 Agent
     const existing = await Agent.findOne({ slug: agentData.slug });
     let agent;
     let action: 'created' | 'updated';
@@ -189,7 +183,6 @@ adminRouter.post('/agents/upload-md', requireAdmin, mdUpload.single('file'), asy
       action = 'created';
     }
 
-    // 同步分类
     await syncCategories([agentData.categoryKey]);
 
     ctx.body = {
@@ -203,7 +196,6 @@ adminRouter.post('/agents/upload-md', requireAdmin, mdUpload.single('file'), asy
       },
     };
   } catch (err: any) {
-    // 清理临时文件
     try { fs.unlinkSync(file.path); } catch { /* ignore */ }
     try { fs.unlinkSync(file.path + '.md'); } catch { /* ignore */ }
 
@@ -255,12 +247,10 @@ adminRouter.post('/ingest', requireAdmin, async (ctx) => {
   };
 });
 
-// 查询后台翻译任务进度
 adminRouter.get('/ingest/translate-status', requireAdmin, async (ctx) => {
   ctx.body = { success: true, data: getTranslateStatus() };
 });
 
-// 手动触发后台翻译（不重新导入，仅翻译已入库的 Agent）
 adminRouter.post('/ingest/translate', requireAdmin, async (ctx) => {
   translateAgentsInBackground().catch((err) =>
     console.error('❌ 后台翻译任务异常：', err)
@@ -268,7 +258,6 @@ adminRouter.post('/ingest/translate', requireAdmin, async (ctx) => {
   ctx.body = { success: true, message: 'LLM 翻译任务已在后台启动，可通过 /api/admin/ingest/translate-status 查询进度' };
 });
 
-// 从已入库的 Agent 数据生成知识库（分块向量化）
 adminRouter.post('/ingest/knowledge', requireAdmin, async (ctx) => {
   const result = await ingestKnowledgeFromAgents();
   ctx.body = { success: true, data: result };
@@ -328,7 +317,10 @@ adminRouter.delete('/chats/:id', requireAdmin, async (ctx) => {
   ctx.body = { success: true, message: 'Chat deleted' };
 });
 
-// ─── 系统提示词管理 ────────────────────────────────────────────────────────────
+// ─── 系统提示词管理（Skill 库）─────────────────────────────────────────────────
+//
+// DEFAULT_PROMPTS 已从 config/defaultPrompts.ts 导入
+// 包含所有分类的 Prompt 种子数据：vibe / pipeline / fullstack_pipeline / agent_plan / knowledge / system
 //
 // GET    /api/admin/prompts          → 获取全部提示词列表（可按 category 过滤）
 // GET    /api/admin/prompts/:key     → 获取单条提示词
@@ -338,175 +330,6 @@ adminRouter.delete('/chats/:id', requireAdmin, async (ctx) => {
 // POST   /api/admin/prompts/seed     → 初始化/重置内置默认提示词
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 内置默认提示词种子数据 */
-const DEFAULT_PROMPTS = [
-  // ── Vibe Coding 单轮对话 ──────────────────────────────────────────────────
-  {
-    key: 'vibe_chat',
-    category: 'vibe' as const,
-    name: 'Vibe Coding 对话系统提示',
-    description: 'Vibe Coding 页面单轮/多轮对话时使用的系统提示，定义 UI 生成器的核心能力和设计规范',
-    sortOrder: 0,
-    content: `你是一个顶级的 UI/UX 设计师兼前端工程师，专门根据用户的自然语言描述生成完整可运行的 HTML 界面。
-
-## 核心输出要求
-1. **必须输出完整的 HTML 文档**，包含 <!DOCTYPE html>、<html>、<head>、<body> 标签
-2. 使用 Tailwind CSS（CDN：<script src="https://cdn.tailwindcss.com"></script>）实现所有样式
-3. 交互效果使用原生 JavaScript 写在 <script> 标签内
-4. 用 \`\`\`html 代码块包裹完整 HTML 输出
-5. 迭代修改时，输出完整的新版本 HTML，不要只输出片段
-6. Font Awesome 图标已自动注入，直接使用 <i class="fas fa-xxx"></i>，无需引入 CDN
-7. **ECharts 图表库已自动注入**，需要图表时直接使用 echarts.init() 即可，无需引入 CDN
-8. 在代码前用 1-2 句话简要说明实现了什么
-
-## 专业设计规范
-- 建立完整的设计 Token 系统：颜色、字体、间距、阴影均使用 CSS 变量
-- 组件必须有完整交互状态：hover、active、focus、disabled
-- 色彩对比度满足 WCAG AA 标准（正文 4.5:1，大标题 3:1）
-- 交互元素最小触控区域 44px，支持键盘导航（tabindex、aria-label）
-- 动画遵循 prefers-reduced-motion 用户偏好
-- 阴影层级：shadow-sm（卡片）→ shadow-md（悬浮）→ shadow-xl（模态框）
-
-## 场景化设计规范
-
-### 📱 手机/产品官网
-- 全屏 Hero 区域，大标题（60px+）+ 副标题 + CTA 按钮
-- 特性展示：图标 + 标题 + 描述的卡片网格（3列）
-- 产品截图展示区，带视差或渐变背景
-- 客户评价/数据统计区（数字大字展示）
-- Footer 含导航链接和社交媒体图标
-- 配色：品牌渐变色（蓝紫、橙红），支持深浅主题切换
-
-### 🖥️ 后台管理系统
-- 左侧固定导航栏（Logo + 菜单项 + 用户信息）
-- 顶部 Header（面包屑 + 搜索 + 通知铃 + 头像）
-- 数据统计卡片（总数 + 增长率 + 趋势箭头）
-- 数据表格（排序 + 状态标签 + 操作按钮）
-- 深色侧边栏 + 浅色内容区，或全深色主题
-
-### 🛒 电商/落地页
-- 商品展示网格（价格 + 评分 + 加购按钮）
-- 促销 Banner + 倒计时效果
-- 分类筛选栏 + 购物车侧滑面板
-
-### 📊 数据可视化 Dashboard
-- KPI 卡片（数字大字 + 趋势图标）
-- 使用 **ECharts** 绘制图表（柱状图、折线图、饼图、雷达图），配色与主题协调
-- 深色主题为主，实时数据更新动画
-
-### 🎮 工具/应用类
-- 清晰功能分区，表单/输入框/按钮交互完整
-- 状态反馈（loading、success、error）
-- 键盘快捷键支持
-
-## 通用设计原则
-- 界面要**专业、精致、有设计感**，不要廉价感
-- 合理使用阴影（shadow-lg/xl）、圆角（rounded-xl/2xl）、渐变
-- 动画过渡：transition-all duration-300
-- 悬停效果明显（hover:scale、hover:shadow-xl）
-- 文字内容使用真实感示例数据，不要写占位符`,
-  },
-
-  // ── Pipeline Step 1：需求分析 ─────────────────────────────────────────────
-  {
-    key: 'pipeline_analyst',
-    category: 'pipeline' as const,
-    name: 'Pipeline Step1 - 需求分析',
-    description: '多 Agent 流水线第一步：将用户自然语言需求拆解为结构化功能分析报告',
-    sortOrder: 1,
-    content: `你是一个资深需求分析师。
-用户会给你一个应用描述，你需要输出一份结构化的功能分析报告（纯文本，不要输出代码）。
-
-分析报告必须包含以下部分：
-1. **应用类型**：（后台管理系统 / 游戏 / 工具 / 官网 / 数据大屏 等）
-2. **核心功能模块**：列出 3-8 个主要功能模块，每个模块说明其职责
-3. **数据结构**：列出需要的数据实体和字段（用 JS 对象格式描述）
-4. **交互逻辑**：描述关键的用户交互流程（增删改查、状态切换、动画等）
-5. **UI 布局方案**：描述整体布局（侧边栏+内容区 / 全屏 / 卡片网格 等）
-6. **技术要点**：需要特别注意的实现细节
-
-输出格式要简洁清晰，供后续 Agent 使用。`,
-  },
-
-  // ── Pipeline Step 2：UI 骨架 ──────────────────────────────────────────────
-  {
-    key: 'pipeline_ui_builder',
-    category: 'pipeline' as const,
-    name: 'Pipeline Step2 - UI 骨架设计',
-    description: '多 Agent 流水线第二步：根据需求分析报告生成完整 HTML + Tailwind CSS 布局骨架',
-    sortOrder: 2,
-    content: `你是一个顶级 UI 设计师，专门根据需求分析报告生成 HTML + CSS 骨架。
-
-你会收到：
-- 原始用户需求
-- 需求分析报告
-
-你的任务：输出完整的 HTML 文档骨架，要求：
-1. 包含完整的 <!DOCTYPE html> 文档结构
-2. 使用 Tailwind CSS（<script src="https://cdn.tailwindcss.com"></script>）
-3. Font Awesome 图标（<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">）
-4. 所有 UI 元素、布局、样式必须完整，视觉上要专业精致
-5. JS 部分只写占位注释 // [LOGIC: 功能描述]，不写实际逻辑
-6. 数据展示区域使用真实感的示例数据（硬编码）
-7. 用 \`\`\`html 代码块包裹输出
-
-设计规范：
-- 深色主题优先（bg-gray-900/bg-slate-900）
-- 圆角：rounded-xl/2xl，阴影：shadow-lg/xl
-- 渐变色按钮，hover 效果明显
-- 响应式布局，移动端友好`,
-  },
-
-  // ── Pipeline Step 3：业务逻辑 ─────────────────────────────────────────────
-  {
-    key: 'pipeline_logic_builder',
-    category: 'pipeline' as const,
-    name: 'Pipeline Step3 - 业务逻辑开发',
-    description: '多 Agent 流水线第三步：为 HTML 骨架填充完整的 JavaScript 业务逻辑（CRUD、状态管理、事件处理）',
-    sortOrder: 3,
-    content: `你是一个资深前端工程师，专门为 HTML 骨架填充完整的 JavaScript 业务逻辑。
-
-你会收到：
-- 原始用户需求
-- 需求分析报告
-- 已生成的 HTML 骨架
-
-你的任务：输出完整的 HTML 文档，在骨架基础上：
-1. 将所有 // [LOGIC: xxx] 占位注释替换为真实的 JS 实现
-2. 实现完整的状态管理（使用 JS 对象/数组管理应用状态）
-3. 实现所有 CRUD 操作（增删改查，操作本地数据）
-4. 实现所有交互事件（点击、表单提交、搜索过滤、排序等）
-5. 实现数据的动态渲染（DOM 操作或模板字符串）
-6. 如需图表，使用 ECharts（已自动注入，直接用 echarts.init()）
-7. 添加 loading 状态、成功/失败提示、空状态处理
-8. 用 \`\`\`html 代码块包裹完整输出
-
-重要：输出的是完整可运行的 HTML，不是片段。所有功能必须真实可用，不能是假按钮。`,
-  },
-
-  // ── Pipeline Step 4：整合优化 ─────────────────────────────────────────────
-  {
-    key: 'pipeline_integrator',
-    category: 'pipeline' as const,
-    name: 'Pipeline Step4 - 整合优化',
-    description: '多 Agent 流水线第四步：对完整 HTML 进行最终检查、修复和优化，确保可直接运行',
-    sortOrder: 4,
-    content: `你是一个代码整合专家。
-
-你会收到一个已经包含完整 UI 和业务逻辑的 HTML 文档。
-你的任务是做最终检查和优化：
-1. 确保所有 JS 逻辑正确，没有语法错误
-2. 确保所有 DOM 元素 ID/class 引用一致
-3. 补充遗漏的交互细节
-4. 优化代码结构，添加必要注释
-5. 确保页面加载后立即可用（初始化数据渲染）
-6. 用 \`\`\`html 代码块包裹最终完整输出
-
-只输出最终 HTML，不需要解释。`,
-  },
-];
-
-// 初始化/重置内置默认提示词（upsert，不覆盖已自定义的内容）
 // ⚠️ 必须在 /prompts/:key 之前注册，否则 'seed' 会被当作 key 参数
 adminRouter.post('/prompts/seed', requireAdmin, async (ctx) => {
   const { force = false } = (ctx.request.body as { force?: boolean }) || {};
@@ -529,7 +352,6 @@ adminRouter.post('/prompts/seed', requireAdmin, async (ctx) => {
   ctx.body = { success: true, data: results };
 });
 
-// 获取提示词列表（支持按 category 过滤）
 adminRouter.get('/prompts', requireAdmin, async (ctx) => {
   const { category } = ctx.query as Record<string, string>;
   const filter: Record<string, unknown> = {};
@@ -539,17 +361,15 @@ adminRouter.get('/prompts', requireAdmin, async (ctx) => {
   ctx.body = { success: true, data: prompts };
 });
 
-// 获取单条提示词
 adminRouter.get('/prompts/:key', requireAdmin, async (ctx) => {
   const prompt = await SystemPrompt.findOne({ key: ctx.params.key }).lean();
   if (!prompt) { ctx.status = 404; ctx.body = { success: false, message: 'Prompt not found' }; return; }
   ctx.body = { success: true, data: prompt };
 });
 
-// 新建提示词
 adminRouter.post('/prompts', requireAdmin, async (ctx) => {
   const body = ctx.request.body as {
-    key: string; category: 'vibe' | 'pipeline';
+    key: string; category: PromptCategory;
     name: string; description?: string; content: string;
     isActive?: boolean; sortOrder?: number;
   };
@@ -557,7 +377,6 @@ adminRouter.post('/prompts', requireAdmin, async (ctx) => {
   ctx.body = { success: true, data: prompt };
 });
 
-// 更新提示词（按 key）
 adminRouter.put('/prompts/:key', requireAdmin, async (ctx) => {
   const update = ctx.request.body as Record<string, unknown>;
   const prompt = await SystemPrompt.findOneAndUpdate(
@@ -569,21 +388,12 @@ adminRouter.put('/prompts/:key', requireAdmin, async (ctx) => {
   ctx.body = { success: true, data: prompt };
 });
 
-// 删除提示词（按 key）
 adminRouter.delete('/prompts/:key', requireAdmin, async (ctx) => {
   await SystemPrompt.findOneAndDelete({ key: ctx.params.key });
   ctx.body = { success: true, message: 'Prompt deleted' };
 });
 
-// ⚠️ /prompts/seed 已移至 /prompts 路由之前注册（见上方），此处已删除重复定义
-
 // ─── Vibe 模板市场管理 ─────────────────────────────────────────────────────────
-//
-// GET    /api/admin/vibe-templates          → 获取模板列表（分页 + 搜索 + 分类过滤）
-// POST   /api/admin/vibe-templates          → 新建模板
-// PUT    /api/admin/vibe-templates/:id      → 更新模板
-// DELETE /api/admin/vibe-templates/:id      → 删除模板
-// ─────────────────────────────────────────────────────────────────────────────
 
 adminRouter.get('/vibe-templates', requireAdmin, async (ctx) => {
   const { page = '1', limit = '20', category, search } = ctx.query as Record<string, string>;
@@ -664,7 +474,6 @@ adminRouter.get('/vibe-apps', requireAdmin, async (ctx) => {
   ctx.body = { success: true, data: apps, pagination: { page: pageNum, limit: limitNum, total } };
 });
 
-// 获取单个应用的完整代码（Admin 代码编辑器使用）
 adminRouter.get('/vibe-apps/:id/code', requireAdmin, async (ctx) => {
   const app = await VibeTemplate.findById(ctx.params.id).lean();
   if (!app) { ctx.status = 404; ctx.body = { success: false, message: '应用不存在' }; return; }

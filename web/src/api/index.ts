@@ -374,3 +374,5 @@ export const fetchDeployedVibeApps = async (): Promise<Array<{ appId: string; ti
   const { data } = await api.get<{ success: boolean; data: Array<{ appId: string; title: string; basePath: string; collectionCount: number; deployedAt: string }> }>('/vibe-runtime/apps');
   return data.data;
 };
+
+
