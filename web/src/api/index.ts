@@ -108,6 +108,8 @@ export interface FullStackPipelineSSEEvent {
   title?: string;
   status?: 'pending' | 'running' | 'done' | 'error';
   content?: string;
+  // start 事件携带的初始步骤列表
+  steps?: Array<{ step: number; total: number; title: string; status: 'pending' | 'running' | 'done' | 'error' }>;
   // done 事件的完整数据
   codeParts?: { html: string; css: string; js: string; jsx?: string; compiledJs?: string; isReact?: boolean; isFullHtml?: boolean };
   serverParts?: { model: string; route: string; service: string; middleware: string; envTemplate: string };

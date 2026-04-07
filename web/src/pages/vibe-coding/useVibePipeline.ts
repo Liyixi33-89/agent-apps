@@ -36,13 +36,7 @@ export const useVibePipeline = (
   // ─── 固定 4 步 Pipeline ─────────────────────────────────────────────────────
 
   const runFixedPipeline = useCallback(async (trimmed: string) => {
-    const initialSteps: PipelineStep[] = [
-      { step: 1, total: 4, title: '📋 需求分析', status: 'pending' },
-      { step: 2, total: 4, title: '🎨 UI 设计', status: 'pending' },
-      { step: 3, total: 4, title: '⚡ 代码生成', status: 'pending' },
-      { step: 4, total: 4, title: '🔧 质检优化', status: 'pending' },
-    ];
-    setPipelineSteps(initialSteps);
+    setPipelineSteps([]);
     setIsAgentPlanMode(false);
 
     abortRef.current = new AbortController();
@@ -73,7 +67,10 @@ export const useVibePipeline = (
           if (!line.startsWith('data: ')) continue;
           try {
             const parsed = JSON.parse(line.slice(6));
-            if (parsed.type === 'step') {
+            if (parsed.type === 'start' && parsed.steps) {
+              // 从服务端获取初始步骤列表
+              setPipelineSteps(parsed.steps as PipelineStep[]);
+            } else if (parsed.type === 'step') {
               setPipelineSteps((prev) =>
                 prev.map((s) =>
                   s.step === parsed.step
@@ -100,7 +97,7 @@ export const useVibePipeline = (
                 ...prev,
                 {
                   role: 'assistant' as const,
-                  content: `✅ Pipeline 完成！已通过 4 个 Agent 协作生成完整应用。\n\n${analysisPreview}${designPreview}`,
+                  content: `✅ Pipeline 完成！已通过多 Agent 协作生成完整应用。\n\n${analysisPreview}${designPreview}`,
                   timestamp: new Date().toISOString(),
                   provider,
                 },
@@ -134,25 +131,20 @@ export const useVibePipeline = (
     }
   }, [lang, provider, modelType, isReactMode, abortRef, setPipelineSteps, setIsAgentPlanMode, setMessages, setCodeParts, setIsFromPreviousSession, handleSaveHistory]);
 
-  // ─── 全栈 5 步 Pipeline ─────────────────────────────────────────────────────
+  // ─── 全栈 Pipeline ──────────────────────────────────────────────────────────
 
   const runFullStackPipeline = useCallback((trimmed: string) => {
-    const initialSteps: PipelineStep[] = [
-      { step: 1, total: 6, title: '📋 全栈需求分析', status: 'pending' },
-      { step: 2, total: 6, title: '🗄️ 数据库架构', status: 'pending' },
-      { step: 3, total: 6, title: '⚙️ 后端代码', status: 'pending' },
-      { step: 4, total: 6, title: '🎨 前端代码', status: 'pending' },
-      { step: 5, total: 6, title: '🎯 UI/UX 设计', status: 'pending' },
-      { step: 6, total: 6, title: '🔧 质检整合', status: 'pending' },
-    ];
-    setPipelineSteps(initialSteps);
+    setPipelineSteps([]);
     setIsAgentPlanMode(false);
 
     const cleanup = executeFullStackPipeline(
       trimmed,
       { provider, modelType },
       (event: FullStackPipelineSSEEvent) => {
-        if (event.type === 'step') {
+        if (event.type === 'start' && event.steps) {
+          // 从服务端获取初始步骤列表
+          setPipelineSteps(event.steps as PipelineStep[]);
+        } else if (event.type === 'step') {
           setPipelineSteps((prev) =>
             prev.map((s) =>
               s.step === event.step
@@ -215,7 +207,7 @@ export const useVibePipeline = (
             ...prev,
             {
               role: 'assistant' as const,
-              content: `✅ 全栈 Pipeline 完成！已通过 6 个 Agent 协作生成完整全栈应用。\n\n📋 **需求分析摘要**\n${analysisPreview}\n\n🗂️ 生成内容：\n- ✅ MongoDB 数据库 Schema\n- ✅ Koa 后端路由 + Service\n- ✅ React 前端页面\n- ✅ UI/UX 设计增强${deployStatus}${appIdInfo}\n\n💡 前端代码已在右侧预览面板中展示，后端代码可在 Admin 后台查看和编辑。`,
+              content: `✅ 全栈 Pipeline 完成！已通过多 Agent 协作生成完整全栈应用。\n\n📋 **需求分析摘要**\n${analysisPreview}\n\n🗂️ 生成内容：\n- ✅ MongoDB 数据库 Schema\n- ✅ Koa 后端路由 + Service\n- ✅ React 前端页面${deployStatus}${appIdInfo}\n\n💡 前端代码已在右侧预览面板中展示，后端代码可在 Admin 后台查看和编辑。`,
               timestamp: new Date().toISOString(),
               provider,
             },

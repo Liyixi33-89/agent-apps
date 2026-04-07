@@ -1,15 +1,14 @@
 /**
  * @file routes/vibeFullStackPipeline.ts
- * @description § 7d  Vibe Coding — 全栈 CRUD Pipeline（6步流水线）
+ * @description § 7d  Vibe Coding — 全栈 CRUD Pipeline（5步流水线）
  *
  * 执行顺序：
  *   Step 1 - 需求分析 Agent      → 拆解功能模块、数据实体、API 清单
  *   Step 2 - 数据库架构 Agent    → 设计 MongoDB Schema + 索引 + 验证
  *   Step 3 - 后端工程 Agent      → 生成 Koa 路由 + Service + 中间件
  *   Step 4 - 前端工程 Agent      → 生成 React 页面 + API 调用层
- *   Step 5 - UI/UX 设计师 Agent  → 增强页面视觉设计、交互体验、动画效果
- *   Step 6 - 质检整合 Agent      → 审查全部代码 → 安全 + 一致性 + 完整性
- *   Step 7 - 编译验证 + AI 修复  → esbuild 编译前端代码，失败则 AI 自动修复（最多 3 轮）
+ *   Step 5 - 质检整合 Agent      → 审查全部代码 → 安全 + 一致性 + 完整性
+ *   Step 6 - 编译验证 + AI 修复  → esbuild 编译前端代码，失败则 AI 自动修复（最多 3 轮）
  *
  * 路由列表：
  *   POST /api/vibe/fullstack-pipeline  → 全栈 Pipeline 流式生成（SSE）
@@ -310,80 +309,6 @@ export default App;
 请直接输出完整代码，不要解释。`;
 
 
-
-const FS_UI_DESIGNER_PROMPT = `你是一个顶级 UI/UX 设计师，专精于 React 应用的视觉设计和交互体验优化。
-你的任务是审查前端 React 代码，并输出一份 **视觉增强后的完整前端代码**。
-
-【你的设计哲学】
-- 「少即是多」— 克制使用装饰，让内容本身成为设计
-- 「一致性优先」— 统一的设计语言贯穿每个像素
-- 「动效有意义」— 每个动画都服务于用户认知，而非炫技
-
-【⚠️ 最高优先级 — 代码长度控制】
-你的输出 token 有限！请遵循以下原则：
-1. **在原有代码基础上增强**，不要从零重写
-2. 主要修改样式对象（S 常量）和组件的 style 属性
-3. 新增的动画/交互代码要紧凑
-4. 保持原有的 CrudPage 工厂模式架构不变
-
-【视觉增强清单 — 必须执行】
-
-一、🎨 配色系统升级：
-- 建立完整的设计 Token：主色、辅色、成功/警告/错误色、中性色阶（50-950）
-- 主色调使用渐变（如 linear-gradient），避免纯色大面积填充
-- 深色主题下确保文字对比度 ≥ 4.5:1（WCAG AA）
-- 状态色语义化：绿色=成功、橙色=警告、红色=错误、蓝色=信息
-
-二、✨ 微交互与动画：
-- 按钮 hover：轻微上浮（translateY(-1px)）+ 阴影加深 + 背景色渐变
-- 卡片 hover：边框发光效果（box-shadow 带主色调透明度）
-- 列表项进入：淡入 + 微上移动画（opacity 0→1, translateY 8px→0）
-- 模态框：背景模糊（backdropFilter: blur(8px)）+ 缩放弹入
-- 页面切换：淡入过渡（transition opacity 200ms）
-- 加载状态：骨架屏或脉冲动画，不要空白等待
-- 删除操作：确认弹窗带红色警告色调
-
-三、📐 布局与间距优化：
-- 使用 8px 网格系统（所有间距为 8 的倍数：8, 16, 24, 32, 48）
-- 侧边栏：毛玻璃效果（backdrop-filter: blur）+ 细微边框
-- 内容区：合理的最大宽度限制，大屏居中
-- 表格：斑马纹行、固定表头、行悬停高亮
-- 表单：输入框聚焦时边框高亮 + 标签动画
-
-四、🔤 字体与排版：
-- 标题层级清晰：H1(24px/bold) > H2(20px/semibold) > H3(16px/medium)
-- 正文 14px，辅助文字 12px，行高 1.6
-- 数字使用等宽字体特性（tabular-nums）
-- 长文本截断用省略号（text-overflow: ellipsis）
-
-五、🎯 组件增强：
-- 按钮：主按钮渐变背景 + 次按钮描边样式 + 危险按钮红色调
-- 标签/Badge：圆角胶囊形状 + 语义化配色
-- 空状态：居中图标 + 友好提示文案 + 操作引导按钮
-- Toast/通知：右上角滑入 + 自动消失 + 不同类型不同颜色
-- 分页器：当前页高亮 + 悬停效果
-
-六、♿ 无障碍增强：
-- 所有可交互元素添加 tabIndex={0}
-- 按钮和链接添加 aria-label
-- 焦点可见样式（outline 或 ring）
-- 颜色不作为唯一信息传达方式（配合图标/文字）
-
-【输出格式】
-输出一个完整的增强后 React 组件，用代码块包裹：
-\`\`\`jsx
-// 增强后的完整 React 前端代码
-\`\`\`
-
-【禁止事项】
-- ❌ 禁止 import/require 语句
-- ❌ 禁止外部库（antd、axios、lodash、framer-motion 等）
-- ❌ 禁止 className（只用 style 内联样式）
-- ❌ 禁止删除任何已有功能
-- ❌ 禁止改变 API 路径和数据结构
-
-请直接输出增强后的完整代码，不要输出解释文字。`;
-
 const FS_REVIEWER_PROMPT = `你是一个全栈代码质检专家，负责审查和修复全栈项目的所有代码。
 
 【⚠️ 最高优先级 — 代码长度控制】
@@ -472,7 +397,6 @@ const getFullStackAgents = async () => ({
   dbArchitect: await getPrompt('fs_pipeline_db_architect', FS_DB_ARCHITECT_PROMPT),
   backend:     await getPrompt('fs_pipeline_backend',     FS_BACKEND_ENGINEER_PROMPT),
   frontend:    await getPrompt('fs_pipeline_frontend',    FS_FRONTEND_ENGINEER_PROMPT),
-  uiDesigner:  await getPrompt('fs_pipeline_ui_designer', FS_UI_DESIGNER_PROMPT),
   reviewer:    await getPrompt('fs_pipeline_reviewer',    FS_REVIEWER_PROMPT),
 });
 
@@ -496,11 +420,8 @@ interface TierConfig {
   maxDbChars: number;
   maxBackendChars: number;
   maxFrontendChars: number;
-  maxFrontendForUi: number;
   /** 最大续写次数 */
   maxContinuations: number;
-  /** 是否跳过 UI 增强步骤（弱模型跳过以节省 token） */
-  skipUiStep: boolean;
   /** 前端 Prompt 附加指令（根据能力等级调整要求） */
   frontendExtra: string;
 }
@@ -515,9 +436,7 @@ const TIER_CONFIGS: Record<ModelTier, TierConfig> = {
     maxDbChars: 4000,
     maxBackendChars: 5000,
     maxFrontendChars: 10000,
-    maxFrontendForUi: 12000,
     maxContinuations: 6,
-    skipUiStep: false,
     frontendExtra: `请生成完整的全栈管理后台，包含所有需求中提到的模块。
 每个模块都要有完整的 CRUD 功能和 mockData 兜底数据。
 可以添加搜索、筛选、统计面板等高级功能。`,
@@ -530,9 +449,7 @@ const TIER_CONFIGS: Record<ModelTier, TierConfig> = {
     maxDbChars: 2500,
     maxBackendChars: 3000,
     maxFrontendChars: 6000,
-    maxFrontendForUi: 8000,
     maxContinuations: 4,
-    skipUiStep: false,
     frontendExtra: `【⚠️ 代码长度控制 — 最高优先级】
 你的输出 token 有限（约 8000 token），必须用最紧凑的方式写完。
 1. 最多生成 3-4 个核心模块，不要贪多
@@ -549,9 +466,7 @@ const TIER_CONFIGS: Record<ModelTier, TierConfig> = {
     maxDbChars: 1500,
     maxBackendChars: 2000,
     maxFrontendChars: 4000,
-    maxFrontendForUi: 5000,
     maxContinuations: 2,
-    skipUiStep: true,  // 弱模型跳过 UI 增强，直接用前端代码
     frontendExtra: `【⚠️ 极其重要 — 你的输出 token 非常有限（约 4000 token）】
 你必须用最精简的方式生成代码，否则会被截断导致代码不完整！
 
@@ -838,7 +753,7 @@ vibeFullStackPipelineRouter.post('/vibe/fullstack-pipeline', async (ctx) => {
     maxTokens: userMaxTokens || tierCfg.lightMaxTokens,
     maxContinuations: tierCfg.maxContinuations,
   };
-  // 重度步骤选项（Step 3-7：后端/前端/UI/质检/编译修复，使用强模型）
+  // 重度步骤选项（Step 3-6：后端/前端/质检/编译修复，使用强模型）
   const heavyOpts = {
     ...baseOpts,
     temperature: codingTemperature,
@@ -858,7 +773,18 @@ vibeFullStackPipelineRouter.post('/vibe/fullstack-pipeline', async (ctx) => {
     res.write(`: heartbeat\n\n`);
   }, 15_000);
 
-  send({ type: 'start', modelTier: modelTier, tierLabel: tierCfg.label, skipUiStep: tierCfg.skipUiStep });
+  /** 创建带进度推送的步骤选项 */
+  const TOTAL_STEPS = 6;
+  const STEP_ICONS = ['📋', '🗄️', '⚙️', '🎨', '🔧', '🧪'];
+
+  send({ type: 'start', modelTier: modelTier, tierLabel: tierCfg.label, steps: [
+    { step: 1, total: TOTAL_STEPS, title: '📋 全栈需求分析', status: 'pending' },
+    { step: 2, total: TOTAL_STEPS, title: '🗄️ 数据库架构', status: 'pending' },
+    { step: 3, total: TOTAL_STEPS, title: '⚙️ 后端代码', status: 'pending' },
+    { step: 4, total: TOTAL_STEPS, title: '🎨 前端代码', status: 'pending' },
+    { step: 5, total: TOTAL_STEPS, title: '🔧 质检整合', status: 'pending' },
+    { step: 6, total: TOTAL_STEPS, title: '🧪 编译验证', status: 'pending' },
+  ] });
 
   // 上下文长度限制（根据模型能力等级自动调整）
   const MAX_ANALYSIS_CHARS = tierCfg.maxAnalysisChars;
@@ -872,9 +798,6 @@ vibeFullStackPipelineRouter.post('/vibe/fullstack-pipeline', async (ctx) => {
 
   const stepHeartbeat = () => send({ type: 'heartbeat' });
 
-  /** 创建带进度推送的步骤选项 */
-  const TOTAL_STEPS = 7;
-  const STEP_ICONS = ['📋', '🗄️', '⚙️', '🎨', '🎯', '🔧', '🧪'];
   /** 步骤 1-3 用短超时，步骤 4-6 用长超时 */
   const getStepTimeout = (step: number) => step <= 3 ? STEP_TIMEOUT_SHORT : STEP_TIMEOUT_LONG;
 
@@ -1029,57 +952,8 @@ ${tierCfg.frontendExtra}
     // 步骤间隔，避免触发 API 限流
     await new Promise(r => setTimeout(r, STEP_INTERVAL_MS));
 
-    // ── Step 5: UI/UX 设计增强 ────────────────────────────────────────────
-    let uiDesignResult = '';
-    let enhancedFrontendCode = '';
-
-    if (tierCfg.skipUiStep) {
-      // 弱模型跳过 UI 增强步骤，直接使用前端代码，节省 token 和时间
-      console.log(`[Pipeline] 模型等级=${modelTier}，跳过 Step 5 UI 增强`);
-      send({ type: 'step', step: 5, total: TOTAL_STEPS, title: '🎯 UI 增强已跳过（模型能力优化）', status: 'done' });
-      enhancedFrontendCode = extractJsxBlock(frontendResult);
-    } else {
-      send({ type: 'step', step: 5, total: TOTAL_STEPS, title: '🎯 UI/UX 设计增强中...', status: 'running' });
-
-      const MAX_FRONTEND_FOR_UI = tierCfg.maxFrontendForUi;
-      uiDesignResult = await runStep([
-        { role: 'system', content: AGENTS.uiDesigner },
-        {
-          role: 'user',
-          content: `请审查并增强以下 React 前端代码的 UI/UX 设计质量。
-
-【原始需求】
-${prompt}
-
-【需求分析（摘要）】
-${truncateText(analysisResult, MAX_ANALYSIS_CHARS)}
-
-【当前前端 React 代码】
-${truncateText(frontendResult, MAX_FRONTEND_FOR_UI)}
-
-【增强重点】
-1. 优化配色方案 — 建立完整的设计 Token 系统
-2. 添加微交互动画 — hover、过渡、加载状态
-3. 优化布局间距 — 使用 8px 网格系统
-4. 增强组件视觉 — 按钮、表格、表单、模态框
-5. 添加空状态和加载骨架屏
-6. 确保无障碍性 — tabIndex、aria-label、焦点样式
-
-请在原有代码基础上增强，输出完整的增强后代码。`,
-        },
-      ], heavyOpts, makeStepOpts(5, 'Step5-UI/UX设计'));
-
-      send({ type: 'step', step: 5, total: TOTAL_STEPS, title: '🎯 UI/UX 设计完成', status: 'done', content: uiDesignResult });
-
-      // 提取 UI 增强后的前端代码（优先使用增强版本）
-      enhancedFrontendCode = extractJsxBlock(uiDesignResult) || extractJsxBlock(frontendResult);
-    }
-
-    // 步骤间隔，避免触发 API 限流
-    await new Promise(r => setTimeout(r, STEP_INTERVAL_MS));
-
-    // ── Step 6: 质检整合 ──────────────────────────────────────────────────
-    send({ type: 'step', step: 6, total: TOTAL_STEPS, title: '🔧 全栈质检中...', status: 'running' });
+    // ── Step 5: 质检整合 ──────────────────────────────────────────────────
+    send({ type: 'step', step: 5, total: TOTAL_STEPS, title: '🔧 全栈质检中...', status: 'running' });
 
     const reviewResult = await runStep([
       { role: 'system', content: AGENTS.reviewer },
@@ -1093,14 +967,14 @@ ${truncateText(dbResult, MAX_DB_CHARS)}
 【后端路由和 Service 代码】
 ${truncateText(backendResult, MAX_BACKEND_CHARS)}
 
-【前端 React 代码（已经过 UI/UX 设计师增强）】
-${truncateText(enhancedFrontendCode || frontendResult, MAX_FRONTEND_CHARS)}
+【前端 React 代码】
+${truncateText(extractJsxBlock(frontendResult) || frontendResult, MAX_FRONTEND_CHARS)}
 
 请按照审查清单逐项检查，修复所有问题后输出完整代码。`,
       },
-    ], heavyOpts, makeStepOpts(6, 'Step6-质检整合'));
+    ], heavyOpts, makeStepOpts(5, 'Step5-质检整合'));
 
-    send({ type: 'step', step: 6, total: TOTAL_STEPS, title: '🔧 质检完成', status: 'done' });
+    send({ type: 'step', step: 5, total: TOTAL_STEPS, title: '🔧 质检完成', status: 'done' });
 
     // ── 解析质检后的最终代码 ──────────────────────────────────────────────
 
@@ -1116,14 +990,14 @@ ${truncateText(enhancedFrontendCode || frontendResult, MAX_FRONTEND_CHARS)}
       || extractTaggedCodeBlocks(backendResult).find((b) => b.tag.includes('.env'))?.content
       || '';
 
-    // 前端代码提取（优先级：质检结果 > UI增强结果 > 原始前端结果）
-    let jsxCode = extractJsxBlock(reviewResult) || enhancedFrontendCode || extractJsxBlock(frontendResult);
+    // 前端代码提取（优先级：质检结果 > 原始前端结果）
+    let jsxCode = extractJsxBlock(reviewResult) || extractJsxBlock(frontendResult);
 
     // 步骤间隔
     await new Promise(r => setTimeout(r, STEP_INTERVAL_MS));
 
-    // ── Step 7: 编译验证 + AI 自动修复 ────────────────────────────────────
-    send({ type: 'step', step: 7, total: TOTAL_STEPS, title: '🧪 编译验证中...', status: 'running' });
+    // ── Step 6: 编译验证 + AI 自动修复 ────────────────────────────────────
+    send({ type: 'step', step: 6, total: TOTAL_STEPS, title: '🧪 编译验证中...', status: 'running' });
 
     const MAX_COMPILE_FIX_ROUNDS = 3;
     let compileAttempt = 0;
@@ -1133,7 +1007,7 @@ ${truncateText(enhancedFrontendCode || frontendResult, MAX_FRONTEND_CHARS)}
     while (jsxCode && compileAttempt < MAX_COMPILE_FIX_ROUNDS) {
       compileAttempt++;
       send({
-        type: 'step', step: 7, total: TOTAL_STEPS,
+type: 'step', step: 6, total: TOTAL_STEPS,
         title: `🧪 编译验证（第 ${compileAttempt} 轮）...`,
         status: 'running',
       });
@@ -1144,9 +1018,9 @@ ${truncateText(enhancedFrontendCode || frontendResult, MAX_FRONTEND_CHARS)}
         if (compileResult.success) {
           // 编译成功，保存编译后的代码并跳出循环
           compiledJsCode = compileResult.code || '';
-          console.log(`[Step7-编译验证] 第 ${compileAttempt} 轮编译成功（${compileResult.compiler}${compileResult.autoFixed ? ', 自动修复括号' : ''}），编译后代码 ${compiledJsCode.length} 字符`);
+          console.log(`[Step6-编译验证] 第 ${compileAttempt} 轮编译成功（${compileResult.compiler}${compileResult.autoFixed ? ', 自动修复括号' : ''}），编译后代码 ${compiledJsCode.length} 字符`);
           send({
-            type: 'step', step: 7, total: TOTAL_STEPS,
+type: 'step', step: 6, total: TOTAL_STEPS,
             title: `🧪 编译通过${compileAttempt > 1 ? `（第 ${compileAttempt} 轮修复后）` : ''}`,
             status: 'done',
           });
@@ -1156,12 +1030,12 @@ ${truncateText(enhancedFrontendCode || frontendResult, MAX_FRONTEND_CHARS)}
 
         // 编译失败，记录错误
         lastCompileError = compileResult.error || '未知编译错误';
-        console.warn(`[Step7-编译验证] 第 ${compileAttempt} 轮编译失败: ${lastCompileError.slice(0, 200)}`);
+        console.warn(`[Step6-编译验证] 第 ${compileAttempt} 轮编译失败: ${lastCompileError.slice(0, 200)}`);
 
         // 如果已达最大修复轮数，不再尝试 AI 修复
         if (compileAttempt >= MAX_COMPILE_FIX_ROUNDS) {
           send({
-            type: 'step', step: 7, total: TOTAL_STEPS,
+type: 'step', step: 6, total: TOTAL_STEPS,
             title: `🧪 编译验证完成（${MAX_COMPILE_FIX_ROUNDS} 轮修复后仍有警告，已尽力修复）`,
             status: 'done',
           });
@@ -1170,7 +1044,7 @@ ${truncateText(enhancedFrontendCode || frontendResult, MAX_FRONTEND_CHARS)}
 
         // 让 AI 根据编译错误修复代码
         send({
-          type: 'step', step: 7, total: TOTAL_STEPS,
+type: 'step', step: 6, total: TOTAL_STEPS,
           title: `🧪 AI 修复编译错误（第 ${compileAttempt} 轮）...`,
           status: 'running',
         });
@@ -1214,10 +1088,10 @@ ${jsxCode}
         ], heavyOpts, {
           timeoutMs: 300_000, // 修复步骤 5 分钟超时
           onHeartbeat: stepHeartbeat,
-          label: `Step7-AI修复(第${compileAttempt}轮)`,
+          label: `Step6-AI修复(第${compileAttempt}轮)`,
           onProgress: (info) => {
             send({
-              type: 'step', step: 7, total: TOTAL_STEPS,
+type: 'step', step: 6, total: TOTAL_STEPS,
               title: `🧪 AI 修复中... 已生成 ${info.chars} 字符`,
               status: 'running',
             });
@@ -1228,15 +1102,15 @@ ${jsxCode}
         const fixedJsx = extractJsxBlock(fixResult);
         if (fixedJsx && fixedJsx.trim().length > 100) {
           jsxCode = fixedJsx;
-          console.log(`[Step7-编译验证] AI 修复完成，新代码 ${fixedJsx.length} 字符，进入下一轮编译验证`);
+          console.log(`[Step6-编译验证] AI 修复完成，新代码 ${fixedJsx.length} 字符，进入下一轮编译验证`);
         } else {
-          console.warn('[Step7-编译验证] AI 修复结果为空或过短，跳过');
+          console.warn('[Step6-编译验证] AI 修复结果为空或过短，跳过');
           break;
         }
       } catch (compileErr: any) {
-        console.warn(`[Step7-编译验证] 编译/修复异常: ${compileErr?.message}`);
+        console.warn(`[Step6-编译验证] 编译/修复异常: ${compileErr?.message}`);
         send({
-          type: 'step', step: 7, total: TOTAL_STEPS,
+type: 'step', step: 6, total: TOTAL_STEPS,
           title: '🧪 编译验证完成（有警告但不影响运行）',
           status: 'done',
         });
@@ -1247,7 +1121,7 @@ ${jsxCode}
     // 如果没有 JSX 代码，跳过编译验证
     if (!jsxCode) {
       send({
-        type: 'step', step: 7, total: TOTAL_STEPS,
+type: 'step', step: 6, total: TOTAL_STEPS,
         title: '🧪 编译验证跳过（无前端代码）',
         status: 'done',
       });

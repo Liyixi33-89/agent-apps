@@ -473,7 +473,12 @@ vibePipelineRouter.post('/vibe/pipeline', async (ctx) => {
     res.write(`data: ${JSON.stringify(data)}\n\n`);
   };
 
-  send({ type: 'start' });
+  send({ type: 'start', steps: [
+    { step: 1, total: 4, title: '📋 需求分析', status: 'pending' },
+    { step: 2, total: 4, title: '🎨 UI 设计', status: 'pending' },
+    { step: 3, total: 4, title: '⚡ 代码生成', status: 'pending' },
+    { step: 4, total: 4, title: '🔧 质检优化', status: 'pending' },
+  ] });
 
   try {
     const PIPELINE_AGENTS = await getPipelineAgents();
