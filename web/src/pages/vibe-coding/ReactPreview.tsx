@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { compileJsx, compileJsxSync, preInitEsbuild } from './esbuildCompiler';
 
 // 重新导出编译函数（保持向后兼容）
@@ -882,8 +882,11 @@ export const buildReactIframeHtml = (compiledCode: string, options?: { runtimeAp
 
 // ─── ReactPreview 组件 ───────────────────────────────────────────────────────
 
-const ReactPreview = ({ jsx, compiledJs, lang = 'zh', className = '', runtimeApiBase }: ReactPreviewProps) => {
+const ReactPreview = forwardRef<HTMLIFrameElement, ReactPreviewProps>(({ jsx, compiledJs, lang = 'zh', className = '', runtimeApiBase }, ref) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  // 将内部 iframe ref 暴露给父组件（用于元素选择模式注入脚本）
+  useImperativeHandle(ref, () => iframeRef.current as HTMLIFrameElement);
   const [compileError, setCompileError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   // 缓存编译结果，避免 runtimeApiBase 变化时重复编译
@@ -1028,6 +1031,8 @@ const ReactPreview = ({ jsx, compiledJs, lang = 'zh', className = '', runtimeApi
       )}
     </div>
   );
-};
+});
+
+ReactPreview.displayName = 'ReactPreview';
 
 export default ReactPreview;

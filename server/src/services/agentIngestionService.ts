@@ -1126,8 +1126,46 @@ export const ingestAgentsFromMarkdown = async (rootDir: string, translate = fals
       const agentData = await processMarkdownFile(filePath, rootDir, translate);
       categoryKeys.push(agentData.categoryKey);
 
-      const existing = await Agent.findOne({ slug: agentData.slug });
+      const existing = await Agent.findOne({ slug: agentData.slug }).lean() as any;
       if (existing) {
+        // ── 保留已有的中文翻译，避免被英文覆盖 ──────────────────────────────
+        const hasChinese = (text: string) => /[\u4e00-\u9fff]/.test(text || '');
+        const preserveZh = (newVal: string, existingVal: string) =>
+          hasChinese(existingVal) && !hasChinese(newVal) ? existingVal : newVal;
+
+        // 保留 name / description / vibe 的中文翻译
+        agentData.name.zh = preserveZh(agentData.name.zh, existing.name?.zh);
+        agentData.description.zh = preserveZh(agentData.description.zh, existing.description?.zh);
+        agentData.vibe.zh = preserveZh(agentData.vibe.zh, existing.vibe?.zh);
+
+        // 保留 workflow.summary 的中文翻译
+        if (agentData.workflow?.summary) {
+          agentData.workflow.summary.zh = preserveZh(
+            agentData.workflow.summary.zh,
+            existing.workflow?.summary?.zh
+          );
+        }
+
+        // 保留 sections 中 heading 和 markdown 的中文翻译
+        const existingSections: any[] = existing.sections || [];
+        agentData.sections = agentData.sections.map((s: any, idx: number) => {
+          const es = existingSections[idx];
+          if (!es) return s;
+          return {
+            ...s,
+            heading: { ...s.heading, zh: preserveZh(s.heading?.zh, es.heading?.zh) },
+            markdown: { ...s.markdown, zh: preserveZh(s.markdown?.zh, es.markdown?.zh) },
+          };
+        });
+
+        // 保留 capabilities 的中文翻译
+        const existingCaps: any[] = existing.capabilities || [];
+        agentData.capabilities = agentData.capabilities.map((c: any, idx: number) => {
+          const ec = existingCaps[idx];
+          if (!ec) return c;
+          return { ...c, zh: preserveZh(c.zh, ec.zh) };
+        });
+
         await Agent.updateOne({ slug: agentData.slug }, { $set: agentData });
         result.updated++;
       } else {

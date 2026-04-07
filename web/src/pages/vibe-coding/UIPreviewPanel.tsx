@@ -285,6 +285,7 @@ const UIPreviewPanel = ({
     const inject = () => {
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (iframe.contentWindow as any).__vibeSelectMode = false; // 重置标记，允许重新注入
         (iframe.contentWindow as any)?.eval(buildSelectorScript());
       } catch { /* 忽略 */ }
     };
@@ -292,7 +293,7 @@ const UIPreviewPanel = ({
     if (iframe.contentDocument?.readyState === 'complete') inject();
     iframe.addEventListener('load', inject);
     return () => iframe.removeEventListener('load', inject);
-  }, [selectMode, buildSelectorScript]);
+  }, [selectMode, buildSelectorScript, codeParts]);
 
   // 切换 selectMode 时重置选中
   useEffect(() => {
@@ -762,7 +763,7 @@ const UIPreviewPanel = ({
                         <span className="w-8 h-1 rounded-full bg-gray-700" />
                       </div>
                       <div className="flex-1 overflow-hidden mt-5">
-<ReactPreview jsx={codeParts?.jsx ?? ''} compiledJs={codeParts?.compiledJs} lang={lang} className="w-full h-full" runtimeApiBase={runtimeApiBase} />
+<ReactPreview ref={iframeRef} jsx={codeParts?.jsx ?? ''} compiledJs={codeParts?.compiledJs} lang={lang} className="w-full h-full" runtimeApiBase={runtimeApiBase} />
                       </div>
                       <div className="flex-shrink-0 h-6 flex items-center justify-center bg-gray-900">
                         <span className="w-24 h-1 rounded-full bg-gray-700" />
@@ -771,7 +772,7 @@ const UIPreviewPanel = ({
                     <p className="mt-2 text-[10px] text-gray-600">Mobile · {MOBILE_WIDTH}px</p>
                   </div>
                 ) : (
-<ReactPreview jsx={codeParts?.jsx ?? ''} compiledJs={codeParts?.compiledJs} lang={lang} className="w-full h-full" runtimeApiBase={runtimeApiBase} />
+<ReactPreview ref={iframeRef} jsx={codeParts?.jsx ?? ''} compiledJs={codeParts?.compiledJs} lang={lang} className="w-full h-full" runtimeApiBase={runtimeApiBase} />
                 )
               ) : isMobile ? (
                 /* 手机外框 */
