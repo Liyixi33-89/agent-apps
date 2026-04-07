@@ -2,15 +2,21 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Button, Select, Space, Tag, Typography, Spin, Empty, Avatar,
+  Popconfirm, Input, Tooltip, Drawer, message,
 } from 'antd';
 import {
   PlusOutlined, RobotOutlined, UserOutlined,
-  ApiOutlined, EyeOutlined,
+  ApiOutlined, EyeOutlined, DeleteOutlined, EditOutlined,
+  CopyOutlined, StopOutlined, MenuOutlined, CheckOutlined,
+  CloseOutlined,
 } from '@ant-design/icons';
 import { Bubble, Sender } from '@ant-design/x';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { createChatSession, fetchChatSessions, fetchChatSession, fetchAgents } from '../api';
+import {
+  createChatSession, fetchChatSessions, fetchChatSession,
+  fetchAgents, deleteChatSession, renameChatSession,
+} from '../api';
 import { useAppStore } from '../store';
 import type { ChatSession, ChatMessage, Agent, Provider, ModelType } from '../types';
 
@@ -32,12 +38,15 @@ const ChatPage = () => {
   const [selectedAgent, setSelectedAgent] = useState(searchParams.get('agent') || '');
   const [provider, setProvider] = useState<Provider>(activeProvider);
   const [modelType, setModelType] = useState<ModelType>('text');
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    fetchChatSessions().then(setSessions).catch(console.error);
-    fetchAgents({ limit: 100 }).then((r) => setAgents(r.data)).catch(console.error);
+    fetchChatSessions().then(setSessions).catch(() => {});
+    fetchAgents({ limit: 100 }).then((r) => setAgents(r.data)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -45,7 +54,7 @@ const ChatPage = () => {
       fetchChatSession(paramSessionId).then((session) => {
         setCurrentSession(session);
         setMessages(session.messages.filter((m) => m.role !== 'system'));
-      }).catch(console.error);
+      }).catch(() => {});
     }
   }, [paramSessionId]);
 
@@ -56,10 +65,83 @@ const ChatPage = () => {
   const handleNewSession = async () => {
     try {
       const session = await createChatSession({ agentSlug: selectedAgent || undefined, provider, modelType });
-      await fetchChatSessions().then(setSessions);
+      const updatedSessions = await fetchChatSessions();
+      setSessions(updatedSessions);
+      setMobileDrawerOpen(false);
       navigate(`/chat/${session.sessionId}`);
-    } catch (err) {
-      console.error('Failed to create session', err);
+    } catch {
+      // 拦截器已处理错误
+    }
+  };
+
+  const handleDeleteSession = async (sessionId: string) => {
+    try {
+      await deleteChatSession(sessionId);
+      message.success('会话已删除');
+      setSessions((prev) => prev.filter((s) => s.sessionId !== sessionId));
+      if (currentSession?.sessionId === sessionId) {
+        setCurrentSession(null);
+        setMessages([]);
+        navigate('/chat');
+      }
+    } catch {
+      // 拦截器已处理错误
+    }
+  };
+
+  const handleStartRename = (session: ChatSession) => {
+    setEditingSessionId(session.sessionId);
+    setEditingTitle(session.title || session.agentName || '');
+  };
+
+  const handleConfirmRename = async () => {
+    if (!editingSessionId || !editingTitle.trim()) return;
+    try {
+      await renameChatSession(editingSessionId, editingTitle.trim());
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.sessionId === editingSessionId ? { ...s, title: editingTitle.trim() } : s
+        )
+      );
+      if (currentSession?.sessionId === editingSessionId) {
+        setCurrentSession({ ...currentSession, title: editingTitle.trim() });
+      }
+      message.success('已重命名');
+    } catch {
+      // 拦截器已处理错误
+    } finally {
+      setEditingSessionId(null);
+      setEditingTitle('');
+    }
+  };
+
+  const handleCancelRename = () => {
+    setEditingSessionId(null);
+    setEditingTitle('');
+  };
+
+  const handleCopyMessage = (content: string) => {
+    navigator.clipboard.writeText(content).then(() => {
+      message.success('已复制到剪贴板');
+    }).catch(() => {
+      message.error('复制失败');
+    });
+  };
+
+  const handleStopGeneration = () => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+      setStreaming(false);
+      if (streamingContent) {
+        setMessages((prev) => [...prev, {
+          role: 'assistant',
+          content: streamingContent + '\n\n*（已停止生成）*',
+          timestamp: new Date().toISOString(),
+          provider,
+        }]);
+        setStreamingContent('');
+      }
     }
   };
 
@@ -157,10 +239,34 @@ const ChatPage = () => {
         ? <Avatar size={32} style={{ backgroundColor: '#0284c7' }} icon={<UserOutlined />} />
         : <Avatar size={32} style={{ backgroundColor: '#f1f5f9' }} icon={<RobotOutlined style={{ color: '#64748b' }} />} />,
       content: msg.role === 'user'
-        ? msg.content
+        ? (
+          <div className="group relative">
+            {msg.content}
+            <Tooltip title="复制">
+              <button
+                className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded bg-white shadow-sm border border-slate-200 text-slate-400 hover:text-sky-500"
+                onClick={() => handleCopyMessage(msg.content)}
+                aria-label="复制消息"
+                tabIndex={0}
+              >
+                <CopyOutlined style={{ fontSize: 12 }} />
+              </button>
+            </Tooltip>
+          </div>
+        )
         : (
-          <div className="prose-dark text-sm">
+          <div className="group relative prose-dark text-sm">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+            <Tooltip title="复制">
+              <button
+                className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded bg-white shadow-sm border border-slate-200 text-slate-400 hover:text-sky-500"
+                onClick={() => handleCopyMessage(msg.content)}
+                aria-label="复制消息"
+                tabIndex={0}
+              >
+                <CopyOutlined style={{ fontSize: 12 }} />
+              </button>
+            </Tooltip>
           </div>
         ),
       styles: {
@@ -189,82 +295,184 @@ const ChatPage = () => {
     });
   }
 
-  return (
-    <div className="flex h-full">
-      {/* 会话列表 */}
-      <aside className="hidden lg:flex flex-col w-56 bg-white border-r border-slate-200">
-        <div className="p-3 border-b border-slate-100">
+  // 会话列表侧边栏内容（桌面端和移动端共用）
+  const sessionSidebar = (
+    <>
+      <div className="p-3 border-b border-slate-100">
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          block
+          onClick={handleNewSession}
+          aria-label="新建对话"
+        >
+          {lang === 'zh' ? '新建对话' : 'New Chat'}
+        </Button>
+      </div>
+
+      {/* Agent 选择 */}
+      <div className="p-3 border-b border-slate-100">
+        <Text type="secondary" className="text-xs block mb-1">Agent</Text>
+        <Select
+          value={selectedAgent}
+          onChange={setSelectedAgent}
+          options={agentOptions}
+          size="small"
+          className="w-full"
+          aria-label="选择 Agent"
+        />
+      </div>
+
+      {/* Provider 切换 */}
+      <div className="p-3 border-b border-slate-100">
+        <Space.Compact block>
           <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            block
-            onClick={handleNewSession}
-            aria-label="新建对话"
-          >
-            {lang === 'zh' ? '新建对话' : 'New Chat'}
-          </Button>
-        </div>
-
-        {/* Agent 选择 */}
-        <div className="p-3 border-b border-slate-100">
-          <Text type="secondary" className="text-xs block mb-1">Agent</Text>
-          <Select
-            value={selectedAgent}
-            onChange={setSelectedAgent}
-            options={agentOptions}
             size="small"
-            className="w-full"
-            aria-label="选择 Agent"
-          />
-        </div>
+            type={provider === 'ollama' ? 'primary' : 'default'}
+            onClick={() => setProvider('ollama')}
+            className="flex-1"
+          >
+            🦙 Ollama
+          </Button>
+          <Button
+            size="small"
+            type={provider === 'openai' ? 'primary' : 'default'}
+            onClick={() => setProvider('openai')}
+            className="flex-1"
+          >
+            🤖 OpenAI
+          </Button>
+        </Space.Compact>
+      </div>
 
-        {/* Provider 切换 */}
-        <div className="p-3 border-b border-slate-100">
-          <Space.Compact block>
-            <Button
-              size="small"
-              type={provider === 'ollama' ? 'primary' : 'default'}
-              onClick={() => setProvider('ollama')}
-              className="flex-1"
-            >
-              🦙 Ollama
-            </Button>
-            <Button
-              size="small"
-              type={provider === 'openai' ? 'primary' : 'default'}
-              onClick={() => setProvider('openai')}
-              className="flex-1"
-            >
-              🤖 OpenAI
-            </Button>
-          </Space.Compact>
-        </div>
-
-        {/* 会话列表 */}
-        <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
-          {sessions.map((session) => (
-            <button
+      {/* 会话列表 */}
+      <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
+        {sessions.length === 0 ? (
+          <div className="text-center py-8 text-slate-400 text-xs">
+            {lang === 'zh' ? '暂无对话记录' : 'No conversations yet'}
+          </div>
+        ) : (
+          sessions.map((session) => (
+            <div
               key={session._id}
-              className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-colors ${
+              className={`group relative w-full text-left px-3 py-2 rounded-lg text-xs transition-colors cursor-pointer ${
                 currentSession?.sessionId === session.sessionId
                   ? 'bg-sky-50 text-sky-600 border border-sky-100'
                   : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
               }`}
-              onClick={() => navigate(`/chat/${session.sessionId}`)}
+              onClick={() => {
+                navigate(`/chat/${session.sessionId}`);
+                setMobileDrawerOpen(false);
+              }}
+              role="button"
+              tabIndex={0}
+              aria-label={`切换到会话: ${session.title || session.agentName}`}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  navigate(`/chat/${session.sessionId}`);
+                  setMobileDrawerOpen(false);
+                }
+              }}
             >
-              <div className="font-medium truncate">{session.agentName || 'AI Assistant'}</div>
-              <div className="text-slate-400 truncate mt-0.5">
-                {new Date(session.updatedAt).toLocaleDateString()}
-              </div>
-            </button>
-          ))}
-        </div>
+              {editingSessionId === session.sessionId ? (
+                <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                  <Input
+                    size="small"
+                    value={editingTitle}
+                    onChange={(e) => setEditingTitle(e.target.value)}
+                    onPressEnter={handleConfirmRename}
+                    autoFocus
+                    className="text-xs"
+                    aria-label="重命名会话"
+                  />
+                  <Button size="small" type="text" icon={<CheckOutlined />} onClick={handleConfirmRename} aria-label="确认" />
+                  <Button size="small" type="text" icon={<CloseOutlined />} onClick={handleCancelRename} aria-label="取消" />
+                </div>
+              ) : (
+                <>
+                  <div className="font-medium truncate pr-12">
+                    {session.title || session.agentName || 'AI Assistant'}
+                  </div>
+                  <div className="text-slate-400 truncate mt-0.5">
+                    {new Date(session.updatedAt).toLocaleDateString()}
+                  </div>
+                  {/* 操作按钮 */}
+                  <div className="absolute right-1 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-0.5">
+                    <Tooltip title={lang === 'zh' ? '重命名' : 'Rename'}>
+                      <Button
+                        size="small"
+                        type="text"
+                        icon={<EditOutlined style={{ fontSize: 11 }} />}
+                        className="!w-6 !h-6 !min-w-0 text-slate-400 hover:text-sky-500"
+                        onClick={(e) => { e.stopPropagation(); handleStartRename(session); }}
+                        aria-label="重命名会话"
+                      />
+                    </Tooltip>
+                    <Popconfirm
+                      title="确定删除此会话？"
+                      onConfirm={(e) => { e?.stopPropagation(); handleDeleteSession(session.sessionId); }}
+                      onCancel={(e) => e?.stopPropagation()}
+                      okText="删除"
+                      cancelText="取消"
+                      placement="right"
+                    >
+                      <Tooltip title={lang === 'zh' ? '删除' : 'Delete'}>
+                        <Button
+                          size="small"
+                          type="text"
+                          danger
+                          icon={<DeleteOutlined style={{ fontSize: 11 }} />}
+                          className="!w-6 !h-6 !min-w-0"
+                          onClick={(e) => e.stopPropagation()}
+                          aria-label="删除会话"
+                        />
+                      </Tooltip>
+                    </Popconfirm>
+                  </div>
+                </>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+    </>
+  );
+
+  return (
+    <div className="flex h-full">
+      {/* 桌面端会话列表 */}
+      <aside className="hidden lg:flex flex-col w-56 bg-white border-r border-slate-200">
+        {sessionSidebar}
       </aside>
+
+      {/* 移动端会话列表抽屉 */}
+      <Drawer
+        placement="left"
+        open={mobileDrawerOpen}
+        onClose={() => setMobileDrawerOpen(false)}
+        width={260}
+        styles={{ body: { padding: 0 } }}
+        className="lg:hidden"
+        title={lang === 'zh' ? '对话列表' : 'Conversations'}
+      >
+        <div className="flex flex-col h-full">
+          {sessionSidebar}
+        </div>
+      </Drawer>
 
       {/* 聊天区域 */}
       <div className="flex-1 flex flex-col min-w-0">
         {!currentSession ? (
           <div className="flex-1 flex flex-col items-center justify-center gap-4 p-6">
+            {/* 移动端菜单按钮 */}
+            <div className="lg:hidden absolute top-4 left-4">
+              <Button
+                type="text"
+                icon={<MenuOutlined />}
+                onClick={() => setMobileDrawerOpen(true)}
+                aria-label="打开会话列表"
+              />
+            </div>
             <Empty
               image={<RobotOutlined style={{ fontSize: 64, color: '#cbd5e1' }} />}
               description={
@@ -286,9 +494,19 @@ const ChatPage = () => {
           <>
             {/* 对话头部 */}
             <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-200 bg-white shadow-sm">
+              {/* 移动端菜单按钮 */}
+              <Button
+                type="text"
+                icon={<MenuOutlined />}
+                onClick={() => setMobileDrawerOpen(true)}
+                className="lg:hidden"
+                aria-label="打开会话列表"
+              />
               <Avatar size={32} style={{ backgroundColor: '#e0f2fe' }} icon={<RobotOutlined style={{ color: '#0284c7' }} />} />
-              <div>
-                <Text strong className="text-sm">{currentSession.agentName || 'AI Assistant'}</Text>
+              <div className="flex-1 min-w-0">
+                <Text strong className="text-sm truncate block">
+                  {currentSession.title || currentSession.agentName || 'AI Assistant'}
+                </Text>
                 <div className="flex items-center gap-2 mt-0.5">
                   <Tag icon={<ApiOutlined />} color="blue" className="text-xs m-0">{currentSession.provider}</Tag>
                   {currentSession.modelType === 'vision' && (
@@ -312,8 +530,21 @@ const ChatPage = () => {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* 输入区 — 使用 Ant Design X Sender */}
+            {/* 输入区 */}
             <div className="p-4 border-t border-slate-200 bg-white">
+              {streaming && (
+                <div className="flex justify-center mb-2">
+                  <Button
+                    size="small"
+                    icon={<StopOutlined />}
+                    onClick={handleStopGeneration}
+                    danger
+                    aria-label="停止生成"
+                  >
+                    {lang === 'zh' ? '停止生成' : 'Stop'}
+                  </Button>
+                </div>
+              )}
               <Sender
                 value={input}
                 onChange={setInput}

@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Store, Eye, Heart, Globe, Search, Tag, ExternalLink,
   ArrowLeft, Smartphone, Monitor, X, ChevronRight, Loader2, RefreshCw,
+  ArrowUpDown, ChevronLeft,
 } from 'lucide-react';
 import { fetchVibeTemplates, fetchVibeTemplate } from '../api';
 import { buildHtmlFromParts } from './vibe-coding/utils';
@@ -247,6 +248,14 @@ const TemplateCard = ({ item, lang, onPreview, onUse }: TemplateCardProps) => (
 
 // ─── 主页面 ───────────────────────────────────────────────────────────────────
 
+type SortKey = 'newest' | 'popular' | 'likes';
+
+const SORT_OPTIONS: { key: SortKey; label: { zh: string; en: string } }[] = [
+  { key: 'newest',  label: { zh: '最新', en: 'Newest' } },
+  { key: 'popular', label: { zh: '最热', en: 'Popular' } },
+  { key: 'likes',   label: { zh: '最多赞', en: 'Most Liked' } },
+];
+
 const TemplateMarketPage = () => {
   const navigate = useNavigate();
   const { lang } = useAppStore();
@@ -257,17 +266,20 @@ const TemplateMarketPage = () => {
   const [searchText, setSearchText]       = useState('');
   const [previewItem, setPreviewItem]     = useState<VibeTemplateDetail | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [sortBy, setSortBy]               = useState<SortKey>('newest');
+  const [page, setPage]                   = useState(1);
+  const PAGE_SIZE = 20;
 
   const loadTemplates = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetchVibeTemplates({
-        limit: 100,
+        limit: 200,
         category: activeCategory !== 'all' ? activeCategory : undefined,
       });
       setTemplates(res.data);
-    } catch (e) {
-      console.error(e);
+    } catch {
+      // 拦截器已处理
     } finally {
       setLoading(false);
     }
@@ -277,16 +289,40 @@ const TemplateMarketPage = () => {
     loadTemplates();
   }, [loadTemplates]);
 
-  // 客户端搜索过滤
-  const filtered = templates.filter((t) => {
-    if (!searchText) return true;
-    const q = searchText.toLowerCase();
-    return (
-      t.title.toLowerCase().includes(q) ||
-      t.description.toLowerCase().includes(q) ||
-      t.tags.some((tag) => tag.toLowerCase().includes(q))
-    );
-  });
+  // 重置分页
+  useEffect(() => {
+    setPage(1);
+  }, [searchText, sortBy, activeCategory]);
+
+  // 客户端搜索 + 排序 + 分页
+  const { filtered, totalFiltered } = useMemo(() => {
+    let result = templates.filter((t) => {
+      if (!searchText) return true;
+      const q = searchText.toLowerCase();
+      return (
+        t.title.toLowerCase().includes(q) ||
+        t.description.toLowerCase().includes(q) ||
+        t.tags.some((tag) => tag.toLowerCase().includes(q))
+      );
+    });
+
+    // 排序
+    result.sort((a, b) => {
+      if (sortBy === 'newest') return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
+      if (sortBy === 'popular') return b.viewCount - a.viewCount;
+      if (sortBy === 'likes') return b.likeCount - a.likeCount;
+      return 0;
+    });
+
+    const totalFiltered = result.length;
+    // 分页
+    const start = (page - 1) * PAGE_SIZE;
+    result = result.slice(start, start + PAGE_SIZE);
+
+    return { filtered: result, totalFiltered };
+  }, [templates, searchText, sortBy, page]);
+
+  const totalPages = Math.ceil(totalFiltered / PAGE_SIZE);
 
   // 点击预览：先获取完整 codeParts
   const handlePreview = async (item: VibeTemplateItem) => {
@@ -350,7 +386,7 @@ const TemplateMarketPage = () => {
         </div>
       </div>
 
-      {/* 搜索 + 分类栏 */}
+      {/* 搜索 + 分类 + 排序栏 */}
       <div className="px-6 py-3 border-b border-gray-200 flex-shrink-0 flex items-center gap-4 flex-wrap bg-white">
         {/* 搜索框 */}
         <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2 border border-gray-200 focus-within:border-gray-400 transition-colors w-64">
@@ -374,6 +410,28 @@ const TemplateMarketPage = () => {
             </button>
           )}
         </div>
+
+        {/* 排序 */}
+        <div className="flex items-center gap-1.5">
+          <ArrowUpDown className="w-3.5 h-3.5 text-gray-400" />
+          {SORT_OPTIONS.map((opt) => (
+            <button
+              key={opt.key}
+              className={`text-xs px-2.5 py-1 rounded-full transition-all font-medium ${
+                sortBy === opt.key
+                  ? 'bg-violet-50 text-violet-600 border border-violet-300'
+                  : 'text-gray-500 hover:text-gray-700 border border-gray-200 hover:border-gray-300 bg-white'
+              }`}
+              onClick={() => setSortBy(opt.key)}
+              tabIndex={0}
+              aria-label={opt.label[lang]}
+            >
+              {opt.label[lang]}
+            </button>
+          ))}
+        </div>
+
+        <div className="w-px h-5 bg-gray-200 hidden sm:block" />
 
         {/* 分类 */}
         <div className="flex items-center gap-1.5 flex-wrap">
@@ -428,6 +486,7 @@ const TemplateMarketPage = () => {
             </button>
           </div>
         ) : (
+          <>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
             {filtered.map((item) => (
               <TemplateCard
@@ -439,6 +498,37 @@ const TemplateMarketPage = () => {
               />
             ))}
           </div>
+
+          {/* 分页 */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-3 mt-6 pt-4 border-t border-gray-100">
+              <button
+                className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors px-3 py-1.5 rounded-lg hover:bg-gray-100"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                tabIndex={0}
+                aria-label="上一页"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+                {lang === 'zh' ? '上一页' : 'Prev'}
+              </button>
+              <span className="text-xs text-gray-400">
+                {page} / {totalPages}
+                <span className="ml-2 text-gray-300">({totalFiltered} {lang === 'zh' ? '个模板' : 'templates'})</span>
+              </span>
+              <button
+                className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors px-3 py-1.5 rounded-lg hover:bg-gray-100"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                tabIndex={0}
+                aria-label="下一页"
+              >
+                {lang === 'zh' ? '下一页' : 'Next'}
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+          </>
         )}
       </div>
 

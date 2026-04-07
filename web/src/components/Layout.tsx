@@ -114,7 +114,7 @@ const AppLayout = ({ children }: LayoutProps) => {
 
         {/* 管理后台入口 */}
         <a
-          href="http://127.0.0.1:5174/"
+          href={`${window.location.protocol}//${window.location.hostname}:5174/`}
           target="_blank"
           rel="noopener noreferrer"
           aria-label="管理后台"

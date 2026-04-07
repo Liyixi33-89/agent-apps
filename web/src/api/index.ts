@@ -1,7 +1,52 @@
 import axios from 'axios';
+import { message } from 'antd';
 import type { Agent, Category, Pipeline, ChatSession, KnowledgeBase, OverviewStats, Provider, ModelType, Lang } from '../types';
 
 const api = axios.create({ baseURL: '/api', timeout: 60_000 });
+
+// ─── 请求拦截器 ────────────────────────────────────────────────────────────────
+
+api.interceptors.request.use(
+  (config) => {
+    // 如果有 token，可在此添加 Authorization header
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// ─── 响应拦截器 ────────────────────────────────────────────────────────────────
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.name === 'CanceledError' || error.code === 'ERR_CANCELED') {
+      return Promise.reject(error);
+    }
+
+    const status = error.response?.status;
+    const msg = error.response?.data?.message || error.message;
+
+    if (status === 401) {
+      message.error('未授权，请重新登录');
+    } else if (status === 403) {
+      message.error('没有权限执行此操作');
+    } else if (status === 404) {
+      message.error('请求的资源不存在');
+    } else if (status === 500) {
+      message.error('服务器内部错误，请稍后重试');
+    } else if (!error.response) {
+      message.error('网络连接失败，请检查服务是否启动');
+    } else {
+      message.error(msg || '请求失败');
+    }
+
+    return Promise.reject(error);
+  }
+);
 
 // ─── 概览 ──────────────────────────────────────────────────────────────────────
 
@@ -58,6 +103,16 @@ export const fetchChatSessions = async () => {
 
 export const fetchChatSession = async (sessionId: string) => {
   const { data } = await api.get<{ success: boolean; data: ChatSession }>(`/chat/session/${sessionId}`);
+  return data.data;
+};
+
+export const deleteChatSession = async (sessionId: string) => {
+  const { data } = await api.delete<{ success: boolean; message: string }>(`/chat/session/${sessionId}`);
+  return data;
+};
+
+export const renameChatSession = async (sessionId: string, title: string) => {
+  const { data } = await api.patch<{ success: boolean; data: { sessionId: string; title: string } }>(`/chat/session/${sessionId}`, { title });
   return data.data;
 };
 
@@ -374,5 +429,3 @@ export const fetchDeployedVibeApps = async (): Promise<Array<{ appId: string; ti
   const { data } = await api.get<{ success: boolean; data: Array<{ appId: string; title: string; basePath: string; collectionCount: number; deployedAt: string }> }>('/vibe-runtime/apps');
   return data.data;
 };
-
-

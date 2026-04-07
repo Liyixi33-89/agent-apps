@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import type { Agent, Category, Pipeline, ChatSession, OverviewStats, Provider, ModelType, Lang } from '../types';
 
 interface AppState {
@@ -45,37 +46,49 @@ interface AppState {
   setModelType: (type: ModelType) => void;
 }
 
-export const useAppStore = create<AppState>((set) => ({
-  lang: 'zh',
-  setLang: (lang) => set({ lang }),
+export const useAppStore = create<AppState>()(
+  persist(
+    (set) => ({
+      lang: 'zh',
+      setLang: (lang) => set({ lang }),
 
-  activeProvider: 'ollama',
-  setActiveProvider: (activeProvider) => set({ activeProvider }),
+      activeProvider: 'ollama',
+      setActiveProvider: (activeProvider) => set({ activeProvider }),
 
-  overview: null,
-  setOverview: (overview) => set({ overview }),
+      overview: null,
+      setOverview: (overview) => set({ overview }),
 
-  agents: [],
-  setAgents: (agents) => set({ agents }),
-  selectedAgent: null,
-  setSelectedAgent: (selectedAgent) => set({ selectedAgent }),
+      agents: [],
+      setAgents: (agents) => set({ agents }),
+      selectedAgent: null,
+      setSelectedAgent: (selectedAgent) => set({ selectedAgent }),
 
-  categories: [],
-  setCategories: (categories) => set({ categories }),
-  selectedCategory: '',
-  setSelectedCategory: (selectedCategory) => set({ selectedCategory }),
+      categories: [],
+      setCategories: (categories) => set({ categories }),
+      selectedCategory: '',
+      setSelectedCategory: (selectedCategory) => set({ selectedCategory }),
 
-  pipelines: [],
-  setPipelines: (pipelines) => set({ pipelines }),
+      pipelines: [],
+      setPipelines: (pipelines) => set({ pipelines }),
 
-  chatSessions: [],
-  setChatSessions: (chatSessions) => set({ chatSessions }),
-  currentSession: null,
-  setCurrentSession: (currentSession) => set({ currentSession }),
+      chatSessions: [],
+      setChatSessions: (chatSessions) => set({ chatSessions }),
+      currentSession: null,
+      setCurrentSession: (currentSession) => set({ currentSession }),
 
-  searchQuery: '',
-  setSearchQuery: (searchQuery) => set({ searchQuery }),
+      searchQuery: '',
+      setSearchQuery: (searchQuery) => set({ searchQuery }),
 
-  modelType: 'text',
-  setModelType: (modelType) => set({ modelType })
-}));
+      modelType: 'text',
+      setModelType: (modelType) => set({ modelType })
+    }),
+    {
+      name: 'agency-agents-store',
+      partialize: (state) => ({
+        lang: state.lang,
+        activeProvider: state.activeProvider,
+        modelType: state.modelType,
+      }),
+    }
+  )
+);

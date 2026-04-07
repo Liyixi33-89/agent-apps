@@ -342,3 +342,37 @@ chatRouter.post('/chat/message', async (ctx) => {
 
   ctx.body = { success: true, data: { content: response.content, provider: response.provider, model: response.model } };
 });
+
+// ─── 删除会话  DELETE /api/chat/session/:sessionId ───────────────────────────
+
+chatRouter.delete('/chat/session/:sessionId', async (ctx) => {
+  const result = await Chat.deleteOne({ sessionId: ctx.params.sessionId });
+  if (result.deletedCount === 0) {
+    ctx.status = 404;
+    ctx.body = { success: false, message: 'Session not found' };
+    return;
+  }
+  ctx.body = { success: true, message: '会话已删除' };
+});
+
+// ─── 重命名会话  PATCH /api/chat/session/:sessionId ─────────────────────────
+
+chatRouter.patch('/chat/session/:sessionId', async (ctx) => {
+  const { title } = ctx.request.body as { title: string };
+  if (!title?.trim()) {
+    ctx.status = 400;
+    ctx.body = { success: false, message: '标题不能为空' };
+    return;
+  }
+  const chat = await Chat.findOneAndUpdate(
+    { sessionId: ctx.params.sessionId },
+    { title: title.trim() },
+    { new: true }
+  );
+  if (!chat) {
+    ctx.status = 404;
+    ctx.body = { success: false, message: 'Session not found' };
+    return;
+  }
+  ctx.body = { success: true, data: { sessionId: chat.sessionId, title: chat.title } };
+});

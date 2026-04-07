@@ -224,8 +224,13 @@ const AgentDetailPage = () => {
             <div className="space-y-3">
               {agent.workflow.nodes.map((node, i) => (
                 <div key={node.nodeId} className="flex items-start gap-3">
-                  <div className="w-7 h-7 rounded-full bg-sky-50 border border-sky-200 flex items-center justify-center text-xs text-sky-600 font-bold flex-shrink-0">
-                    {i + 1}
+                  <div className="flex flex-col items-center">
+                    <div className="w-7 h-7 rounded-full bg-sky-50 border border-sky-200 flex items-center justify-center text-xs text-sky-600 font-bold flex-shrink-0">
+                      {i + 1}
+                    </div>
+                    {i < agent.workflow.nodes.length - 1 && (
+                      <div className="w-px flex-1 bg-slate-200 mt-1 min-h-[16px]" />
+                    )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-slate-700 text-sm">
@@ -241,9 +246,7 @@ const AgentDetailPage = () => {
                       </span>
                     </div>
                   </div>
-                  {i < agent.workflow.nodes.length - 1 && (
-                    <div className="absolute left-3.5 mt-7 w-px h-3 bg-slate-200" />
-                  )}
+
                 </div>
               ))}
             </div>
