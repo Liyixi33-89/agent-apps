@@ -14,6 +14,8 @@ import { Agent } from './models/Agent.js';
 import { KnowledgeBase } from './models/KnowledgeBase.js';
 import { ingestAgentsFromMarkdown, ingestKnowledgeFromAgents } from './services/agentIngestionService.js';
 import { restoreDeployedApps } from './routes/vibeAppRuntime.js';
+import { mcpRouter } from './routes/mcp.js';
+import { disconnectAllMcpServers } from './services/mcpService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -67,6 +69,8 @@ app.use(adminRouter.routes());
 app.use(adminRouter.allowedMethods());
 app.use(compileRouter.routes());
 app.use(compileRouter.allowedMethods());
+app.use(mcpRouter.routes());
+app.use(mcpRouter.allowedMethods());
 
 // ─── 启动 ──────────────────────────────────────────────────────────────────────
 
@@ -143,6 +147,7 @@ const bootstrap = async () => {
   });
 
   const shutdown = async () => {
+    disconnectAllMcpServers();
     server.close(async () => {
       await disconnectFromMongo();
       process.exit(0);

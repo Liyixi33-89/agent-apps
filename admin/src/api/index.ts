@@ -360,3 +360,109 @@ export const fetchDeployedVibeApps = async (): Promise<Array<{ appId: string; ti
   const { data } = await runtimeApi.get<{ success: boolean; data: Array<{ appId: string; title: string; basePath: string; collectionCount: number; deployedAt: string }> }>('/vibe-runtime/apps');
   return data.data;
 };
+
+// ─── MCP（Model Context Protocol）管理 ───────────────────────────────────────
+
+export interface McpToolParam {
+  name: string;
+  type: string;
+  description: string;
+  required: boolean;
+  enum?: string[];
+}
+
+export interface McpTool {
+  name: string;
+  description: string;
+  parameters: McpToolParam[];
+  inputSchema: Record<string, unknown>;
+}
+
+export interface McpServerConfig {
+  _id: string;
+  key: string;
+  name: string;
+  description: string;
+  icon: string;
+  transportType: 'stdio' | 'sse';
+  stdioConfig?: {
+    command: string;
+    args: string[];
+    env?: Record<string, string>;
+    cwd?: string;
+  };
+  sseConfig?: {
+    url: string;
+    headers?: Record<string, string>;
+  };
+  tools: McpTool[];
+  status: 'connected' | 'disconnected' | 'error';
+  lastConnectedAt?: string;
+  lastError?: string;
+  isActive: boolean;
+  isConnected: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 获取所有 MCP Server 列表 */
+export const fetchMcpServers = async (): Promise<McpServerConfig[]> => {
+  const { data } = await runtimeApi.get<{ success: boolean; data: McpServerConfig[] }>('/mcp/servers');
+  return data.data;
+};
+
+/** 创建 MCP Server 配置 */
+export const createMcpServer = async (body: {
+  key: string;
+  name: string;
+  description?: string;
+  icon?: string;
+  transportType: 'stdio' | 'sse';
+  stdioConfig?: { command: string; args: string[]; env?: Record<string, string>; cwd?: string };
+  sseConfig?: { url: string; headers?: Record<string, string> };
+}): Promise<McpServerConfig> => {
+  const { data } = await runtimeApi.post<{ success: boolean; data: McpServerConfig }>('/mcp/servers', body);
+  return data.data;
+};
+
+/** 更新 MCP Server 配置 */
+export const updateMcpServer = async (key: string, body: Partial<{
+  name: string;
+  description: string;
+  icon: string;
+  transportType: 'stdio' | 'sse';
+  stdioConfig: { command: string; args: string[]; env?: Record<string, string>; cwd?: string };
+  sseConfig: { url: string; headers?: Record<string, string> };
+  isActive: boolean;
+  sortOrder: number;
+}>): Promise<McpServerConfig> => {
+  const { data } = await runtimeApi.put<{ success: boolean; data: McpServerConfig }>(`/mcp/servers/${key}`, body);
+  return data.data;
+};
+
+/** 删除 MCP Server 配置 */
+export const deleteMcpServer = async (key: string): Promise<void> => {
+  await runtimeApi.delete(`/mcp/servers/${key}`);
+};
+
+/** 连接 MCP Server（发现工具） */
+export const connectMcpServer = async (key: string): Promise<{
+  status: string;
+  toolCount: number;
+  tools: Array<{ name: string; description: string }>;
+}> => {
+  const { data } = await runtimeApi.post<{ success: boolean; data: { status: string; toolCount: number; tools: Array<{ name: string; description: string }> } }>(`/mcp/servers/${key}/connect`);
+  return data.data;
+};
+
+/** 断开 MCP Server 连接 */
+export const disconnectMcpServer = async (key: string): Promise<void> => {
+  await runtimeApi.post(`/mcp/servers/${key}/disconnect`);
+};
+
+/** 获取所有可用 MCP 工具 */
+export const fetchMcpTools = async (): Promise<{ total: number; tools: Array<{ name: string; description: string; parameters: Record<string, unknown> }> }> => {
+  const { data } = await runtimeApi.get<{ success: boolean; data: { total: number; tools: Array<{ name: string; description: string; parameters: Record<string, unknown> }> } }>('/mcp/tools');
+  return data.data;
+};

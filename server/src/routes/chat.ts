@@ -21,6 +21,7 @@ import { env } from '../config/env.js';
 import { v4 as uuidv4 } from 'uuid';
 import { buildMemoryMessages, streamWithContinuation } from '../lib/llmUtils.js';
 import { AGENT_TOOLS, executeTool } from '../lib/agentTools.js';
+import { getMcpToolDefinitions, executeMcpTool, parseMcpToolName } from '../services/mcpService.js';
 
 export const chatRouter = new Router();
 
@@ -187,6 +188,18 @@ chatRouter.post('/chat/stream', async (ctx) => {
       };
     });
 
+    // ── 合并内置工具 + MCP 工具 ──────────────────────────────────────────────
+    let allTools = [...AGENT_TOOLS];
+    try {
+      const mcpTools = await getMcpToolDefinitions();
+      if (mcpTools.length > 0) {
+        allTools = [...allTools, ...mcpTools];
+        console.log(`[Chat] 已加载 ${mcpTools.length} 个 MCP 工具`);
+      }
+    } catch (mcpErr) {
+      console.warn('[Chat] 加载 MCP 工具失败（不影响内置工具）:', mcpErr instanceof Error ? mcpErr.message : String(mcpErr));
+    }
+
     // ── Tool Calling 循环（最多 3 轮工具调用）──────────────────────────────────
     const MAX_TOOL_ROUNDS = 3;
     let toolMessages = [...recentMessages];
@@ -194,10 +207,10 @@ chatRouter.post('/chat/stream', async (ctx) => {
     let toolCallingSupported = true; // 标记模型是否支持 tool calling
 
     while (toolRound < MAX_TOOL_ROUNDS && toolCallingSupported) {
-      // 第一轮：携带工具定义，询问 LLM 是否需要调用工具
+      // 第一轮：携带工具定义（内置 + MCP），询问 LLM 是否需要调用工具
       let toolResponse;
       try {
-        toolResponse = await callLLMWithTools(toolMessages, AGENT_TOOLS, {
+        toolResponse = await callLLMWithTools(toolMessages, allTools, {
           provider: chat.provider as 'ollama' | 'openai',
           modelType: chat.modelType as 'text' | 'vision',
         });
@@ -249,7 +262,17 @@ chatRouter.post('/chat/stream', async (ctx) => {
           try { args = JSON.parse(tc.function.arguments); } catch { /* 忽略解析错误 */ }
 
           send({ type: 'tool_executing', toolName: tc.function.name });
-          const result = await executeTool({ name: tc.function.name, arguments: args });
+
+          // 判断是内置工具还是 MCP 工具
+          const mcpInfo = parseMcpToolName(tc.function.name);
+          let result;
+          if (mcpInfo.isMcp && mcpInfo.toolName) {
+            // MCP 工具：通过 MCP 协议调用
+            result = await executeMcpTool(mcpInfo.toolName, args);
+          } else {
+            // 内置工具：直接调用
+            result = await executeTool({ name: tc.function.name, arguments: args });
+          }
 
           send({
             type: 'tool_result',
