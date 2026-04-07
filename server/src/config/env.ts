@@ -45,6 +45,16 @@ export const env = {
   pipelineStrongModel: process.env.PIPELINE_STRONG_MODEL || '',
   /** Pipeline 编程任务 temperature（越低越确定性，推荐 0.2-0.4） */
   pipelineTemperature: Number(process.env.PIPELINE_TEMPERATURE || '0.3'),
+  /**
+   * Pipeline 模型能力等级（决定 Prompt 复杂度、模块数量、代码风格）
+   * - 'high'   : GPT-4o / Claude 3.5 / DeepSeek-V3 等强模型 → 完整 Prompt + 所有模块
+   * - 'medium' : GPT-4o-mini / Qwen2.5-32B / gpt-oss:120b 等中等模型 → 精简 Prompt + 核心模块
+   * - 'low'    : 7B/14B 小模型 → 最简 Prompt + 最少模块 + 骨架代码为主
+   * - 'auto'   : 根据模型名称自动推断（默认）
+   */
+  pipelineModelTier: (process.env.PIPELINE_MODEL_TIER || 'auto') as 'high' | 'medium' | 'low' | 'auto',
+  /** Pipeline 每步最大输出 token 数（0 = 使用默认值） */
+  pipelineMaxTokens: Number(process.env.PIPELINE_MAX_TOKENS || '0'),
   jwtSecret: process.env.JWT_SECRET || 'agency-agents-secret-2026',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
   workspaceRoot,

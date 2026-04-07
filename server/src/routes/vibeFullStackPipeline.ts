@@ -466,6 +466,148 @@ const getFullStackAgents = async () => ({
   reviewer:    await getPrompt('fs_pipeline_reviewer',    FS_REVIEWER_PROMPT),
 });
 
+// =============================================================================
+// § 7d-b1  模型能力分级系统
+// =============================================================================
+
+/** 模型能力等级 */
+type ModelTier = 'high' | 'medium' | 'low';
+
+/** 各等级对应的参数配置 */
+interface TierConfig {
+  /** 等级名称 */
+  label: string;
+  /** 轻量步骤（Step 1-2）的 maxTokens */
+  lightMaxTokens: number;
+  /** 重度步骤（Step 3-7）的 maxTokens */
+  heavyMaxTokens: number;
+  /** 上下文长度限制 */
+  maxAnalysisChars: number;
+  maxDbChars: number;
+  maxBackendChars: number;
+  maxFrontendChars: number;
+  maxFrontendForUi: number;
+  /** 最大续写次数 */
+  maxContinuations: number;
+  /** 是否跳过 UI 增强步骤（弱模型跳过以节省 token） */
+  skipUiStep: boolean;
+  /** 前端 Prompt 附加指令（根据能力等级调整要求） */
+  frontendExtra: string;
+}
+
+/** 各等级的具体配置 */
+const TIER_CONFIGS: Record<ModelTier, TierConfig> = {
+  high: {
+    label: '强模型',
+    lightMaxTokens: 16384,
+    heavyMaxTokens: 65536,
+    maxAnalysisChars: 2500,
+    maxDbChars: 4000,
+    maxBackendChars: 5000,
+    maxFrontendChars: 10000,
+    maxFrontendForUi: 12000,
+    maxContinuations: 6,
+    skipUiStep: false,
+    frontendExtra: `请生成完整的全栈管理后台，包含所有需求中提到的模块。
+每个模块都要有完整的 CRUD 功能和 mockData 兜底数据。
+可以添加搜索、筛选、统计面板等高级功能。`,
+  },
+  medium: {
+    label: '中等模型',
+    lightMaxTokens: 8192,
+    heavyMaxTokens: 32768,
+    maxAnalysisChars: 1500,
+    maxDbChars: 2500,
+    maxBackendChars: 3000,
+    maxFrontendChars: 6000,
+    maxFrontendForUi: 8000,
+    maxContinuations: 4,
+    skipUiStep: false,
+    frontendExtra: `【⚠️ 代码长度控制 — 最高优先级】
+你的输出 token 有限（约 8000 token），必须用最紧凑的方式写完。
+1. 最多生成 3-4 个核心模块，不要贪多
+2. 每个模块的 columns 和 fields 配置尽量精简（3-5 个字段）
+3. mockData 每个模块只需 2 条
+4. 不要写注释，变量名尽量短
+5. 侧边栏导航保持简洁`,
+  },
+  low: {
+    label: '弱模型',
+    lightMaxTokens: 4096,
+    heavyMaxTokens: 16384,
+    maxAnalysisChars: 1000,
+    maxDbChars: 1500,
+    maxBackendChars: 2000,
+    maxFrontendChars: 4000,
+    maxFrontendForUi: 5000,
+    maxContinuations: 2,
+    skipUiStep: true,  // 弱模型跳过 UI 增强，直接用前端代码
+    frontendExtra: `【⚠️ 极其重要 — 你的输出 token 非常有限（约 4000 token）】
+你必须用最精简的方式生成代码，否则会被截断导致代码不完整！
+
+强制策略：
+1. 最多只生成 2 个核心模块（选最重要的 2 个）
+2. 直接复制参考骨架代码，只修改模块配置部分
+3. 每个模块的 columns 只保留 2-3 个关键字段
+4. mockData 每个模块只需 1 条
+5. 不要写任何注释
+6. 不要添加搜索、筛选等额外功能
+7. 侧边栏只需要模块名称列表
+8. 样式直接使用骨架中的 S 对象，不要自定义新样式`,
+  },
+};
+
+/**
+ * 根据模型名称自动推断能力等级
+ * 匹配规则基于常见模型的编程能力排名
+ */
+const inferModelTier = (modelName: string): ModelTier => {
+  const name = modelName.toLowerCase();
+
+  // 强模型：GPT-4o / Claude 3.5+ / DeepSeek-V3 / Qwen2.5-72B+
+  const highPatterns = [
+    'gpt-4o', 'gpt-4-turbo', 'gpt-5',
+    'claude-3.5', 'claude-4', 'claude-3-opus',
+    'deepseek-v3', 'deepseek-coder-33b', 'deepseek-r1',
+    'qwen2.5-coder:72b', 'qwen2.5:72b', 'qwen3:72b', 'qwen3:235b',
+    'codellama:70b', 'llama-3.1:70b', 'llama-3.3:70b',
+  ];
+  if (highPatterns.some(p => name.includes(p))) return 'high';
+
+  // 弱模型：7B / 14B 小模型
+  const lowPatterns = [
+    ':7b', ':8b', ':3b', ':1b', ':0.5b',
+    ':14b', ':13b',
+    'phi-3', 'phi-4',
+    'gemma:2b', 'gemma:7b', 'gemma:9b',
+    'tinyllama', 'stablelm',
+  ];
+  if (lowPatterns.some(p => name.includes(p))) return 'low';
+
+  // 中等模型：其他所有模型（包括 gpt-oss:120b-cloud、gpt-4o-mini、qwen2.5:32b 等）
+  return 'medium';
+};
+
+/**
+ * 获取当前 Pipeline 的模型能力等级配置
+ * 优先使用环境变量显式配置，否则根据模型名自动推断
+ */
+const getModelTierConfig = (provider: string, strongModel?: string): { tier: ModelTier; config: TierConfig } => {
+  // 1. 显式配置优先
+  const explicitTier = env.pipelineModelTier;
+  if (explicitTier && explicitTier !== 'auto') {
+    const tier = explicitTier as ModelTier;
+    return { tier, config: TIER_CONFIGS[tier] };
+  }
+
+  // 2. 自动推断：优先看强模型配置，其次看默认模型
+  const modelToCheck = strongModel
+    || (provider === 'ollama' ? env.ollamaTextModel : env.openaiTextModel);
+
+  const tier = inferModelTier(modelToCheck);
+  return { tier, config: TIER_CONFIGS[tier] };
+};
+
 /** 截断文本到指定字符数，保留完整行 */
 const truncateText = (text: string, maxChars: number): string => {
   if (text.length <= maxChars) return text;
@@ -495,7 +637,7 @@ const withTimeout = <T>(promise: Promise<T>, ms: number, label: string): Promise
  */
 const runStep = async (
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
-  options: { provider: string; modelType: string; temperature?: number; maxTokens?: number; model?: string },
+  options: { provider: string; modelType: string; temperature?: number; maxTokens?: number; model?: string; maxContinuations?: number },
   stepOptions?: {
     timeoutMs?: number;
     onHeartbeat?: () => void;
@@ -520,6 +662,7 @@ const runStep = async (
       temperature: options.temperature,
       maxTokens: options.maxTokens,
       model: options.model,
+      maxContinuations: options.maxContinuations,
     });
     for await (const chunk of stream) {
       const now = Date.now();
@@ -666,12 +809,28 @@ vibeFullStackPipelineRouter.post('/vibe/fullstack-pipeline', async (ctx) => {
   const codingTemperature = env.pipelineTemperature;
   // 强模型配置（用于前端/质检/编译修复等关键步骤）
   const strongModel = env.pipelineStrongModel || undefined;
-  // 轻量步骤选项（Step 1-2：需求分析、数据库设计）
-  const lightOpts = { ...baseOpts, temperature: codingTemperature };
-  // 重度步骤选项（Step 3-7：后端/前端/UI/质检/编译修复，使用强模型）
-  const heavyOpts = { ...baseOpts, temperature: codingTemperature, ...(strongModel ? { model: strongModel } : {}) };
 
-  console.log(`[Pipeline] 启动：provider=${provider}, model=${strongModel || '默认'}, temperature=${codingTemperature}`);
+  // ── 模型能力分级 ──────────────────────────────────────────────────────
+  const { tier: modelTier, config: tierCfg } = getModelTierConfig(provider, strongModel);
+  // 如果用户显式配置了 maxTokens，优先使用
+  const userMaxTokens = env.pipelineMaxTokens > 0 ? env.pipelineMaxTokens : undefined;
+  // 轻量步骤选项（Step 1-2：需求分析、数据库设计）
+  const lightOpts = {
+    ...baseOpts,
+    temperature: codingTemperature,
+    maxTokens: userMaxTokens || tierCfg.lightMaxTokens,
+    maxContinuations: tierCfg.maxContinuations,
+  };
+  // 重度步骤选项（Step 3-7：后端/前端/UI/质检/编译修复，使用强模型）
+  const heavyOpts = {
+    ...baseOpts,
+    temperature: codingTemperature,
+    maxTokens: userMaxTokens || tierCfg.heavyMaxTokens,
+    maxContinuations: tierCfg.maxContinuations,
+    ...(strongModel ? { model: strongModel } : {}),
+  };
+
+  console.log(`[Pipeline] 启动：provider=${provider}, model=${strongModel || '默认'}, tier=${modelTier}(${tierCfg.label}), temperature=${codingTemperature}, heavyMaxTokens=${heavyOpts.maxTokens}`);
 
   const send = (data: Record<string, unknown>) => {
     res.write(`data: ${JSON.stringify(data)}\n\n`);
@@ -682,13 +841,13 @@ vibeFullStackPipelineRouter.post('/vibe/fullstack-pipeline', async (ctx) => {
     res.write(`: heartbeat\n\n`);
   }, 15_000);
 
-  send({ type: 'start' });
+  send({ type: 'start', modelTier: modelTier, tierLabel: tierCfg.label, skipUiStep: tierCfg.skipUiStep });
 
-  // 上下文长度限制（Ollama 本地模型上下文窗口有限）
-  const MAX_ANALYSIS_CHARS = 2000;   // 需求分析最大字符数（精简以减少上下文）
-  const MAX_DB_CHARS = 3000;         // 数据库 Schema 最大字符数
-  const MAX_BACKEND_CHARS = 4000;    // 后端代码最大字符数
-  const MAX_FRONTEND_CHARS = 8000;   // 前端代码最大字符数
+  // 上下文长度限制（根据模型能力等级自动调整）
+  const MAX_ANALYSIS_CHARS = tierCfg.maxAnalysisChars;
+  const MAX_DB_CHARS = tierCfg.maxDbChars;
+  const MAX_BACKEND_CHARS = tierCfg.maxBackendChars;
+  const MAX_FRONTEND_CHARS = tierCfg.maxFrontendChars;
   // 不同步骤的超时时间（前端/UI/质检步骤需要更多时间，因为生成量大 + 续写）
   const STEP_TIMEOUT_SHORT = 180_000;  // 分析/数据库/后端：3 分钟
   const STEP_TIMEOUT_LONG = 480_000;   // 前端/UI/质检：8 分钟（生成量大，续写多）
@@ -806,6 +965,8 @@ ${extractApiSummary(backendResult)}
 然后每个模块只需传入 columns/fields/apiName 配置即可，不要为每个模块重复写 CRUD 代码！
 这是确保所有模块都能完整生成的关键策略。
 
+${tierCfg.frontendExtra}
+
 【强制要求】
 1. React 函数组件 + Hooks，原生 CSS 内联样式（禁止 className）
 2. 深色主题，export default App
@@ -830,14 +991,23 @@ ${extractApiSummary(backendResult)}
     await new Promise(r => setTimeout(r, STEP_INTERVAL_MS));
 
     // ── Step 5: UI/UX 设计增强 ────────────────────────────────────────────
-    send({ type: 'step', step: 5, total: TOTAL_STEPS, title: '🎯 UI/UX 设计增强中...', status: 'running' });
+    let uiDesignResult = '';
+    let enhancedFrontendCode = '';
 
-    const MAX_FRONTEND_FOR_UI = 10000; // UI 设计师需要完整的前端代码
-    const uiDesignResult = await runStep([
-      { role: 'system', content: AGENTS.uiDesigner },
-      {
-        role: 'user',
-        content: `请审查并增强以下 React 前端代码的 UI/UX 设计质量。
+    if (tierCfg.skipUiStep) {
+      // 弱模型跳过 UI 增强步骤，直接使用前端代码，节省 token 和时间
+      console.log(`[Pipeline] 模型等级=${modelTier}，跳过 Step 5 UI 增强`);
+      send({ type: 'step', step: 5, total: TOTAL_STEPS, title: '🎯 UI 增强已跳过（模型能力优化）', status: 'done' });
+      enhancedFrontendCode = extractJsxBlock(frontendResult);
+    } else {
+      send({ type: 'step', step: 5, total: TOTAL_STEPS, title: '🎯 UI/UX 设计增强中...', status: 'running' });
+
+      const MAX_FRONTEND_FOR_UI = tierCfg.maxFrontendForUi;
+      uiDesignResult = await runStep([
+        { role: 'system', content: AGENTS.uiDesigner },
+        {
+          role: 'user',
+          content: `请审查并增强以下 React 前端代码的 UI/UX 设计质量。
 
 【原始需求】
 ${prompt}
@@ -857,13 +1027,14 @@ ${truncateText(frontendResult, MAX_FRONTEND_FOR_UI)}
 6. 确保无障碍性 — tabIndex、aria-label、焦点样式
 
 请在原有代码基础上增强，输出完整的增强后代码。`,
-      },
-    ], heavyOpts, makeStepOpts(5, 'Step5-UI/UX设计'));
+        },
+      ], heavyOpts, makeStepOpts(5, 'Step5-UI/UX设计'));
 
-    send({ type: 'step', step: 5, total: TOTAL_STEPS, title: '🎯 UI/UX 设计完成', status: 'done', content: uiDesignResult });
+      send({ type: 'step', step: 5, total: TOTAL_STEPS, title: '🎯 UI/UX 设计完成', status: 'done', content: uiDesignResult });
 
-    // 提取 UI 增强后的前端代码（优先使用增强版本）
-    const enhancedFrontendCode = extractJsxBlock(uiDesignResult) || extractJsxBlock(frontendResult);
+      // 提取 UI 增强后的前端代码（优先使用增强版本）
+      enhancedFrontendCode = extractJsxBlock(uiDesignResult) || extractJsxBlock(frontendResult);
+    }
 
     // 步骤间隔，避免触发 API 限流
     await new Promise(r => setTimeout(r, STEP_INTERVAL_MS));

@@ -292,7 +292,7 @@ export const isLikelyTruncated = (text: string, finishReason?: string): boolean 
 // 流式续写
 // =============================================================================
 
-export const MAX_CONTINUATIONS = 8;
+export const MAX_CONTINUATIONS = 6;
 
 /** 分析已生成内容的结构，帮助续写时提供上下文 */
 const analyzeGeneratedStructure = (text: string): string => {
@@ -359,8 +359,9 @@ const getTailContext = (text: string, maxChars = 800): string => {
  */
 export async function* streamWithContinuation(
   messages: any[],
-  options: { provider: string; modelType: string; temperature?: number; maxTokens?: number; model?: string }
+  options: { provider: string; modelType: string; temperature?: number; maxTokens?: number; model?: string; maxContinuations?: number }
 ): AsyncGenerator<{ delta: string; done: boolean; continuationIndex?: number }> {
+  const maxCont = options.maxContinuations ?? MAX_CONTINUATIONS;
   const originalMessages = [...messages]; // 保留原始消息用于续写
   let currentMessages = [...messages];
   let accumulatedContent = '';
@@ -396,8 +397,8 @@ export async function* streamWithContinuation(
       break;
     }
 
-    if (continuationCount >= MAX_CONTINUATIONS) {
-      console.log(`[streamWithContinuation] 已达最大续写次数 ${MAX_CONTINUATIONS}，结束`);
+    if (continuationCount >= maxCont) {
+      console.log(`[streamWithContinuation] 已达最大续写次数 ${maxCont}，结束`);
       break;
     }
 
