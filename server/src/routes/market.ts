@@ -16,16 +16,32 @@ export const marketRouter = new Router();
 // ─── 模板列表  GET /api/vibe/templates ───────────────────────────────────────
 
 marketRouter.get('/vibe/templates', async (ctx) => {
-  const { page = '1', limit = '20', category } = ctx.query as Record<string, string>;
+  const { page = '1', limit = '20', category, search, sort = 'newest' } = ctx.query as Record<string, string>;
   const pageNum = Math.max(1, parseInt(page));
   const limitNum = Math.min(50, parseInt(limit));
 
   const filter: Record<string, unknown> = { isActive: true };
   if (category) filter.category = category;
+  // 关键词搜索（标题 + 描述 + 标签）
+  if (search) {
+    filter.$or = [
+      { title: { $regex: search, $options: 'i' } },
+      { description: { $regex: search, $options: 'i' } },
+      { tags: { $regex: search, $options: 'i' } },
+    ];
+  }
+
+  // 排序方式
+  const sortMap: Record<string, Record<string, 1 | -1>> = {
+    newest:  { publishedAt: -1 },
+    popular: { viewCount: -1, publishedAt: -1 },
+    likes:   { likeCount: -1, publishedAt: -1 },
+  };
+  const sortOption = sortMap[sort] || sortMap.newest;
 
   const [templates, total] = await Promise.all([
     VibeTemplate.find(filter, { 'codeParts.html': 0, 'codeParts.css': 0, 'codeParts.js': 0 })
-      .sort({ publishedAt: -1 })
+      .sort(sortOption)
       .skip((pageNum - 1) * limitNum)
       .limit(limitNum)
       .lean(),

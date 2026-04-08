@@ -327,9 +327,12 @@ const UIPreviewPanel = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isMobile]);
 
-  // prevCodeParts 变化时写入历史 iframe
+  // prevCodeParts 变化时写入历史 iframe（释放旧 Blob URL 防止内存泄漏）
   useEffect(() => {
     if (!prevCodeParts || !historyIframeRef.current) return;
+    // 释放旧的 Blob URL
+    const prevSrc = historyIframeRef.current.src;
+    if (prevSrc?.startsWith('blob:')) URL.revokeObjectURL(prevSrc);
     const blob = new Blob([buildHtmlFromParts(prevCodeParts)], { type: 'text/html; charset=utf-8' });
     setHistoryIframeLoading(true);
     historyIframeRef.current.src = URL.createObjectURL(blob);
@@ -339,6 +342,20 @@ const UIPreviewPanel = ({
   useEffect(() => {
     if (isFromPreviousSession) setActiveTab('history');
   }, [isFromPreviousSession]);
+
+  // 组件卸载时释放所有 Blob URL，防止内存泄漏
+  useEffect(() => {
+    return () => {
+      if (iframeRef.current) {
+        const src = iframeRef.current.src;
+        if (src?.startsWith('blob:')) URL.revokeObjectURL(src);
+      }
+      if (historyIframeRef.current) {
+        const src = historyIframeRef.current.src;
+        if (src?.startsWith('blob:')) URL.revokeObjectURL(src);
+      }
+    };
+  }, []);
 
   // ─── 操作 ──────────────────────────────────────────────────────────────────
 

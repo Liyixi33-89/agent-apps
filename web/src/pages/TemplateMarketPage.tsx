@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Store, Eye, Heart, Globe, Search, Tag, ExternalLink,
@@ -268,60 +268,50 @@ const TemplateMarketPage = () => {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [sortBy, setSortBy]               = useState<SortKey>('newest');
   const [page, setPage]                   = useState(1);
+  const [totalCount, setTotalCount]       = useState(0);
   const PAGE_SIZE = 20;
+  // 搜索防抖：避免每次输入都触发 API 请求
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => {
+    debounceTimerRef.current = setTimeout(() => {
+      setDebouncedSearch(searchText);
+    }, 400);
+    return () => clearTimeout(debounceTimerRef.current);
+  }, [searchText]);
 
   const loadTemplates = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetchVibeTemplates({
-        limit: 200,
+        page,
+        limit: PAGE_SIZE,
         category: activeCategory !== 'all' ? activeCategory : undefined,
+        search: debouncedSearch || undefined,
+        sort: sortBy,
       });
       setTemplates(res.data);
+      setTotalCount(res.pagination?.total ?? res.data.length);
     } catch {
       // 拦截器已处理
     } finally {
       setLoading(false);
     }
-  }, [activeCategory]);
+  }, [activeCategory, page, debouncedSearch, sortBy]);
 
   useEffect(() => {
     loadTemplates();
   }, [loadTemplates]);
 
-  // 重置分页
+  // 重置分页（搜索/排序/分类变化时回到第一页）
   useEffect(() => {
     setPage(1);
-  }, [searchText, sortBy, activeCategory]);
+  }, [debouncedSearch, sortBy, activeCategory]);
 
-  // 客户端搜索 + 排序 + 分页
-  const { filtered, totalFiltered } = useMemo(() => {
-    let result = templates.filter((t) => {
-      if (!searchText) return true;
-      const q = searchText.toLowerCase();
-      return (
-        t.title.toLowerCase().includes(q) ||
-        t.description.toLowerCase().includes(q) ||
-        t.tags.some((tag) => tag.toLowerCase().includes(q))
-      );
-    });
-
-    // 排序
-    result.sort((a, b) => {
-      if (sortBy === 'newest') return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
-      if (sortBy === 'popular') return b.viewCount - a.viewCount;
-      if (sortBy === 'likes') return b.likeCount - a.likeCount;
-      return 0;
-    });
-
-    const totalFiltered = result.length;
-    // 分页
-    const start = (page - 1) * PAGE_SIZE;
-    result = result.slice(start, start + PAGE_SIZE);
-
-    return { filtered: result, totalFiltered };
-  }, [templates, searchText, sortBy, page]);
-
+  // 服务端分页，直接使用返回的数据
+  const filtered = templates;
+  const totalFiltered = totalCount;
   const totalPages = Math.ceil(totalFiltered / PAGE_SIZE);
 
   // 点击预览：先获取完整 codeParts

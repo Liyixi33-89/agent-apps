@@ -244,7 +244,7 @@ export interface VibeTemplateDetail extends VibeTemplateItem {
   codeParts: { html: string; css: string; js: string; jsx?: string; compiledJs?: string; isFullHtml?: boolean; isReact?: boolean };
 }
 
-export const fetchVibeTemplates = async (params?: { page?: number; limit?: number; category?: string }) => {
+export const fetchVibeTemplates = async (params?: { page?: number; limit?: number; category?: string; search?: string; sort?: string }) => {
   const { data } = await api.get<{ success: boolean; data: VibeTemplateItem[]; pagination: { page: number; limit: number; total: number } }>('/vibe/templates', { params });
   return data;
 };

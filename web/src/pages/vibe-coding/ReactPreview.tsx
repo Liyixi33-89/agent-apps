@@ -46,8 +46,8 @@ export const buildReactIframeHtml = (compiledCode: string, options?: { runtimeAp
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>React Preview</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" />
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"><\/script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"><\/script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"><\/script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"><\/script>
   <script>
     // 全局错误捕获
     window.onerror = function(msg, src, line, col) {
@@ -111,16 +111,20 @@ export const buildReactIframeHtml = (compiledCode: string, options?: { runtimeAp
       } else {
         patchLinks();
       }
-      // MutationObserver 监听动态添加的 <a> 标签
+      // MutationObserver 监听动态添加的 <a> 标签（页面卸载时自动 disconnect）
       try {
         var observer = new MutationObserver(function() { patchLinks(); });
-        if (document.body) {
+        var _startObserver = function() {
           observer.observe(document.body, { childList: true, subtree: true });
+        };
+        if (document.body) {
+          _startObserver();
         } else {
-          document.addEventListener('DOMContentLoaded', function() {
-            observer.observe(document.body, { childList: true, subtree: true });
-          });
+          document.addEventListener('DOMContentLoaded', _startObserver);
         }
+        // 页面卸载时断开 observer，防止内存泄漏
+        window.addEventListener('unload', function() { observer.disconnect(); });
+        window.addEventListener('pagehide', function() { observer.disconnect(); });
       } catch(e) { /* MutationObserver 不可用时忽略 */ }
 
       // 拦截 history.pushState / replaceState（防止 React Router 等修改 URL）
@@ -895,6 +899,16 @@ const ReactPreview = forwardRef<HTMLIFrameElement, ReactPreviewProps>(({ jsx, co
   const lastApiBaseRef = useRef<string>('');
   // 用于取消过期的异步编译任务
   const compileIdRef = useRef(0);
+
+  // 组件卸载时释放最后一个 Blob URL，防止内存泄漏
+  useEffect(() => {
+    return () => {
+      if (iframeRef.current) {
+        const src = iframeRef.current.src;
+        if (src?.startsWith('blob:')) URL.revokeObjectURL(src);
+      }
+    };
+  }, []);
 
   /** 将编译后的代码写入 iframe */
   const writeToIframe = useCallback((compiledCode: string, apiBase?: string) => {

@@ -44,6 +44,9 @@ const ChatPage = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  // 消息列表最大数量，防止长对话内存无限增长
+  const MAX_MESSAGES = 200;
+
   useEffect(() => {
     fetchChatSessions().then(setSessions).catch(() => {});
     fetchAgents({ limit: 100 }).then((r) => setAgents(r.data)).catch(() => {});
@@ -53,7 +56,9 @@ const ChatPage = () => {
     if (paramSessionId) {
       fetchChatSession(paramSessionId).then((session) => {
         setCurrentSession(session);
-        setMessages(session.messages.filter((m) => m.role !== 'system'));
+        const filtered = session.messages.filter((m) => m.role !== 'system');
+        // 只保留最近的 MAX_MESSAGES 条消息，防止内存溢出
+        setMessages(filtered.length > MAX_MESSAGES ? filtered.slice(-MAX_MESSAGES) : filtered);
       }).catch(() => {});
     }
   }, [paramSessionId]);
