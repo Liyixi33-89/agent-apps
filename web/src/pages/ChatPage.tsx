@@ -34,6 +34,8 @@ const ChatPage = () => {
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
+  const [activeSkill, setActiveSkill] = useState<{ name: string; key: string; confidence: number; method: string } | null>(null);
+  const [skillSteps, setSkillSteps] = useState<Array<{ stepId: string; stepLabel: string; status: string; error?: string }>>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgent, setSelectedAgent] = useState(searchParams.get('agent') || '');
   const [provider, setProvider] = useState<Provider>(activeProvider);
@@ -138,6 +140,8 @@ const ChatPage = () => {
       abortRef.current.abort();
       abortRef.current = null;
       setStreaming(false);
+      setActiveSkill(null);
+      setSkillSteps([]);
       if (streamingContent) {
         setMessages((prev) => [...prev, {
           role: 'assistant',
@@ -164,6 +168,8 @@ const ChatPage = () => {
     setInput('');
     setStreaming(true);
     setStreamingContent('');
+    setActiveSkill(null);
+    setSkillSteps([]);
     abortRef.current = new AbortController();
 
     try {
@@ -196,15 +202,44 @@ const ChatPage = () => {
             if (parsed.type === 'delta') {
               fullContent += parsed.delta;
               setStreamingContent(fullContent);
+            } else if (parsed.type === 'skill_match') {
+              // Skill 匹配成功
+              setActiveSkill({
+                name: parsed.skillName,
+                key: parsed.skillKey,
+                confidence: parsed.confidence,
+                method: parsed.method,
+              });
+            } else if (parsed.type === 'skill_step') {
+              // Skill 步骤执行进度
+              setSkillSteps((prev) => {
+                const existing = prev.findIndex((s) => s.stepId === parsed.stepId);
+                const step = { stepId: parsed.stepId, stepLabel: parsed.stepLabel, status: parsed.status, error: parsed.error };
+                if (existing >= 0) {
+                  const updated = [...prev];
+                  updated[existing] = step;
+                  return updated;
+                }
+                return [...prev, step];
+              });
+            } else if (parsed.type === 'skill_result') {
+              // Skill 执行完成
+              console.log(`[Skill] ${parsed.skillName} 执行${parsed.success ? '成功' : '失败'} (${parsed.duration}ms)`);
+            } else if (parsed.type === 'skill_fallback') {
+              // Skill 执行失败，降级到普通 Chat
+              setActiveSkill(null);
+              setSkillSteps([]);
             } else if (parsed.type === 'done') {
               const assistantMessage: ChatMessage = {
                 role: 'assistant',
-                content: fullContent,
+                content: fullContent || parsed.content || '',
                 timestamp: new Date().toISOString(),
                 provider,
               };
               setMessages((prev) => [...prev, assistantMessage]);
               setStreamingContent('');
+              setActiveSkill(null);
+              setSkillSteps([]);
             }
           } catch {
             // 忽略
@@ -222,6 +257,8 @@ const ChatPage = () => {
     } finally {
       setStreaming(false);
       setStreamingContent('');
+      setActiveSkill(null);
+      setSkillSteps([]);
     }
   }, [input, streaming, currentSession, provider]);
 
@@ -281,13 +318,56 @@ const ChatPage = () => {
       },
     }));
 
+  // Skill 执行状态指示器
+  if (activeSkill && streaming) {
+    bubbleItems.push({
+      key: bubbleItems.length + 9000,
+      role: 'assistant',
+      placement: 'start' as const,
+      avatar: <Avatar size={32} style={{ backgroundColor: '#fef3c7' }} icon={<span style={{ fontSize: 16 }}>🎯</span>} />,
+      content: (
+        <div className="text-sm">
+          <div className="flex items-center gap-2 mb-2">
+            <Tag color="orange" className="m-0">Skill</Tag>
+            <span className="font-medium text-slate-700">{activeSkill.name}</span>
+            <Tag color="blue" className="m-0 text-xs">{activeSkill.method}</Tag>
+          </div>
+          {skillSteps.length > 0 && (
+            <div className="space-y-1 mt-2">
+              {skillSteps.map((step) => (
+                <div key={step.stepId} className="flex items-center gap-2 text-xs">
+                  {step.status === 'running' ? (
+                    <Spin size="small" />
+                  ) : step.status === 'success' ? (
+                    <span className="text-green-500">✓</span>
+                  ) : (
+                    <span className="text-red-500">✗</span>
+                  )}
+                  <span className={step.status === 'failed' ? 'text-red-500' : 'text-slate-600'}>
+                    {step.stepLabel}
+                  </span>
+                  {step.error && <span className="text-red-400 text-xs">({step.error})</span>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ),
+      styles: {
+        content: { background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '16px 16px 16px 4px' },
+      },
+    });
+  }
+
   // 流式消息
   if (streamingContent) {
     bubbleItems.push({
       key: bubbleItems.length,
       role: 'assistant',
       placement: 'start' as const,
-      avatar: <Avatar size={32} style={{ backgroundColor: '#f1f5f9' }} icon={<RobotOutlined style={{ color: '#64748b' }} />} />,
+      avatar: activeSkill
+        ? <Avatar size={32} style={{ backgroundColor: '#fef3c7' }} icon={<span style={{ fontSize: 16 }}>🎯</span>} />
+        : <Avatar size={32} style={{ backgroundColor: '#f1f5f9' }} icon={<RobotOutlined style={{ color: '#64748b' }} />} />,
       content: (
         <div className="prose-dark text-sm">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamingContent}</ReactMarkdown>
@@ -295,7 +375,9 @@ const ChatPage = () => {
         </div>
       ),
       styles: {
-        content: { background: 'white', border: '1px solid #e2e8f0', borderRadius: '16px 16px 16px 4px' },
+        content: activeSkill
+          ? { background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '16px 16px 16px 4px' }
+          : { background: 'white', border: '1px solid #e2e8f0', borderRadius: '16px 16px 16px 4px' },
       },
     });
   }

@@ -466,3 +466,169 @@ export const fetchMcpTools = async (): Promise<{ total: number; tools: Array<{ n
   const { data } = await runtimeApi.get<{ success: boolean; data: { total: number; tools: Array<{ name: string; description: string; parameters: Record<string, unknown> }> } }>('/mcp/tools');
   return data.data;
 };
+
+// ─── Skill 管理 ──────────────────────────────────────────────────────────────
+
+export interface SkillStep {
+  id: string;
+  type: string;
+  label: string;
+  toolName?: string;
+  promptKey?: string;
+  promptTemplate?: string;
+  outputKey: string;
+  optional: boolean;
+}
+
+export interface SkillTrigger {
+  keywords: string[];
+  patterns: string[];
+  contextRules: string[];
+  intentDescription: string;
+}
+
+export interface SkillConfig {
+  timeout: number;
+  retryCount: number;
+  cacheTTL: number;
+  concurrency: number;
+  streamOutput: boolean;
+}
+
+export interface SkillVersion {
+  version: string;
+  changelog: string;
+  createdAt: string;
+}
+
+export interface Skill {
+  _id: string;
+  key: string;
+  name: string;
+  description: string;
+  icon: string;
+  category: string;
+  isActive: boolean;
+  isBuiltin: boolean;
+  version: string;
+  usageCount: number;
+  avgDuration: number;
+  successRate: number;
+  steps: SkillStep[];
+  triggers: SkillTrigger;
+  config: SkillConfig;
+  dependsOn: string[];
+  versions: SkillVersion[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SkillStats {
+  skillKey: string;
+  skillName: string;
+  totalExecutions: number;
+  recentSuccessRate: number;
+  avgDuration: number;
+  avgTokens: number;
+  stepFailRates: Array<{ stepId: string; failRate: number; totalRuns: number }>;
+}
+
+export interface SkillOverviewStats {
+  totalSkills: number;
+  activeSkills: number;
+  totalExecutions: number;
+  recentSuccessRate: number;
+  avgDuration: number;
+  topSkills: Array<{ key: string; count: number }>;
+}
+
+export interface SkillExecutionResult {
+  executionId: string;
+  skillKey: string;
+  success: boolean;
+  output: unknown;
+  error?: string;
+  totalDuration: number;
+  totalTokens: number;
+  stepResults: Array<{ stepId: string; status: string; duration: number; outputSummary: string }>;
+}
+
+export interface SkillMatchResult {
+  matched: boolean;
+  skillKey?: string;
+  skillName?: string;
+  confidence?: number;
+  method?: string;
+  matchedTrigger?: string;
+}
+
+/** 获取 Skill 列表 */
+export const fetchSkills = async (params?: { page?: number; limit?: number; category?: string; search?: string; sort?: string }) => {
+  const { data } = await runtimeApi.get<{ success: boolean; data: Skill[]; pagination: { page: number; limit: number; total: number } }>('/skills', { params });
+  return data;
+};
+
+/** 获取 Skill 详情 */
+export const fetchSkillDetail = async (key: string) => {
+  const { data } = await runtimeApi.get<{ success: boolean; data: Skill }>(`/skills/${key}`);
+  return data.data;
+};
+
+/** 创建 Skill */
+export const createSkill = async (body: Partial<Skill>) => {
+  const { data } = await runtimeApi.post<{ success: boolean; data: Skill }>('/skills', body);
+  return data.data;
+};
+
+/** 更新 Skill */
+export const updateSkill = async (key: string, body: Partial<Skill>) => {
+  const { data } = await runtimeApi.put<{ success: boolean; data: Skill }>(`/skills/${key}`, body);
+  return data.data;
+};
+
+/** 删除 Skill */
+export const deleteSkill = async (key: string) => {
+  await runtimeApi.delete(`/skills/${key}`);
+};
+
+/** 启用/禁用 Skill */
+export const toggleSkill = async (key: string) => {
+  const { data } = await runtimeApi.post<{ success: boolean; data: { key: string; isActive: boolean } }>(`/skills/${key}/toggle`);
+  return data.data;
+};
+
+/** 手动执行 Skill（测试台） */
+export const executeSkill = async (key: string, input: Record<string, unknown>) => {
+  const { data } = await runtimeApi.post<{ success: boolean; data: SkillExecutionResult }>(`/skills/${key}/execute`, { input });
+  return data;
+};
+
+/** 获取 Skill 执行历史 */
+export const fetchSkillExecutions = async (key: string, page = 1, limit = 10) => {
+  const { data } = await runtimeApi.get<{ success: boolean; data: { executions: any[]; total: number } }>(`/skills/${key}/executions`, { params: { page, limit } });
+  return data.data;
+};
+
+/** 获取 Skill 统计 */
+export const fetchSkillStats = async (key: string) => {
+  const { data } = await runtimeApi.get<{ success: boolean; data: SkillStats }>(`/skills/${key}/stats`);
+  return data.data;
+};
+
+/** 版本回退 */
+export const rollbackSkill = async (key: string, targetVersion: string) => {
+  const { data } = await runtimeApi.post<{ success: boolean; data: Skill; message: string }>(`/skills/${key}/rollback`, { targetVersion });
+  return data;
+};
+
+/** 测试路由匹配 */
+export const testSkillMatch = async (message: string, useLLM = false) => {
+  const { data } = await runtimeApi.post<{ success: boolean; data: SkillMatchResult }>('/skills/match', { message, useLLM });
+  return data.data;
+};
+
+/** 获取 Skill 全局统计概览 */
+export const fetchSkillOverviewStats = async () => {
+  const { data } = await runtimeApi.get<{ success: boolean; data: SkillOverviewStats }>('/skills/overview/stats');
+  return data.data;
+};

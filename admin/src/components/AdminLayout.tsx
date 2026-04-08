@@ -23,6 +23,7 @@ const navItems = [
   { path: '/vibe-templates',  label: '模板市场',   icon: <AppstoreOutlined /> },
   { path: '/vibe-apps',       label: '已发布应用', icon: <CloudOutlined /> },
   { path: '/mcp',             label: 'MCP 管理',   icon: <ApiOutlined /> },
+  { path: '/skills',          label: 'Skill 管理', icon: <ThunderboltOutlined /> },
   { path: '/settings',        label: '系统设置',   icon: <SettingOutlined /> },
 ];
 

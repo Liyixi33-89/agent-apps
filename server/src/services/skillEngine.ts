@@ -1,0 +1,633 @@
+/**
+ * @file services/skillEngine.ts
+ * @description Skill 执行引擎（维度 3 — 执行引擎）
+ *
+ * 核心职责：
+ *   1. 解析 Skill 定义中的 steps，按顺序/并行/条件分支执行
+ *   2. 管理执行上下文（context），在步骤间传递数据
+ *   3. 支持模板变量解析（{{input.xxx}}、{{steps.xxx.data}}）
+ *   4. 统一工具抽象层（自动分发内置工具 / MCP 工具）
+ *   5. 记录执行日志（维度 10 — 可观测性）
+ *   6. 处理超时、重试、降级
+ *
+ * 集成点（维度 6）：
+ *   - 复用 agentTools.ts 的 executeTool
+ *   - 复用 mcpService.ts 的 executeMcpTool / parseMcpToolName
+ *   - 复用 llmService.ts 的 callLLM / streamLLM
+ *   - 复用 SystemPrompt 模型读取 Prompt
+ */
+
+import { v4 as uuidv4 } from 'uuid';
+import { Skill, type ISkill, type ISkillStep } from '../models/Skill.js';
+import { SkillExecution, type IStepExecution, type ExecStatus, type TriggerMethod } from '../models/SkillExecution.js';
+import { SystemPrompt } from '../models/SystemPrompt.js';
+import { executeTool } from '../lib/agentTools.js';
+import { executeMcpTool, parseMcpToolName } from './mcpService.js';
+import { callLLM, streamLLM } from './llmService.js';
+import type { LLMMessage, LLMStreamChunk } from './llmService.js';
+import { env } from '../config/env.js';
+
+// =============================================================================
+// 类型定义
+// =============================================================================
+
+/** 执行上下文 — 在步骤间传递数据 */
+export interface SkillContext {
+  /** 用户输入参数 */
+  input: Record<string, unknown>;
+  /** 每个步骤的输出，key = step.outputKey */
+  steps: Record<string, {
+    success: boolean;
+    data: unknown;
+    error?: string;
+  }>;
+  /** 元数据 */
+  metadata: {
+    skillKey: string;
+    skillName: string;
+    executionId: string;
+    startTime: number;
+    currentStepId: string;
+  };
+}
+
+/** 执行回调 */
+export interface SkillExecutionCallbacks {
+  /** 步骤开始 */
+  onStepStart?: (step: ISkillStep) => void;
+  /** 步骤完成 */
+  onStepComplete?: (step: ISkillStep, result: { success: boolean; data: unknown; error?: string }) => void;
+  /** 流式输出（最后一个 LLM 步骤） */
+  onDelta?: (text: string) => void;
+  /** 整体完成 */
+  onComplete?: (result: SkillExecutionResult) => void;
+}
+
+/** 执行选项 */
+export interface SkillExecuteOptions {
+  /** LLM 提供商 */
+  provider?: 'ollama' | 'openai';
+  /** 模型类型 */
+  modelType?: 'text' | 'vision';
+  /** 关联的会话 ID */
+  sessionId?: string;
+  /** 用户标识 */
+  userId?: string;
+  /** 触发方式 */
+  triggerMethod?: TriggerMethod;
+  /** 触发匹配的关键词/模式 */
+  triggerMatch?: string;
+  /** 回调函数 */
+  callbacks?: SkillExecutionCallbacks;
+}
+
+/** 执行结果 */
+export interface SkillExecutionResult {
+  executionId: string;
+  skillKey: string;
+  success: boolean;
+  output: unknown;
+  error?: string;
+  totalDuration: number;
+  totalTokens: number;
+  stepResults: Array<{
+    stepId: string;
+    status: string;
+    duration: number;
+    outputSummary: string;
+  }>;
+}
+
+// =============================================================================
+// 模板变量解析
+// =============================================================================
+
+/**
+ * 解析模板变量，将 {{input.xxx}} 和 {{steps.xxx.data}} 替换为实际值
+ * 支持嵌套路径如 {{steps.fetch.data.title}}
+ */
+const resolveTemplateVar = (template: string, ctx: SkillContext): string => {
+  return template.replace(/\{\{([^}]+)\}\}/g, (_, path: string) => {
+    const parts = path.trim().split('.');
+    let value: unknown = ctx;
+
+    for (const part of parts) {
+      if (value === null || value === undefined) return '';
+      value = (value as Record<string, unknown>)[part];
+    }
+
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'object') return JSON.stringify(value);
+    return String(value);
+  });
+};
+
+/**
+ * 解析工具参数中的模板变量
+ */
+const resolveToolArgs = (args: Record<string, string> | undefined, ctx: SkillContext): Record<string, unknown> => {
+  if (!args) return {};
+  const resolved: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(args)) {
+    const resolvedValue = resolveTemplateVar(value, ctx);
+    // 尝试解析为 JSON（数字、布尔值等）
+    try {
+      resolved[key] = JSON.parse(resolvedValue);
+    } catch {
+      resolved[key] = resolvedValue;
+    }
+  }
+  return resolved;
+};
+
+// =============================================================================
+// 统一工具执行器（维度 6 — 系统集成）
+// =============================================================================
+
+/**
+ * 统一工具执行器 — 自动分发内置工具和 MCP 工具
+ * 调用方无需关心工具来源
+ */
+const executeUnifiedTool = async (
+  toolName: string,
+  args: Record<string, unknown>
+): Promise<{ success: boolean; data: unknown; error?: string }> => {
+  const mcpInfo = parseMcpToolName(toolName);
+
+  if (mcpInfo.isMcp && mcpInfo.toolName) {
+    // MCP 工具
+    const result = await executeMcpTool(mcpInfo.toolName, args);
+    return { success: result.success, data: result.data, error: result.error };
+  }
+
+  // 内置工具
+  const result = await executeTool({ name: toolName, arguments: args });
+  return { success: result.success, data: result.data, error: result.error };
+};
+
+// =============================================================================
+// 条件表达式求值
+// =============================================================================
+
+/**
+ * 安全地求值条件表达式
+ * 支持简单的比较操作：===、!==、>、<、>=、<=、&&、||
+ */
+const evaluateCondition = (condition: string, ctx: SkillContext): boolean => {
+  try {
+    const resolved = resolveTemplateVar(condition, ctx);
+    // 使用 Function 构造器安全求值（比 eval 更安全，有独立作用域）
+    const fn = new Function('return (' + resolved + ')');
+    return Boolean(fn());
+  } catch {
+    console.warn(`[SkillEngine] 条件表达式求值失败: ${condition}`);
+    return false;
+  }
+};
+
+// =============================================================================
+// 步骤执行器
+// =============================================================================
+
+/**
+ * 执行单个步骤
+ */
+const executeStepInternal = async (
+  step: ISkillStep,
+  ctx: SkillContext,
+  options: SkillExecuteOptions,
+  stepExec: IStepExecution
+): Promise<{ success: boolean; data: unknown; error?: string; tokenUsage?: { promptTokens: number; completionTokens: number } }> => {
+  const provider = options.provider || env.activeProvider as 'ollama' | 'openai';
+  const modelType = options.modelType || 'text';
+
+  switch (step.type) {
+    // ── Tool 步骤 ──
+    case 'tool': {
+      if (!step.toolName) {
+        return { success: false, data: null, error: '步骤缺少 toolName' };
+      }
+      const args = resolveToolArgs(step.toolArgs, ctx);
+      // 对 URL 类参数做 trim，防止 LLM 输出带有多余空白/换行
+      if (typeof args.url === 'string') {
+        args.url = args.url.trim();
+      }
+      stepExec.toolName = step.toolName;
+      stepExec.toolInput = args;
+
+      const result = await executeUnifiedTool(step.toolName, args);
+      stepExec.toolSuccess = result.success;
+      return result;
+    }
+
+    // ── LLM 步骤 ──
+    case 'llm': {
+      // 构建 Prompt
+      let promptContent = '';
+      if (step.promptKey) {
+        const doc = await SystemPrompt.findOne({ key: step.promptKey, isActive: true }).lean();
+        promptContent = (doc as any)?.content || '';
+      }
+      if (!promptContent && step.promptTemplate) {
+        promptContent = resolveTemplateVar(step.promptTemplate, ctx);
+      }
+      if (!promptContent) {
+        return { success: false, data: null, error: '步骤缺少 Prompt 内容' };
+      }
+
+      stepExec.promptUsed = step.promptKey || promptContent.slice(0, 100);
+      stepExec.llmProvider = provider;
+
+      // 构建消息
+      const messages: LLMMessage[] = [
+        { role: 'system', content: promptContent },
+        { role: 'user', content: resolveTemplateVar('{{input.message}}', ctx) || JSON.stringify(ctx.input) },
+      ];
+
+      // 判断是否流式输出（最后一个 LLM 步骤 + 配置允许）
+      const isLastLlmStep = step.llmOptions?.stream !== false;
+      const shouldStream = isLastLlmStep && options.callbacks?.onDelta;
+
+      if (shouldStream) {
+        // 流式输出
+        let fullContent = '';
+        const stream = streamLLM(messages, {
+          provider,
+          modelType,
+          temperature: step.llmOptions?.temperature,
+          maxTokens: step.llmOptions?.maxTokens,
+        });
+
+        for await (const chunk of stream) {
+          if (chunk.delta) {
+            fullContent += chunk.delta;
+            options.callbacks?.onDelta?.(chunk.delta);
+          }
+          if (chunk.done) break;
+        }
+
+        return { success: true, data: fullContent };
+      } else {
+        // 非流式
+        const response = await callLLM(messages, { provider, modelType });
+        stepExec.tokenUsage = response.usage
+          ? { promptTokens: response.usage.promptTokens, completionTokens: response.usage.completionTokens, totalTokens: response.usage.promptTokens + response.usage.completionTokens }
+          : undefined;
+        stepExec.llmModel = response.model;
+        return {
+          success: true,
+          data: response.content,
+          tokenUsage: response.usage,
+        };
+      }
+    }
+
+    // ── 条件分支步骤 ──
+    case 'condition': {
+      if (!step.condition) {
+        return { success: false, data: null, error: '步骤缺少 condition 表达式' };
+      }
+      const result = evaluateCondition(step.condition, ctx);
+      return { success: true, data: { conditionResult: result, nextStep: result ? step.ifTrue : step.ifFalse } };
+    }
+
+    // ── 数据转换步骤 ──
+    case 'transform': {
+      if (!step.transformExpr) {
+        return { success: false, data: null, error: '步骤缺少 transformExpr' };
+      }
+      try {
+        const resolved = resolveTemplateVar(step.transformExpr, ctx);
+        const fn = new Function('return (' + resolved + ')');
+        const result = fn();
+        return { success: true, data: result };
+      } catch (err) {
+        return { success: false, data: null, error: `转换表达式执行失败: ${err instanceof Error ? err.message : String(err)}` };
+      }
+    }
+
+    // ── 并行步骤 ──
+    case 'parallel': {
+      // 并行步骤在外层处理，这里只返回标记
+      return { success: true, data: { isParallel: true, parallelStepIds: step.parallelStepIds } };
+    }
+
+    default:
+      return { success: false, data: null, error: `未知步骤类型: ${step.type}` };
+  }
+};
+
+// =============================================================================
+// 核心执行函数
+// =============================================================================
+
+/**
+ * 执行 Skill
+ *
+ * @param skillKey - Skill 的唯一标识
+ * @param input - 用户输入参数
+ * @param options - 执行选项
+ * @returns 执行结果
+ */
+export const executeSkill = async (
+  skillKey: string,
+  input: Record<string, unknown>,
+  options: SkillExecuteOptions = {}
+): Promise<SkillExecutionResult> => {
+  const startTime = Date.now();
+  const executionId = `exec_${uuidv4().slice(0, 12)}`;
+
+  // ── 1. 加载 Skill 定义 ──
+  const skill = await Skill.findOne({ key: skillKey, isActive: true }).lean() as ISkill | null;
+  if (!skill) {
+    throw new Error(`Skill "${skillKey}" 不存在或未启用`);
+  }
+
+  // ── 2. 初始化执行上下文 ──
+  const ctx: SkillContext = {
+    input,
+    steps: {},
+    metadata: {
+      skillKey: skill.key,
+      skillName: skill.name,
+      executionId,
+      startTime,
+      currentStepId: '',
+    },
+  };
+
+  // ── 3. 创建执行记录（维度 10） ──
+  const execRecord = await SkillExecution.create({
+    executionId,
+    skillKey: skill.key,
+    skillName: skill.name,
+    skillVersion: skill.version,
+    abTestGroup: skill.abTestGroup,
+    triggerMethod: options.triggerMethod || 'manual',
+    triggerMatch: options.triggerMatch || '',
+    sessionId: options.sessionId,
+    userId: options.userId,
+    input,
+    status: 'running',
+    totalSteps: skill.steps.length,
+  });
+
+  const stepResults: SkillExecutionResult['stepResults'] = [];
+  let lastOutput: unknown = null;
+  let overallSuccess = true;
+  let totalTokens = 0;
+
+  // ── 4. 构建步骤索引（用于条件跳转） ──
+  const stepMap = new Map<string, ISkillStep>();
+  for (const step of skill.steps) {
+    stepMap.set(step.id, step);
+  }
+
+  // ── 5. 执行步骤 ──
+  let stepIndex = 0;
+  const executedSteps = new Set<string>();
+
+  while (stepIndex < skill.steps.length) {
+    const step = skill.steps[stepIndex];
+
+    // 防止无限循环
+    if (executedSteps.has(step.id) && step.type !== 'condition') {
+      stepIndex++;
+      continue;
+    }
+    executedSteps.add(step.id);
+
+    ctx.metadata.currentStepId = step.id;
+    options.callbacks?.onStepStart?.(step);
+
+    // 创建步骤执行记录
+    const stepExec: IStepExecution = {
+      stepId: step.id,
+      stepType: step.type,
+      stepLabel: step.label,
+      status: 'running',
+      startedAt: new Date(),
+      duration: 0,
+      inputSize: JSON.stringify(input).length,
+      outputSize: 0,
+      outputSummary: '',
+      retryCount: 0,
+    };
+
+    const stepStartTime = Date.now();
+    let stepResult: { success: boolean; data: unknown; error?: string; tokenUsage?: { promptTokens: number; completionTokens: number } } | null = null;
+    let retries = 0;
+    const maxRetries = step.retryCount || skill.config?.retryCount || 1;
+
+    // 重试循环
+    while (retries <= maxRetries) {
+      try {
+        // 超时控制
+        const stepTimeout = step.timeout || skill.config?.timeout || 30000;
+        stepResult = await Promise.race([
+          executeStepInternal(step, ctx, options, stepExec),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error(`步骤 "${step.label}" 超时 (${stepTimeout}ms)`)), stepTimeout)
+          ),
+        ]);
+        break; // 成功则跳出重试
+      } catch (err) {
+        retries++;
+        stepExec.retryCount = retries;
+        if (retries > maxRetries) {
+          stepResult = {
+            success: false,
+            data: null,
+            error: err instanceof Error ? err.message : String(err),
+          };
+        }
+      }
+    }
+
+    // 记录步骤结果
+    const stepDuration = Date.now() - stepStartTime;
+    stepExec.duration = stepDuration;
+    stepExec.finishedAt = new Date();
+
+    if (stepResult?.success) {
+      stepExec.status = 'success';
+      const outputStr = typeof stepResult.data === 'string' ? stepResult.data : JSON.stringify(stepResult.data);
+      stepExec.outputSize = outputStr.length;
+      stepExec.outputSummary = outputStr.slice(0, 500);
+
+      // 存入上下文
+      ctx.steps[step.outputKey] = { success: true, data: stepResult.data };
+      lastOutput = stepResult.data;
+
+      // 累计 Token
+      if (stepResult.tokenUsage) {
+        totalTokens += (stepResult.tokenUsage.promptTokens || 0) + (stepResult.tokenUsage.completionTokens || 0);
+      }
+
+      // 处理条件分支跳转
+      if (step.type === 'condition' && stepResult.data && typeof stepResult.data === 'object') {
+        const condData = stepResult.data as { nextStep?: string };
+        if (condData.nextStep) {
+          const targetIdx = skill.steps.findIndex(s => s.id === condData.nextStep);
+          if (targetIdx >= 0) {
+            stepIndex = targetIdx;
+            stepResults.push({ stepId: step.id, status: 'success', duration: stepDuration, outputSummary: stepExec.outputSummary });
+            execRecord.stepExecutions.push(stepExec);
+            options.callbacks?.onStepComplete?.(step, { success: true, data: stepResult.data });
+            continue;
+          }
+        }
+      }
+    } else {
+      stepExec.status = 'failed';
+      stepExec.error = stepResult?.error || '未知错误';
+      ctx.steps[step.outputKey] = { success: false, data: null, error: stepExec.error };
+
+      if (!step.optional) {
+        overallSuccess = false;
+        stepResults.push({ stepId: step.id, status: 'failed', duration: stepDuration, outputSummary: stepExec.error || '' });
+        execRecord.stepExecutions.push(stepExec);
+        options.callbacks?.onStepComplete?.(step, { success: false, data: null, error: stepExec.error });
+        break; // 非可选步骤失败，终止执行
+      }
+    }
+
+    stepResults.push({
+      stepId: step.id,
+      status: stepExec.status,
+      duration: stepDuration,
+      outputSummary: stepExec.outputSummary,
+    });
+    execRecord.stepExecutions.push(stepExec);
+    options.callbacks?.onStepComplete?.(step, {
+      success: stepResult?.success || false,
+      data: stepResult?.data,
+      error: stepResult?.error,
+    });
+
+    stepIndex++;
+  }
+
+  // ── 6. 更新执行记录 ──
+  const totalDuration = Date.now() - startTime;
+  const successSteps = stepResults.filter(s => s.status === 'success').length;
+  const failedSteps = stepResults.filter(s => s.status === 'failed').length;
+
+  execRecord.status = overallSuccess ? 'success' : 'failed';
+  execRecord.output = typeof lastOutput === 'string' ? lastOutput.slice(0, 2000) : JSON.stringify(lastOutput).slice(0, 2000);
+  execRecord.totalDuration = totalDuration;
+  execRecord.totalTokens = totalTokens;
+  execRecord.successSteps = successSteps;
+  execRecord.failedSteps = failedSteps;
+  if (!overallSuccess) {
+    execRecord.error = stepResults.find(s => s.status === 'failed')?.outputSummary;
+  }
+  await execRecord.save();
+
+  // ── 7. 更新 Skill 统计数据 ──
+  await Skill.updateOne(
+    { key: skillKey },
+    {
+      $inc: { usageCount: 1 },
+      $set: {
+        avgDuration: totalDuration, // 简化：直接用最新值（生产环境应用滑动平均）
+        successRate: overallSuccess ? 1 : 0,
+      },
+    }
+  );
+
+  // ── 8. 返回结果 ──
+  const result: SkillExecutionResult = {
+    executionId,
+    skillKey: skill.key,
+    success: overallSuccess,
+    output: lastOutput,
+    error: overallSuccess ? undefined : execRecord.error,
+    totalDuration,
+    totalTokens,
+    stepResults,
+  };
+
+  options.callbacks?.onComplete?.(result);
+  console.log(`[SkillEngine] ✅ ${skill.name} 执行${overallSuccess ? '成功' : '失败'} (${totalDuration}ms, ${totalTokens} tokens)`);
+
+  return result;
+};
+
+// =============================================================================
+// 辅助函数
+// =============================================================================
+
+/**
+ * 获取 Skill 的执行历史
+ */
+export const getSkillExecutionHistory = async (
+  skillKey: string,
+  options: { limit?: number; page?: number } = {}
+) => {
+  const limit = Math.min(options.limit || 20, 50);
+  const page = Math.max(options.page || 1, 1);
+
+  const [executions, total] = await Promise.all([
+    SkillExecution.find({ skillKey })
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean(),
+    SkillExecution.countDocuments({ skillKey }),
+  ]);
+
+  return { executions, total, page, limit };
+};
+
+/**
+ * 获取 Skill 统计概览
+ */
+export const getSkillStats = async (skillKey: string) => {
+  const [skill, recentExecutions] = await Promise.all([
+    Skill.findOne({ key: skillKey }).lean(),
+    SkillExecution.find({ skillKey })
+      .sort({ createdAt: -1 })
+      .limit(100)
+      .lean(),
+  ]);
+
+  if (!skill) return null;
+
+  const totalExecs = recentExecutions.length;
+  const successExecs = recentExecutions.filter(e => e.status === 'success').length;
+  const avgDuration = totalExecs > 0
+    ? Math.round(recentExecutions.reduce((sum, e) => sum + e.totalDuration, 0) / totalExecs)
+    : 0;
+  const avgTokens = totalExecs > 0
+    ? Math.round(recentExecutions.reduce((sum, e) => sum + e.totalTokens, 0) / totalExecs)
+    : 0;
+
+  // 按步骤统计失败率
+  const stepFailRates: Record<string, { total: number; failed: number }> = {};
+  for (const exec of recentExecutions) {
+    for (const stepExec of exec.stepExecutions) {
+      if (!stepFailRates[stepExec.stepId]) {
+        stepFailRates[stepExec.stepId] = { total: 0, failed: 0 };
+      }
+      stepFailRates[stepExec.stepId].total++;
+      if (stepExec.status === 'failed') {
+        stepFailRates[stepExec.stepId].failed++;
+      }
+    }
+  }
+
+  return {
+    skillKey,
+    skillName: (skill as any).name,
+    totalExecutions: (skill as any).usageCount,
+    recentSuccessRate: totalExecs > 0 ? successExecs / totalExecs : 1,
+    avgDuration,
+    avgTokens,
+    stepFailRates: Object.entries(stepFailRates).map(([stepId, stats]) => ({
+      stepId,
+      failRate: stats.total > 0 ? stats.failed / stats.total : 0,
+      totalRuns: stats.total,
+    })),
+  };
+};

@@ -22,6 +22,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { buildMemoryMessages, streamWithContinuation } from '../lib/llmUtils.js';
 import { AGENT_TOOLS, executeTool } from '../lib/agentTools.js';
 import { getMcpToolDefinitions, executeMcpTool, parseMcpToolName } from '../services/mcpService.js';
+import { matchSkill } from '../services/skillRouter.js';
+import { executeSkill } from '../services/skillEngine.js';
+import type { ChatContext } from '../services/skillRouter.js';
 
 export const chatRouter = new Router();
 
@@ -165,6 +168,108 @@ chatRouter.post('/chat/stream', async (ctx) => {
   const send = (data: Record<string, unknown>) => res.write(`data: ${JSON.stringify(data)}\n\n`);
 
   send({ type: 'start' });
+
+  // ── Skill 自动匹配（维度 6 — 系统集成）──────────────────────────────────────
+  // 仅对普通 chat 会话启用 Skill 匹配，vibe 会话跳过
+  if ((chat as any).sessionType !== 'vibe') {
+    try {
+      const recentMsgs = chat.messages.slice(-10).map((m: any) => ({
+        role: m.role as string,
+        content: m.content as string,
+      }));
+      const skillContext: ChatContext = {
+        recentMessages: recentMsgs,
+        sessionType: (chat as any).sessionType || 'chat',
+        agentSlug: (chat as any).agentSlug,
+      };
+
+      // L1/L2 匹配（不使用 LLM，避免额外延迟）
+      const skillMatch = await matchSkill(message, skillContext, { useLLM: false, minConfidence: 0.65 });
+
+      if (skillMatch) {
+        console.log(`[Chat] 🎯 Skill 匹配成功: ${skillMatch.skill.name} (${skillMatch.method}, 置信度 ${skillMatch.confidence})`);
+
+        send({
+          type: 'skill_match',
+          skillKey: skillMatch.skill.key,
+          skillName: skillMatch.skill.name,
+          confidence: skillMatch.confidence,
+          method: skillMatch.method,
+        });
+
+        // 执行 Skill，通过回调推送执行过程
+        try {
+          const skillResult = await executeSkill(skillMatch.skill.key, { message }, {
+            provider: chat.provider as 'ollama' | 'openai',
+            modelType: chat.modelType as 'text' | 'vision',
+            sessionId: chat.sessionId,
+            triggerMethod: skillMatch.method,
+            triggerMatch: skillMatch.matchedTrigger,
+            callbacks: {
+              onStepStart: (step) => {
+                send({ type: 'skill_step', stepId: step.id, stepLabel: step.label, status: 'running' });
+              },
+              onStepComplete: (step, result) => {
+                send({
+                  type: 'skill_step',
+                  stepId: step.id,
+                  stepLabel: step.label,
+                  status: result.success ? 'success' : 'failed',
+                  error: result.error,
+                });
+              },
+              onDelta: (text) => {
+                send({ type: 'delta', delta: text });
+              },
+            },
+          });
+
+          // Skill 执行完成
+          const output = typeof skillResult.output === 'string'
+            ? skillResult.output
+            : JSON.stringify(skillResult.output, null, 2);
+
+          send({
+            type: 'skill_result',
+            success: skillResult.success,
+            skillKey: skillMatch.skill.key,
+            skillName: skillMatch.skill.name,
+            executionId: skillResult.executionId,
+            duration: skillResult.totalDuration,
+          });
+
+          // 如果 Skill 有流式输出（onDelta 已推送），直接结束
+          // 如果没有流式输出，将结果作为 delta 推送
+          if (!skillResult.output || typeof skillResult.output !== 'string') {
+            send({ type: 'delta', delta: output });
+          }
+
+          // 保存 assistant 消息
+          const skillPrefix = `> 🎯 *Skill: ${skillMatch.skill.name}*\n\n`;
+          const fullContent = skillPrefix + output;
+          chat.messages.push({
+            role: 'assistant',
+            content: fullContent,
+            timestamp: new Date(),
+            provider: chat.provider,
+            modelType: chat.modelType,
+          });
+          await chat.save();
+
+          send({ type: 'done', content: fullContent });
+          res.end();
+          return; // Skill 处理完毕，不再走普通 Chat 流程
+        } catch (skillErr) {
+          console.warn('[Chat] Skill 执行失败，降级到普通 Chat:', skillErr instanceof Error ? skillErr.message : String(skillErr));
+          send({ type: 'skill_fallback', reason: skillErr instanceof Error ? skillErr.message : String(skillErr) });
+          // 继续走普通 Chat 流程
+        }
+      }
+    } catch (matchErr) {
+      // Skill 匹配出错不影响正常 Chat
+      console.warn('[Chat] Skill 匹配出错:', matchErr instanceof Error ? matchErr.message : String(matchErr));
+    }
+  }
 
   try {
     // ── 构建消息列表 ────────────────────────────────────────────────────────────

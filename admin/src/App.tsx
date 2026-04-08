@@ -12,6 +12,7 @@ import PromptsAdminPage from './pages/PromptsAdminPage';
 import VibeTemplatesAdminPage from './pages/VibeTemplatesAdminPage';
 import VibeAppsAdminPage from './pages/VibeAppsAdminPage';
 import McpAdminPage from './pages/McpAdminPage';
+import SkillsAdminPage from './pages/SkillsAdminPage';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { isAuthenticated } = useAdminStore();
@@ -38,6 +39,7 @@ const App = () => {
                 <Route path="/vibe-templates" element={<VibeTemplatesAdminPage />} />
                 <Route path="/vibe-apps" element={<VibeAppsAdminPage />} />
                 <Route path="/mcp" element={<McpAdminPage />} />
+                <Route path="/skills" element={<SkillsAdminPage />} />
               </Routes>
             </AdminLayout>
           </ProtectedRoute>

@@ -15,7 +15,9 @@ import { KnowledgeBase } from './models/KnowledgeBase.js';
 import { ingestAgentsFromMarkdown, ingestKnowledgeFromAgents } from './services/agentIngestionService.js';
 import { restoreDeployedApps } from './routes/vibeAppRuntime.js';
 import { mcpRouter } from './routes/mcp.js';
+import { skillRouter } from './routes/skill.js';
 import { disconnectAllMcpServers } from './services/mcpService.js';
+import { seedBuiltinSkills } from './lib/builtinSkills.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -71,6 +73,8 @@ app.use(compileRouter.routes());
 app.use(compileRouter.allowedMethods());
 app.use(mcpRouter.routes());
 app.use(mcpRouter.allowedMethods());
+app.use(skillRouter.routes());
+app.use(skillRouter.allowedMethods());
 
 // ─── 启动 ──────────────────────────────────────────────────────────────────────
 
@@ -135,6 +139,9 @@ const bootstrap = async () => {
 
   // 自动检测并初始化数据
   await autoSeedIfEmpty();
+
+  // 初始化内置 Skill
+  await seedBuiltinSkills();
 
   // 恢复已部署的 Vibe App 后端（动态路由）
   await restoreDeployedApps();
