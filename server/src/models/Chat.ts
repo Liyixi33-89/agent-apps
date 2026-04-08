@@ -27,7 +27,7 @@ export interface IChat extends Document {
 const chatMessageSchema = new Schema<IChatMessage>(
   {
     role: { type: String, enum: ['user', 'assistant', 'system'], required: true },
-    content: { type: String, required: true },
+    content: { type: String, default: '' },
     modelType: { type: String, enum: ['text', 'vision'], default: 'text' },
     provider: { type: String, enum: ['ollama', 'openai'], default: 'openai' },
     timestamp: { type: Date, default: Date.now },

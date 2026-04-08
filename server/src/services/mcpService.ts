@@ -99,11 +99,15 @@ const connectStdio = async (serverKey: string, command: string, args: string[], 
   }
 
   return new Promise((resolve, reject) => {
-    const childProcess = spawn(command, args, {
+    // Windows 下使用 shell 模式时，如果 command 路径含空格需要用引号包裹
+    const isWin = process.platform === 'win32';
+    const safeCommand = isWin && command.includes(' ') ? `"${command}"` : command;
+
+    const childProcess = spawn(safeCommand, args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...process.env, ...envVars },
       cwd: cwd || undefined,
-      shell: process.platform === 'win32',
+      shell: isWin,
     });
 
     const connection = {
@@ -169,24 +173,38 @@ const connectStdio = async (serverKey: string, command: string, args: string[], 
       activeProcesses.delete(serverKey);
     });
 
-    // 等待进程启动（给 100ms 缓冲）
+    // 等待进程启动（给 2s 缓冲，Python 进程启动较慢）
     setTimeout(() => {
       if (childProcess.killed || childProcess.exitCode !== null) {
         reject(new Error('MCP Server 进程启动失败'));
       } else {
         resolve();
       }
-    }, 100);
+    }, 2000);
   });
 };
 
 /**
  * 向 stdio MCP Server 发送 JSON-RPC 请求
+ * 通知消息（method 以 notifications/ 开头）不需要等待响应
  */
 const sendStdioRequest = async (serverKey: string, method: string, params?: Record<string, unknown>): Promise<unknown> => {
   const connection = activeProcesses.get(serverKey);
   if (!connection) {
     throw new Error(`MCP Server "${serverKey}" 未连接（stdio）`);
+  }
+
+  // 通知消息：不带 id，不等待响应
+  const isNotification = method.startsWith('notifications/');
+  if (isNotification) {
+    const notification = {
+      jsonrpc: '2.0' as const,
+      method,
+      ...(params ? { params } : {}),
+    };
+    const data = JSON.stringify(notification) + '\n';
+    connection.process.stdin?.write(data);
+    return undefined;
   }
 
   const id = ++connection.requestId;
@@ -531,6 +549,22 @@ export const executeMcpTool = async (toolName: string, args: Record<string, unkn
       // 保持原始文本
     }
 
+    // 对超长文本内容做智能截取，避免占满 LLM 上下文 token
+    const MAX_TOOL_CONTENT_LENGTH = 8000;
+    if (typeof data === 'string' && data.length > MAX_TOOL_CONTENT_LENGTH) {
+      const truncated = data.slice(0, MAX_TOOL_CONTENT_LENGTH);
+      // 尝试在最后一个完整段落处截断，避免截断在句子中间
+      const lastParagraph = truncated.lastIndexOf('\n\n');
+      const lastNewline = truncated.lastIndexOf('\n');
+      const cutPoint = lastParagraph > MAX_TOOL_CONTENT_LENGTH * 0.7
+        ? lastParagraph
+        : lastNewline > MAX_TOOL_CONTENT_LENGTH * 0.8
+          ? lastNewline
+          : MAX_TOOL_CONTENT_LENGTH;
+      data = truncated.slice(0, cutPoint) + `\n\n[内容已截取前 ${cutPoint} 字符，原始内容共 ${(data as string).length} 字符]`;
+      console.log(`[MCP:${toolName}] 返回内容过长(${(textContent).length}字符)，已截取至 ${cutPoint} 字符`);
+    }
+
     return { toolName, success: true, data };
   } catch (err: unknown) {
     return {
@@ -579,11 +613,17 @@ export const getMcpToolDefinitions = async (): Promise<ToolDefinition[]> => {
         }
       }
 
+      // 增强 MCP 工具描述，引导 LLM 正确传参
+      let enhancedDescription = `[MCP:${server.name}] ${tool.description}`;
+      if (tool.name === 'fetch') {
+        enhancedDescription += '\n\n使用建议：抓取网页时建议设置 max_length=5000 获取足够内容。如果需要获取更多内容，可以通过 start_index 参数分页获取。对于新闻、文章类页面，建议不要设置 raw=true 以获得更易读的 Markdown 格式。';
+      }
+
       tools.push({
         type: 'function',
         function: {
           name: `mcp_${server.key}_${tool.name}`,
-          description: `[MCP:${server.name}] ${tool.description}`,
+          description: enhancedDescription,
           parameters: {
             type: 'object',
             properties,

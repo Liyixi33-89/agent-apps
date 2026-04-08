@@ -232,7 +232,7 @@ chatRouter.post('/chat/stream', async (ctx) => {
           }
         }
         // 保存并结束
-        chat.messages.push({ role: 'assistant', content: toolResponse.content, timestamp: new Date(), provider: chat.provider, modelType: chat.modelType });
+        chat.messages.push({ role: 'assistant', content: toolResponse.content || '', timestamp: new Date(), provider: chat.provider, modelType: chat.modelType });
         await chat.save();
         send({ type: 'done', content: toolResponse.content });
         res.end();
@@ -279,7 +279,7 @@ chatRouter.post('/chat/stream', async (ctx) => {
             toolName: tc.function.name,
             success: result.success,
             summary: result.success
-              ? JSON.stringify(result.data).slice(0, 300)
+              ? JSON.stringify(result.data).slice(0, 800)
               : result.error,
           });
 
@@ -288,14 +288,22 @@ chatRouter.post('/chat/stream', async (ctx) => {
       );
 
       // 将工具结果注入消息（tool role）
+      // 限制单个工具结果最大长度，避免超大内容占满 LLM 上下文 token
+      const MAX_TOOL_RESULT_LENGTH = 8000;
       for (const { tc, result } of toolResults) {
+        let toolContent = result.success
+          ? JSON.stringify(result.data)
+          : `工具调用失败：${result.error}`;
+
+        if (toolContent.length > MAX_TOOL_RESULT_LENGTH) {
+          toolContent = toolContent.slice(0, MAX_TOOL_RESULT_LENGTH) + `\n\n[内容已截取前 ${MAX_TOOL_RESULT_LENGTH} 字符]`;
+        }
+
         toolMessages.push({
           role: 'tool' as const,
           tool_call_id: tc.id || tc.function.name,
           name: tc.function.name,
-          content: result.success
-            ? JSON.stringify(result.data)
-            : `工具调用失败：${result.error}`,
+          content: toolContent,
         } as any);
       }
 
@@ -310,7 +318,7 @@ chatRouter.post('/chat/stream', async (ctx) => {
       if (m.role === 'tool') {
         return {
           role: 'user' as const,
-          content: `[工具 ${m.name} 返回结果]\n${m.content}`,
+          content: `[工具 ${m.name} 返回结果]\n请基于以下工具返回的内容回答用户的问题，用中文总结关键信息：\n${m.content}`,
         };
       }
       // 移除 assistant 消息中的 tool_calls 字段（流式接口不需要）
@@ -320,7 +328,9 @@ chatRouter.post('/chat/stream', async (ctx) => {
       return m;
     });
 
-    const stream = streamWithContinuation(streamMessages, { provider: chat.provider, modelType: chat.modelType });
+    // Chat 场景下禁用续写机制（maxContinuations=0），避免不必要的截断检测
+    // 续写机制主要为 Vibe Coding 代码生成场景设计
+    const stream = streamWithContinuation(streamMessages, { provider: chat.provider, modelType: chat.modelType, maxContinuations: 0 });
     let fullContent = '';
 
     for await (const chunk of stream) {
