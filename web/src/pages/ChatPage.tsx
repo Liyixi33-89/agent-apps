@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Button, Select, Space, Tag, Typography, Spin, Empty, Avatar,
@@ -45,6 +45,11 @@ const ChatPage = () => {
   const [editingTitle, setEditingTitle] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const inputRef = useRef(input);
+  inputRef.current = input;
+
+  // 缓存 remarkGfm 插件数组，避免每次渲染创建新引用导致 ReactMarkdown 重新解析
+  const remarkPlugins = useMemo(() => [remarkGfm], []);
 
   // 消息列表最大数量，防止长对话内存无限增长
   const MAX_MESSAGES = 200;
@@ -155,7 +160,7 @@ const ChatPage = () => {
   };
 
   const handleSend = useCallback(async (text?: string) => {
-    const content = (text ?? input).trim();
+    const content = (text ?? inputRef.current).trim();
     if (!content || streaming || !currentSession) return;
 
     const userMessage: ChatMessage = {
@@ -260,18 +265,18 @@ const ChatPage = () => {
       setActiveSkill(null);
       setSkillSteps([]);
     }
-  }, [input, streaming, currentSession, provider]);
+  }, [streaming, currentSession, provider]);
 
-  const agentOptions = [
+  const agentOptions = useMemo(() => [
     { value: '', label: lang === 'zh' ? '通用助手' : 'General Assistant' },
     ...agents.map((a) => ({
       value: a.slug,
       label: `${a.emoji} ${lang === 'zh' ? a.name.zh : a.name.en}`,
     })),
-  ];
+  ], [agents, lang]);
 
-  // 构建 Bubble 消息列表
-  const bubbleItems = messages
+  // 构建 Bubble 消息列表（使用 useMemo 缓存，避免输入时重新计算所有消息的 Markdown）
+  const bubbleItems = useMemo(() => messages
     .filter((m) => m.role !== 'system')
     .map((msg, i) => ({
       key: i,
@@ -298,7 +303,7 @@ const ChatPage = () => {
         )
         : (
           <div className="group relative prose-dark text-sm">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={remarkPlugins}>{msg.content}</ReactMarkdown>
             <Tooltip title="复制">
               <button
                 className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded bg-white shadow-sm border border-slate-200 text-slate-400 hover:text-sky-500"
@@ -316,71 +321,78 @@ const ChatPage = () => {
           ? { background: '#0284c7', color: 'white', borderRadius: '16px 16px 4px 16px' }
           : { background: 'white', border: '1px solid #e2e8f0', borderRadius: '16px 16px 16px 4px' },
       },
-    }));
+    })), [messages, remarkPlugins]);
 
-  // Skill 执行状态指示器
-  if (activeSkill && streaming) {
-    bubbleItems.push({
-      key: bubbleItems.length + 9000,
-      role: 'assistant',
-      placement: 'start' as const,
-      avatar: <Avatar size={32} style={{ backgroundColor: '#fef3c7' }} icon={<span style={{ fontSize: 16 }}>🎯</span>} />,
-      content: (
-        <div className="text-sm">
-          <div className="flex items-center gap-2 mb-2">
-            <Tag color="orange" className="m-0">Skill</Tag>
-            <span className="font-medium text-slate-700">{activeSkill.name}</span>
-            <Tag color="blue" className="m-0 text-xs">{activeSkill.method}</Tag>
-          </div>
-          {skillSteps.length > 0 && (
-            <div className="space-y-1 mt-2">
-              {skillSteps.map((step) => (
-                <div key={step.stepId} className="flex items-center gap-2 text-xs">
-                  {step.status === 'running' ? (
-                    <Spin size="small" />
-                  ) : step.status === 'success' ? (
-                    <span className="text-green-500">✓</span>
-                  ) : (
-                    <span className="text-red-500">✗</span>
-                  )}
-                  <span className={step.status === 'failed' ? 'text-red-500' : 'text-slate-600'}>
-                    {step.stepLabel}
-                  </span>
-                  {step.error && <span className="text-red-400 text-xs">({step.error})</span>}
-                </div>
-              ))}
+  // 最终气泡列表：基础消息 + Skill 状态 + 流式消息（仅在流式/Skill 状态变化时重新计算，输入时不触发）
+  const finalBubbleItems = useMemo(() => {
+    const items = [...bubbleItems];
+
+    // Skill 执行状态指示器
+    if (activeSkill && streaming) {
+      items.push({
+        key: items.length + 9000,
+        role: 'assistant',
+        placement: 'start' as const,
+        avatar: <Avatar size={32} style={{ backgroundColor: '#fef3c7' }} icon={<span style={{ fontSize: 16 }}>🎯</span>} />,
+        content: (
+          <div className="text-sm">
+            <div className="flex items-center gap-2 mb-2">
+              <Tag color="orange" className="m-0">Skill</Tag>
+              <span className="font-medium text-slate-700">{activeSkill.name}</span>
+              <Tag color="blue" className="m-0 text-xs">{activeSkill.method}</Tag>
             </div>
-          )}
-        </div>
-      ),
-      styles: {
-        content: { background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '16px 16px 16px 4px' },
-      },
-    });
-  }
+            {skillSteps.length > 0 && (
+              <div className="space-y-1 mt-2">
+                {skillSteps.map((step) => (
+                  <div key={step.stepId} className="flex items-center gap-2 text-xs">
+                    {step.status === 'running' ? (
+                      <Spin size="small" />
+                    ) : step.status === 'success' ? (
+                      <span className="text-green-500">✓</span>
+                    ) : (
+                      <span className="text-red-500">✗</span>
+                    )}
+                    <span className={step.status === 'failed' ? 'text-red-500' : 'text-slate-600'}>
+                      {step.stepLabel}
+                    </span>
+                    {step.error && <span className="text-red-400 text-xs">({step.error})</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ),
+        styles: {
+          content: { background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '16px 16px 16px 4px' },
+        },
+      });
+    }
 
-  // 流式消息
-  if (streamingContent) {
-    bubbleItems.push({
-      key: bubbleItems.length,
-      role: 'assistant',
-      placement: 'start' as const,
-      avatar: activeSkill
-        ? <Avatar size={32} style={{ backgroundColor: '#fef3c7' }} icon={<span style={{ fontSize: 16 }}>🎯</span>} />
-        : <Avatar size={32} style={{ backgroundColor: '#f1f5f9' }} icon={<RobotOutlined style={{ color: '#64748b' }} />} />,
-      content: (
-        <div className="prose-dark text-sm">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamingContent}</ReactMarkdown>
-          <span className="typing-cursor" />
-        </div>
-      ),
-      styles: {
-        content: activeSkill
-          ? { background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '16px 16px 16px 4px' }
-          : { background: 'white', border: '1px solid #e2e8f0', borderRadius: '16px 16px 16px 4px' },
-      },
-    });
-  }
+    // 流式消息
+    if (streamingContent) {
+      items.push({
+        key: items.length,
+        role: 'assistant',
+        placement: 'start' as const,
+        avatar: activeSkill
+          ? <Avatar size={32} style={{ backgroundColor: '#fef3c7' }} icon={<span style={{ fontSize: 16 }}>🎯</span>} />
+          : <Avatar size={32} style={{ backgroundColor: '#f1f5f9' }} icon={<RobotOutlined style={{ color: '#64748b' }} />} />,
+        content: (
+          <div className="prose-dark text-sm">
+            <ReactMarkdown remarkPlugins={remarkPlugins}>{streamingContent}</ReactMarkdown>
+            <span className="typing-cursor" />
+          </div>
+        ),
+        styles: {
+          content: activeSkill
+            ? { background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '16px 16px 16px 4px' }
+            : { background: 'white', border: '1px solid #e2e8f0', borderRadius: '16px 16px 16px 4px' },
+        },
+      });
+    }
+
+    return items;
+  }, [bubbleItems, activeSkill, streaming, skillSteps, streamingContent, remarkPlugins]);
 
   // 会话列表侧边栏内容（桌面端和移动端共用）
   const sessionSidebar = (
@@ -611,7 +623,7 @@ const ChatPage = () => {
                 </div>
               )}
               <Bubble.List
-                items={bubbleItems}
+                items={finalBubbleItems}
                 className="space-y-3"
               />
               <div ref={messagesEndRef} />
