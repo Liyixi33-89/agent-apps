@@ -26,8 +26,16 @@ envCandidates.forEach((filePath) => {
   dotenv.config({ path: filePath, override: false });
 });
 
+import crypto from 'node:crypto';
+
+const _nodeEnv = process.env.NODE_ENV || 'development';
+const _isProd = _nodeEnv === 'production';
+
+// 生产环境必须通过环境变量配置敏感信息，开发环境使用安全的随机默认值
+const _devJwtSecret = `dev-secret-${crypto.randomBytes(16).toString('hex')}`;
+
 export const env = {
-  nodeEnv: process.env.NODE_ENV || 'development',
+  nodeEnv: _nodeEnv,
   port: Number(process.env.PORT || 4000),
   mongodbUri: process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/agency_agents',
   clientOrigin: process.env.CLIENT_ORIGIN || 'http://127.0.0.1:5173',
@@ -37,28 +45,37 @@ export const env = {
   ollamaBaseUrl: process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434',
   ollamaTextModel: process.env.OLLAMA_TEXT_MODEL || 'gpt-oss',
   ollamaVisionModel: process.env.OLLAMA_VISION_MODEL || 'qwen3-vl',
-  openaiBaseUrl: process.env.OPENAI_BASE_URL || 'https://api.chatanywhere.tech/v1',
-  openaiApiKey: process.env.OPENAI_API_KEY || 'sk-87Mx8OS3mraPp72NAGf9EBZJAh5aM2wiou2FFuoRzLfm6g7E',
+  openaiBaseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
+  /** OpenAI API Key — 必须通过 .env 或环境变量配置，不提供默认值 */
+  openaiApiKey: process.env.OPENAI_API_KEY || '',
   openaiTextModel: process.env.OPENAI_TEXT_MODEL || 'gpt-4o-mini',
   openaiVisionModel: process.env.OPENAI_VISION_MODEL || 'gpt-4o-mini',
-  /** Pipeline 专用强模型（用于前端/质检/编译修复等关键步骤） */
   pipelineStrongModel: process.env.PIPELINE_STRONG_MODEL || '',
-  /** Pipeline 编程任务 temperature（越低越确定性，推荐 0.2-0.4） */
   pipelineTemperature: Number(process.env.PIPELINE_TEMPERATURE || '0.3'),
-  /**
-   * Pipeline 模型能力等级（决定 Prompt 复杂度、模块数量、代码风格）
-   * - 'high'   : GPT-4o / Claude 3.5 / DeepSeek-V3 等强模型 → 完整 Prompt + 所有模块
-   * - 'medium' : GPT-4o-mini / Qwen2.5-32B / gpt-oss:120b 等中等模型 → 精简 Prompt + 核心模块
-   * - 'low'    : 7B/14B 小模型 → 最简 Prompt + 最少模块 + 骨架代码为主
-   * - 'auto'   : 根据模型名称自动推断（默认）
-   */
   pipelineModelTier: (process.env.PIPELINE_MODEL_TIER || 'auto') as 'high' | 'medium' | 'low' | 'auto',
-  /** Pipeline 每步最大输出 token 数（0 = 使用默认值） */
   pipelineMaxTokens: Number(process.env.PIPELINE_MAX_TOKENS || '0'),
-  jwtSecret: process.env.JWT_SECRET || 'agency-agents-secret-2026',
+  /** JWT Secret — 生产环境必须通过环境变量配置 */
+  jwtSecret: process.env.JWT_SECRET || (_isProd ? '' : _devJwtSecret),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
   workspaceRoot,
   serverRoot
 };
 
-export const isProduction = env.nodeEnv === 'production';
+export const isProduction = _isProd;
+
+// ─── 启动校验：生产环境必须配置的环境变量 ────────────────────────────────────────
+if (_isProd) {
+  const missing: string[] = [];
+  if (!process.env.JWT_SECRET) missing.push('JWT_SECRET');
+  if (!process.env.OPENAI_API_KEY && env.activeProvider === 'openai') missing.push('OPENAI_API_KEY');
+  if (missing.length > 0) {
+    console.error(`❌ 生产环境缺少必要的环境变量: ${missing.join(', ')}`);
+    console.error('   请在 .env 文件或系统环境变量中配置后重启');
+    process.exit(1);
+  }
+} else {
+  // 开发环境提示
+  if (!process.env.OPENAI_API_KEY && env.activeProvider === 'openai') {
+    console.warn('⚠️  未配置 OPENAI_API_KEY，OpenAI 调用将失败。请在 .env 中配置。');
+  }
+}

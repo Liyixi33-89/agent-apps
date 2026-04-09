@@ -62,16 +62,32 @@ adminRouter.post('/login', async (ctx) => {
     return;
   }
 
-  const DEFAULT_PASSWORD = '123456';
   let user = await User.findOne({ username });
+
+  // 仅当数据库中完全没有任何 admin 用户时，才允许通过默认密码创建首个管理员
+  // 一旦系统中存在至少一个 admin，则不再自动创建
   if (!user) {
-    const hash = await bcrypt.hash(DEFAULT_PASSWORD, 10);
-    user = await User.create({
-      username,
-      email: `${username}@agency.local`,
-      passwordHash: hash,
-      role: 'admin',
-    });
+    const adminCount = await User.countDocuments({ role: 'admin' });
+    if (adminCount === 0) {
+      const INIT_PASSWORD = process.env.ADMIN_INIT_PASSWORD || '123456';
+      if (password !== INIT_PASSWORD) {
+        ctx.status = 401;
+        ctx.body = { success: false, message: '初始密码不正确' };
+        return;
+      }
+      const hash = await bcrypt.hash(password, 10);
+      user = await User.create({
+        username,
+        email: `${username}@agency.local`,
+        passwordHash: hash,
+        role: 'admin',
+      });
+      console.log(`[Admin] 🔐 首个管理员账户已创建: ${username}`);
+    } else {
+      ctx.status = 401;
+      ctx.body = { success: false, message: '用户不存在' };
+      return;
+    }
   }
 
   const valid = await bcrypt.compare(password, user.passwordHash);

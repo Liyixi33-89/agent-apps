@@ -22,7 +22,7 @@ import { SkillExecution } from '../models/SkillExecution.js';
 import { executeSkill, getSkillExecutionHistory, getSkillStats } from '../services/skillEngine.js';
 import { matchSkill, invalidateSkillCache } from '../services/skillRouter.js';
 
-export const skillRouter = new Router({ prefix: '/api' });
+export const skillRouter = new Router();
 
 // ─── Skill 列表  GET /api/skills ─────────────────────────────────────────────
 
@@ -294,13 +294,13 @@ skillRouter.post('/skills/:key/rollback', async (ctx) => {
     return;
   }
 
-  const versionSnapshot = skill.versions.find(v => v.version === targetVersion);
+  const versionSnapshot = skill.versions.find((v: { version: string }) => v.version === targetVersion);
   if (!versionSnapshot) {
     ctx.status = 400;
     ctx.body = {
       success: false,
       message: `版本 "${targetVersion}" 不存在`,
-      availableVersions: skill.versions.map(v => v.version),
+      availableVersions: skill.versions.map((v: { version: string }) => v.version),
     };
     return;
   }

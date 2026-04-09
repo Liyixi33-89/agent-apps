@@ -35,8 +35,6 @@ import { Agent } from '../models/Agent.js';
 import { Category } from '../models/Category.js';
 import { Pipeline } from '../models/Pipeline.js';
 import { KnowledgeBase } from '../models/KnowledgeBase.js';
-import { SystemPrompt } from '../models/SystemPrompt.js';
-import type { ISystemPrompt } from '../models/SystemPrompt.js';
 import { ingestAgentsFromMarkdown } from '../services/agentIngestionService.js';
 import { env } from '../config/env.js';
 
@@ -51,19 +49,13 @@ import { uploadRouter } from './upload.js';
 import { marketRouter } from './market.js';
 import { agentPlanRouter } from './agentPlan.js';
 import { vibeAppRuntimeRouter } from './vibeAppRuntime.js';
+import { compileRouter } from './compile.js';
+import { mcpRouter } from './mcp.js';
+import { skillRouter } from './skill.js';
 
 // =============================================================================
 // § 1  基础设施 — Prompt 读取工具 / Router 实例
 // =============================================================================
-
-/**
- * 从数据库读取指定 key 的系统提示词内容
- * 若数据库中不存在（未初始化），返回 fallback 默认值
- */
-const getPrompt = async (key: string, fallback = ''): Promise<string> => {
-  const doc = await SystemPrompt.findOne<ISystemPrompt>({ key, isActive: true }).lean();
-  return doc?.content ?? fallback;
-};
 
 export const agentsRouter = new Router({ prefix: '/api' });
 
@@ -185,3 +177,6 @@ agentsRouter.use(uploadRouter.routes(), uploadRouter.allowedMethods());
 agentsRouter.use(marketRouter.routes(), marketRouter.allowedMethods());
 agentsRouter.use(agentPlanRouter.routes(), agentPlanRouter.allowedMethods());
 agentsRouter.use(vibeAppRuntimeRouter.routes(), vibeAppRuntimeRouter.allowedMethods());
+agentsRouter.use(compileRouter.routes(), compileRouter.allowedMethods());
+agentsRouter.use(mcpRouter.routes(), mcpRouter.allowedMethods());
+agentsRouter.use(skillRouter.routes(), skillRouter.allowedMethods());

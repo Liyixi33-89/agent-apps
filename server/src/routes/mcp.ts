@@ -23,7 +23,7 @@ import {
   getMcpServerStatuses,
 } from '../services/mcpService.js';
 
-export const mcpRouter = new Router({ prefix: '/api/mcp' });
+export const mcpRouter = new Router({ prefix: '/mcp' });
 
 // ─── 获取所有 MCP Server 列表 ─────────────────────────────────────────────────
 

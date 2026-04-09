@@ -14,7 +14,7 @@
 import Router from '@koa/router';
 import { compileJsx, type CompileResult } from '../services/compileService.js';
 
-const router = new Router({ prefix: '/api/compile' });
+const router = new Router({ prefix: '/compile' });
 
 /** 最大代码长度（500KB） */
 const MAX_CODE_LENGTH = 500 * 1024;

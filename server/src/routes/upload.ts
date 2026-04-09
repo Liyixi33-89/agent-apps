@@ -46,6 +46,9 @@ uploadRouter.post('/upload/image', upload.single('image'), async (ctx) => {
   const newPath = path.join(UPLOADS_DIR, newName);
   fs.renameSync(file.path, newPath);
 
-  const baseUrl = `http://localhost:${env.port}`;
+  // 使用请求的 host 头动态构建 URL，兼容生产环境
+  const protocol = ctx.request.protocol || 'http';
+  const host = ctx.request.get('host') || `localhost:${env.port}`;
+  const baseUrl = `${protocol}://${host}`;
   ctx.body = { success: true, url: `${baseUrl}/uploads/${newName}` };
 });

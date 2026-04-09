@@ -38,3 +38,9 @@ Thumbs.db
 
 # esbuild WASM（从 node_modules 复制到 public，不提交到 git）
 *.wasm
+
+# 大型种子数据（使用 Git LFS 或手动下载）
+server/seed-data/agents.json
+
+# 上传文件
+server/uploads/

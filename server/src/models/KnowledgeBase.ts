@@ -1,5 +1,6 @@
 import mongoose, { Document, Schema } from 'mongoose';
-import { ILocalizedText } from './Agent.js';
+import { localizedTextSchema } from './shared.js';
+import type { ILocalizedText } from './shared.js';
 
 export interface IKnowledgeChunk {
   chunkId: string;
@@ -26,11 +27,6 @@ export interface IKnowledgeBase extends Document {
   createdAt: Date;
   updatedAt: Date;
 }
-
-const localizedTextSchema = new Schema<ILocalizedText>(
-  { zh: { type: String, default: '' }, en: { type: String, default: '' } },
-  { _id: false }
-);
 
 const knowledgeChunkSchema = new Schema<IKnowledgeChunk>(
   {

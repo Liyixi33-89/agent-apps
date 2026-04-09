@@ -1,9 +1,6 @@
 import mongoose, { Document, Schema } from 'mongoose';
-
-export interface ILocalizedText {
-  zh: string;
-  en: string;
-}
+import { localizedTextSchema, type ILocalizedText } from './shared.js';
+export type { ILocalizedText } from './shared.js';
 
 export interface ISection {
   key: string;
@@ -50,11 +47,6 @@ export interface IAgent extends Document {
   createdAt: Date;
   updatedAt: Date;
 }
-
-const localizedTextSchema = new Schema<ILocalizedText>(
-  { zh: { type: String, default: '' }, en: { type: String, default: '' } },
-  { _id: false }
-);
 
 const sectionSchema = new Schema<ISection>(
   {

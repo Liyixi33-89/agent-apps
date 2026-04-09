@@ -5,17 +5,14 @@ import koaStatic from 'koa-static';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { env } from './config/env.js';
+import { env, isProduction } from './config/env.js';
 import { connectToMongo, disconnectFromMongo } from './db/mongo.js';
 import { agentsRouter } from './routes/agents.js';
 import { adminRouter } from './routes/admin.js';
-import { compileRouter } from './routes/compile.js';
 import { Agent } from './models/Agent.js';
 import { KnowledgeBase } from './models/KnowledgeBase.js';
 import { ingestAgentsFromMarkdown, ingestKnowledgeFromAgents } from './services/agentIngestionService.js';
 import { restoreDeployedApps } from './routes/vibeAppRuntime.js';
-import { mcpRouter } from './routes/mcp.js';
-import { skillRouter } from './routes/skill.js';
 import { disconnectAllMcpServers } from './services/mcpService.js';
 import { seedBuiltinSkills } from './lib/builtinSkills.js';
 
@@ -53,11 +50,14 @@ app.use(koaStatic(UPLOADS_DIR, { prefix: '/uploads' }));
 app.use(async (ctx, next) => {
   try {
     await next();
-  } catch (error: any) {
-    ctx.status = error.status || 500;
+  } catch (error: unknown) {
+    const err = error as { status?: number; message?: string };
+    ctx.status = err.status || 500;
     ctx.body = {
       success: false,
-      message: error.message || 'Internal server error'
+      message: isProduction && ctx.status === 500
+        ? 'Internal server error'
+        : (err.message || 'Internal server error'),
     };
     ctx.app.emit('error', error, ctx);
   }
@@ -69,12 +69,6 @@ app.use(agentsRouter.routes());
 app.use(agentsRouter.allowedMethods());
 app.use(adminRouter.routes());
 app.use(adminRouter.allowedMethods());
-app.use(compileRouter.routes());
-app.use(compileRouter.allowedMethods());
-app.use(mcpRouter.routes());
-app.use(mcpRouter.allowedMethods());
-app.use(skillRouter.routes());
-app.use(skillRouter.allowedMethods());
 
 // ─── 启动 ──────────────────────────────────────────────────────────────────────
 
