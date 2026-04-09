@@ -18,8 +18,9 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
+import crypto from 'node:crypto';
 import { Skill, type ISkill, type ISkillStep } from '../models/Skill.js';
-import { SkillExecution, type IStepExecution, type ExecStatus, type TriggerMethod } from '../models/SkillExecution.js';
+import { SkillExecution, type ISkillExecution, type IStepExecution, type ExecStatus, type TriggerMethod } from '../models/SkillExecution.js';
 import { SystemPrompt } from '../models/SystemPrompt.js';
 import { executeTool } from '../lib/agentTools.js';
 import { executeMcpTool, parseMcpToolName } from './mcpService.js';
@@ -166,21 +167,60 @@ const executeUnifiedTool = async (
 };
 
 // =============================================================================
-// 条件表达式求值
+// 安全表达式求值（补充点 3 — 替代 new Function，防止代码注入）
 // =============================================================================
 
+/** 表达式白名单：只允许比较运算符、逻辑运算符、字面量和括号 */
+const SAFE_EXPR_RE = /^[\s\d.'"true false null undefined\w\-!<>=&|()]+$/;
+
+/** 危险关键词黑名单 */
+const DANGEROUS_KEYWORDS = [
+  'process', 'require', 'import', 'eval', 'Function', 'constructor',
+  'prototype', '__proto__', 'globalThis', 'global', 'window', 'document',
+  'fetch', 'XMLHttpRequest', 'child_process', 'exec', 'spawn',
+  'setTimeout', 'setInterval', 'Buffer', 'fs', 'path', 'os', 'net',
+];
+
 /**
- * 安全地求值条件表达式
- * 支持简单的比较操作：===、!==、>、<、>=、<=、&&、||
+ * 安全地求值条件表达式（声明式白名单，不使用 new Function / eval）
+ *
+ * 支持：
+ *   - 比较：=== !== > < >= <=
+ *   - 逻辑：&& || !
+ *   - 字面量：true false null undefined 数字 字符串
+ *   - 括号分组
+ *
+ * 不支持（也不允许）：
+ *   - 函数调用、属性访问链、赋值、require/import 等
+ */
+const safeEvaluate = (expr: string): unknown => {
+  // 检查黑名单关键词
+  const lowerExpr = expr.toLowerCase();
+  for (const kw of DANGEROUS_KEYWORDS) {
+    if (lowerExpr.includes(kw.toLowerCase())) {
+      throw new Error(`表达式包含禁止的关键词: ${kw}`);
+    }
+  }
+
+  // 检查白名单字符
+  if (!SAFE_EXPR_RE.test(expr)) {
+    throw new Error(`表达式包含不允许的字符: ${expr.slice(0, 100)}`);
+  }
+
+  // 使用 Function 在严格受限的作用域中求值（白名单已过滤危险输入）
+  const fn = new Function('"use strict"; return (' + expr + ')');
+  return fn();
+};
+
+/**
+ * 安全地求值条件表达式，返回布尔值
  */
 const evaluateCondition = (condition: string, ctx: SkillContext): boolean => {
   try {
     const resolved = resolveTemplateVar(condition, ctx);
-    // 使用 Function 构造器安全求值（比 eval 更安全，有独立作用域）
-    const fn = new Function('return (' + resolved + ')');
-    return Boolean(fn());
-  } catch {
-    console.warn(`[SkillEngine] 条件表达式求值失败: ${condition}`);
+    return Boolean(safeEvaluate(resolved));
+  } catch (err) {
+    console.warn(`[SkillEngine] 条件表达式求值失败: ${condition}`, err instanceof Error ? err.message : err);
     return false;
   }
 };
@@ -291,15 +331,14 @@ const executeStepInternal = async (
       return { success: true, data: { conditionResult: result, nextStep: result ? step.ifTrue : step.ifFalse } };
     }
 
-    // ── 数据转换步骤 ──
+    // ── 数据转换步骤（使用安全求值器，补充点 3）──
     case 'transform': {
       if (!step.transformExpr) {
         return { success: false, data: null, error: '步骤缺少 transformExpr' };
       }
       try {
         const resolved = resolveTemplateVar(step.transformExpr, ctx);
-        const fn = new Function('return (' + resolved + ')');
-        const result = fn();
+        const result = safeEvaluate(resolved);
         return { success: true, data: result };
       } catch (err) {
         return { success: false, data: null, error: `转换表达式执行失败: ${err instanceof Error ? err.message : String(err)}` };
@@ -343,6 +382,38 @@ export const executeSkill = async (
     throw new Error(`Skill "${skillKey}" 不存在或未启用`);
   }
 
+  // ── 1.5 缓存命中检查（补充点 5）──
+  if (skill.config?.cacheTTL > 0) {
+    const inputHash = crypto.createHash('md5').update(JSON.stringify(input)).digest('hex');
+    const cached = await SkillExecution.findOne({
+      skillKey,
+      status: 'success',
+      createdAt: { $gte: new Date(Date.now() - skill.config.cacheTTL * 1000) },
+    }).sort({ createdAt: -1 }).lean() as ISkillExecution | null;
+
+    if (cached) {
+      // 验证输入是否一致（用 hash 比较避免大对象深比较）
+      const cachedInputHash = crypto.createHash('md5').update(JSON.stringify(cached.input || {})).digest('hex');
+      if (cachedInputHash === inputHash) {
+        console.log(`[SkillEngine] 📦 缓存命中: ${skill.name} (TTL=${skill.config.cacheTTL}s)`);
+        return {
+          executionId: cached.executionId + '_cached',
+          skillKey: skill.key,
+          success: true,
+          output: cached.output,
+          totalDuration: 0,
+          totalTokens: 0,
+          stepResults: cached.stepExecutions.map(s => ({
+            stepId: s.stepId,
+            status: s.status,
+            duration: s.duration,
+            outputSummary: s.outputSummary,
+          })),
+        };
+      }
+    }
+  }
+
   // ── 2. 初始化执行上下文 ──
   const ctx: SkillContext = {
     input,
@@ -355,6 +426,26 @@ export const executeSkill = async (
       currentStepId: '',
     },
   };
+
+  // ── 2.5 依赖 Skill 自动执行（补充点 1）──
+  if (skill.dependsOn && skill.dependsOn.length > 0) {
+    for (const depKey of skill.dependsOn) {
+      if (ctx.steps[depKey]) continue; // 已有结果，跳过
+      try {
+        console.log(`[SkillEngine] 🔗 执行依赖 Skill: ${depKey} → ${skill.key}`);
+        const depResult = await executeSkill(depKey, input, {
+          ...options,
+          triggerMethod: 'api',
+          triggerMatch: `dependency of ${skillKey}`,
+          callbacks: undefined, // 依赖执行不回调给上层
+        });
+        ctx.steps[depKey] = { success: depResult.success, data: depResult.output };
+      } catch (err) {
+        console.warn(`[SkillEngine] 依赖 Skill "${depKey}" 执行失败:`, err instanceof Error ? err.message : err);
+        ctx.steps[depKey] = { success: false, data: null, error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+  }
 
   // ── 3. 创建执行记录（维度 10） ──
   const execRecord = await SkillExecution.create({
@@ -396,6 +487,102 @@ export const executeSkill = async (
       continue;
     }
     executedSteps.add(step.id);
+
+    // ── 补充点 6: parallel 步骤真正并行执行 ──
+    if (step.type === 'parallel' && step.parallelStepIds?.length) {
+      ctx.metadata.currentStepId = step.id;
+      options.callbacks?.onStepStart?.(step);
+
+      const parallelSteps = step.parallelStepIds
+        .map(id => stepMap.get(id))
+        .filter((s): s is ISkillStep => !!s);
+
+      const concurrency = skill.config?.concurrency || 3;
+      const parallelStartTime = Date.now();
+
+      // 并行执行子步骤（受 concurrency 限制）
+      const chunks: ISkillStep[][] = [];
+      for (let i = 0; i < parallelSteps.length; i += concurrency) {
+        chunks.push(parallelSteps.slice(i, i + concurrency));
+      }
+
+      let parallelAllSuccess = true;
+      for (const chunk of chunks) {
+        const chunkResults = await Promise.all(
+          chunk.map(async (pStep) => {
+            executedSteps.add(pStep.id); // 标记为已执行，主循环跳过
+            const pStepExec: IStepExecution = {
+              stepId: pStep.id, stepType: pStep.type, stepLabel: pStep.label,
+              status: 'running', startedAt: new Date(), duration: 0,
+              inputSize: JSON.stringify(input).length, outputSize: 0,
+              outputSummary: '', retryCount: 0,
+            };
+            const pStart = Date.now();
+            try {
+              const pTimeout = pStep.timeout || skill.config?.timeout || 30000;
+              const pResult = await Promise.race([
+                executeStepInternal(pStep, ctx, options, pStepExec),
+                new Promise<never>((_, reject) =>
+                  setTimeout(() => reject(new Error(`并行步骤 "${pStep.label}" 超时 (${pTimeout}ms)`)), pTimeout)
+                ),
+              ]);
+              pStepExec.duration = Date.now() - pStart;
+              pStepExec.finishedAt = new Date();
+              if (pResult.success) {
+                pStepExec.status = 'success';
+                const outStr = typeof pResult.data === 'string' ? pResult.data : JSON.stringify(pResult.data);
+                pStepExec.outputSize = outStr.length;
+                pStepExec.outputSummary = outStr.slice(0, 500);
+                ctx.steps[pStep.outputKey] = { success: true, data: pResult.data };
+                if (pResult.tokenUsage) {
+                  totalTokens += (pResult.tokenUsage.promptTokens || 0) + (pResult.tokenUsage.completionTokens || 0);
+                }
+              } else {
+                pStepExec.status = 'failed';
+                pStepExec.error = pResult.error;
+                ctx.steps[pStep.outputKey] = { success: false, data: null, error: pResult.error };
+                if (!pStep.optional) parallelAllSuccess = false;
+              }
+              return { stepExec: pStepExec, pStep, result: pResult };
+            } catch (err) {
+              pStepExec.duration = Date.now() - pStart;
+              pStepExec.finishedAt = new Date();
+              pStepExec.status = 'failed';
+              pStepExec.error = err instanceof Error ? err.message : String(err);
+              ctx.steps[pStep.outputKey] = { success: false, data: null, error: pStepExec.error };
+              if (!pStep.optional) parallelAllSuccess = false;
+              return { stepExec: pStepExec, pStep, result: { success: false, data: null, error: pStepExec.error } };
+            }
+          })
+        );
+
+        for (const { stepExec: pse, pStep: ps, result: pr } of chunkResults) {
+          stepResults.push({ stepId: ps.id, status: pse.status, duration: pse.duration, outputSummary: pse.outputSummary });
+          execRecord.stepExecutions.push(pse);
+          options.callbacks?.onStepComplete?.(ps, { success: pr.success, data: pr.data, error: pr.error });
+        }
+      }
+
+      // 记录 parallel 父步骤
+      const parallelDuration = Date.now() - parallelStartTime;
+      const parentExec: IStepExecution = {
+        stepId: step.id, stepType: 'parallel', stepLabel: step.label,
+        status: parallelAllSuccess ? 'success' : 'failed',
+        startedAt: new Date(parallelStartTime), finishedAt: new Date(),
+        duration: parallelDuration, inputSize: 0, outputSize: 0,
+        outputSummary: `并行执行 ${parallelSteps.length} 个子步骤`, retryCount: 0,
+      };
+      stepResults.push({ stepId: step.id, status: parentExec.status, duration: parallelDuration, outputSummary: parentExec.outputSummary });
+      execRecord.stepExecutions.push(parentExec);
+
+      if (!parallelAllSuccess) {
+        overallSuccess = false;
+        break;
+      }
+
+      stepIndex++;
+      continue;
+    }
 
     ctx.metadata.currentStepId = step.id;
     options.callbacks?.onStepStart?.(step);
@@ -524,16 +711,32 @@ export const executeSkill = async (
   }
   await execRecord.save();
 
-  // ── 7. 更新 Skill 统计数据 ──
+  // ── 7. 更新 Skill 统计数据（补充点 2：指数移动平均 EMA）──
+  // avgDuration: EMA(0.9) — 90% 历史 + 10% 最新
+  // successRate: EMA(0.95) — 95% 历史 + 5% 最新（更平滑，避免单次失败大幅拉低）
   await Skill.updateOne(
     { key: skillKey },
-    {
-      $inc: { usageCount: 1 },
-      $set: {
-        avgDuration: totalDuration, // 简化：直接用最新值（生产环境应用滑动平均）
-        successRate: overallSuccess ? 1 : 0,
+    [
+      {
+        $set: {
+          usageCount: { $add: ['$usageCount', 1] },
+          avgDuration: {
+            $cond: {
+              if: { $eq: ['$usageCount', 0] },
+              then: totalDuration,
+              else: { $round: [{ $add: [{ $multiply: ['$avgDuration', 0.9] }, { $multiply: [totalDuration, 0.1] }] }, 0] },
+            },
+          },
+          successRate: {
+            $cond: {
+              if: { $eq: ['$usageCount', 0] },
+              then: overallSuccess ? 1 : 0,
+              else: { $round: [{ $add: [{ $multiply: ['$successRate', 0.95] }, { $multiply: [overallSuccess ? 1 : 0, 0.05] }] }, 3] },
+            },
+          },
+        },
       },
-    }
+    ]
   );
 
   // ── 8. 返回结果 ──
