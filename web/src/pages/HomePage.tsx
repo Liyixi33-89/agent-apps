@@ -121,7 +121,7 @@ const HomePage = () => {
     { to: '/vibe',      icon: <ThunderboltOutlined />, labelZh: 'Vibe Coding', labelEn: 'Vibe Coding',     descZh: '自然语言生成代码',    descEn: 'Generate code from natural language', color: '#f59e0b' },
     { to: '/chat',      icon: <MessageOutlined />,     labelZh: '开始对话',    labelEn: 'Start Chat',       descZh: '与 Agent 实时交流',   descEn: 'Chat with agents in real-time',       color: '#0284c7' },
     { to: '/knowledge', icon: <BookOutlined />,        labelZh: '知识库',      labelEn: 'Knowledge',        descZh: '浏览 RAG 知识库',     descEn: 'Browse RAG knowledge base',           color: '#10b981' },
-    { to: '/pipelines', icon: <BranchesOutlined />,    labelZh: '流水线',      labelEn: 'Pipelines',        descZh: '查看工作流编排',      descEn: 'View workflow pipelines',             color: '#7c3aed' },
+    { to: '/pipelines', icon: <BranchesOutlined />,    labelZh: '工作流',      labelEn: 'Workflows',        descZh: '应用场景一键生成',    descEn: 'One-click scenario generation',       color: '#7c3aed' },
   ];
 
   if (loading) {

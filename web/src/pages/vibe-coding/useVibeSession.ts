@@ -157,6 +157,29 @@ export const useVibeSession = () => {
     }
   }, []);
 
+  // ─── 从 URL 读取 prompt / mode 参数（从 Pipeline 场景跳转） ───────────────
+  useEffect(() => {
+    const urlPrompt = searchParams.get('prompt');
+    const urlMode = searchParams.get('mode');
+
+    if (urlPrompt) {
+      setInput(urlPrompt);
+      // 清除 URL 参数，避免刷新时重复填充
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('prompt');
+        next.delete('mode');
+        return next;
+      }, { replace: true });
+
+      // 根据 mode 设置全栈模式
+      if (urlMode === 'fullstack') {
+        setIsFullStackMode(true);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // 仅在组件挂载时执行一次
+
   // ─── 创建或复用会话 ───────────────────────────────────────────────────────
   const ensureSession = useCallback(async (): Promise<VibeSession> => {
     if (session) return session;

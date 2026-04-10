@@ -21,7 +21,7 @@ const navItems = [
   { path: '/market',    labelZh: '模板市场',     labelEn: 'Template Market', icon: <AppstoreOutlined />,          exact: false },
   { path: '/chat',      labelZh: '对话',         labelEn: 'Chat',            icon: <MessageOutlined />,           exact: false },
   { path: '/knowledge', labelZh: '知识库',       labelEn: 'Knowledge',       icon: <BookOutlined />,              exact: false },
-  { path: '/pipelines', labelZh: '流水线',       labelEn: 'Pipelines',       icon: <BranchesOutlined />,          exact: false },
+  { path: '/pipelines', labelZh: '工作流',       labelEn: 'Workflows',       icon: <BranchesOutlined />,          exact: false },
   { path: '/plan',      labelZh: '任务规划',     labelEn: 'Plan & Execute',  icon: <CheckSquareOutlined />,       exact: false },
   { path: '/multi-agent', labelZh: '多Agent协作',  labelEn: 'Multi-Agent',     icon: <TeamOutlined />,              exact: false },
   { path: '/memory',      labelZh: 'Agent 记忆',   labelEn: 'Memory',          icon: <BulbOutlined />,              exact: false },
