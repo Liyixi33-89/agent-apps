@@ -586,3 +586,87 @@ export const fetchExtensionsStatus = async (): Promise<ExtensionsStatus> => {
   const { data } = await api.get<{ success: boolean; data: ExtensionsStatus }>('/extensions/status');
   return data.data;
 };
+
+// ─── Agent 评估/反馈 ────────────────────────────────────────────────────────
+
+/** 提交用户评分/反馈 */
+export const submitEvaluation = async (params: {
+  agentSlug: string;
+  chatId?: string;
+  messageId?: string;
+  rating: number;
+  feedback?: string;
+  userInput: string;
+  agentOutput: string;
+}) => {
+  const { data } = await api.post<{ success: boolean; data: unknown }>('/evaluations', params);
+  return data;
+};
+
+/** 获取 Agent 评估统计 */
+export const fetchAgentEvalStats = async (agentSlug: string) => {
+  const { data } = await api.get<{ success: boolean; data: {
+    userRating: { avgRating: number; totalRatings: number };
+    autoQuality: { avgOverall: number; totalEvals: number };
+    recentFeedback: Array<{ feedback: string; rating: number; createdAt: string }>;
+  } }>(`/evaluations/${agentSlug}/stats`);
+  return data.data;
+};
+
+// ─── OAuth 登录 ──────────────────────────────────────────────────────────────
+
+/** 获取可用的 OAuth Provider 列表 */
+export const fetchOAuthProviders = async () => {
+  const { data } = await api.get<{ success: boolean; data: Array<{
+    key: string; name: string; icon: string; enabled: boolean;
+  }> }>('/oauth/providers');
+  return data.data;
+};
+
+// ─── Agent ReAct 自主决策 ────────────────────────────────────────────────────
+
+import type { ReActSSEEvent } from '../types';
+
+/** 执行 ReAct 自主决策循环（SSE 流式） */
+export const executeReActLoop = (
+  prompt: string,
+  options: { provider?: string; maxIterations?: number },
+  onEvent: (event: ReActSSEEvent) => void,
+  onError?: (err: Error) => void
+): (() => void) => {
+  const controller = new AbortController();
+
+  fetch('/api/agent/react', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt, ...options }),
+    signal: controller.signal,
+  })
+    .then(async (res) => {
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const event = JSON.parse(line.slice(6)) as ReActSSEEvent;
+            onEvent(event);
+          } catch { /* 忽略 */ }
+        }
+      }
+    })
+    .catch((err: unknown) => {
+      if (err instanceof Error && err.name === 'AbortError') return;
+      onError?.(err instanceof Error ? err : new Error(String(err)));
+    });
+
+  return () => controller.abort();
+};

@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import {
   Cpu, Play, Zap, ChevronDown, ChevronRight, CheckCircle2,
   XCircle, Clock, SkipForward, Loader2, Wrench, ListChecks,
-  AlertCircle, Send, RotateCcw, ChevronUp,
+  AlertCircle, Send, RotateCcw, ChevronUp, Brain, Eye, Lightbulb,
 } from 'lucide-react';
 import clsx from 'clsx';
 import {
@@ -11,8 +11,9 @@ import {
   executeAgentPlan,
   fetchAgentTools,
   callAgentTool,
+  executeReActLoop,
 } from '../api';
-import type { ExecutionPlan, PlanStep, StepStatus, TaskComplexity, ToolDefinition, PlanSSEEvent } from '../types';
+import type { ExecutionPlan, PlanStep, StepStatus, TaskComplexity, ToolDefinition, PlanSSEEvent, ReActSSEEvent } from '../types';
 import { useAppStore } from '../store';
 
 // ─── 常量 ──────────────────────────────────────────────────────────────────────
@@ -267,7 +268,7 @@ const ToolsPanel = ({ tools }: ToolsPanelProps) => {
 
 // ─── 主页面 ────────────────────────────────────────────────────────────────────
 
-type TabKey = 'plan' | 'tools';
+type TabKey = 'plan' | 'react' | 'tools';
 
 const AgentPlanPage = () => {
   const { activeProvider } = useAppStore();
@@ -291,6 +292,11 @@ const AgentPlanPage = () => {
   const [tools, setTools] = useState<ToolDefinition[]>([]);
   const [toolsLoaded, setToolsLoaded] = useState(false);
 
+  // ReAct 状态
+  const [reactSteps, setReactSteps] = useState<Array<{ index: number; thought: string; action?: string; actionInput?: Record<string, unknown>; observation?: string; isFinal: boolean; finalAnswer?: string; duration: number }>>([]);
+  const [reactRunning, setReactRunning] = useState(false);
+  const [reactResult, setReactResult] = useState<{ finalAnswer: string; totalSteps: number; toolCallCount: number; totalDuration: number } | null>(null);
+
   const cleanupRef = useRef<(() => void) | null>(null);
 
   // 加载工具列表
@@ -300,6 +306,45 @@ const AgentPlanPage = () => {
       .then((res) => { setTools(res.tools); setToolsLoaded(true); })
       .catch(() => {});
   }, [activeTab, toolsLoaded]);
+
+  // ReAct 执行
+  const handleReActExecute = useCallback(() => {
+    if (!prompt.trim() || reactRunning) return;
+    setReactSteps([]);
+    setReactResult(null);
+    setReactRunning(true);
+    setErrorMsg('');
+
+    const cleanup = executeReActLoop(
+      prompt.trim(),
+      { provider: activeProvider },
+      (event: ReActSSEEvent) => {
+        switch (event.type) {
+          case 'react_step':
+            setReactSteps((prev) => [...prev, event.step]);
+            break;
+          case 'done':
+            setReactResult({
+              finalAnswer: event.finalAnswer,
+              totalSteps: event.totalSteps,
+              toolCallCount: event.toolCallCount,
+              totalDuration: event.totalDuration,
+            });
+            setReactRunning(false);
+            break;
+          case 'error':
+            setErrorMsg(event.message);
+            setReactRunning(false);
+            break;
+        }
+      },
+      (err) => {
+        setErrorMsg(err.message);
+        setReactRunning(false);
+      }
+    );
+    cleanupRef.current = cleanup;
+  }, [prompt, reactRunning, activeProvider]);
 
   // 重置
   const handleReset = useCallback(() => {
@@ -420,7 +465,7 @@ const AgentPlanPage = () => {
 
           {/* Tab 切换 */}
           <div className="ml-auto flex items-center gap-1 bg-slate-100 rounded-lg p-1">
-            {([['plan', '规划执行', ListChecks], ['tools', '工具调试', Wrench]] as const).map(([key, label, Icon]) => (
+            {([['plan', '规划执行', ListChecks], ['react', 'ReAct 自主', Brain], ['tools', '工具调试', Wrench]] as const).map(([key, label, Icon]) => (
               <button
                 key={key}
                 className={clsx(
@@ -573,6 +618,137 @@ const AgentPlanPage = () => {
                   <pre className="text-sm text-slate-700 whitespace-pre-wrap break-words leading-relaxed">
                     {finalResult}
                   </pre>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── ReAct 自主决策 Tab ── */}
+          {activeTab === 'react' && (
+            <>
+              {/* 输入区 */}
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 space-y-3">
+                <label className="text-sm font-semibold text-slate-700 flex items-center gap-2" htmlFor="react-prompt">
+                  <Brain className="w-4 h-4 text-violet-500" />
+                  ReAct 自主决策模式
+                </label>
+                <p className="text-xs text-slate-400">
+                  Agent 会自主思考、调用工具、观察结果，循环直到找到答案。适合复杂的探索性任务。
+                </p>
+                <textarea
+                  id="react-prompt"
+                  className="w-full h-28 px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-violet-400 focus:bg-white resize-none transition-colors"
+                  placeholder="例如：帮我分析一下项目中有哪些 Agent，并推荐最适合做代码审查的..."
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  disabled={reactRunning}
+                  aria-label="ReAct 任务描述"
+                />
+                <div className="flex items-center gap-2">
+                  <button
+                    className={clsx(
+                      'flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all',
+                      reactRunning
+                        ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                        : 'bg-violet-600 text-white hover:bg-violet-700 shadow-sm'
+                    )}
+                    onClick={handleReActExecute}
+                    disabled={reactRunning || !prompt.trim()}
+                    tabIndex={0}
+                    aria-label="开始 ReAct 循环"
+                  >
+                    {reactRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Brain className="w-4 h-4" />}
+                    {reactRunning ? '思考中...' : '开始思考'}
+                  </button>
+                  {(reactSteps.length > 0 || reactResult) && (
+                    <button
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs text-slate-500 hover:bg-slate-100 transition-colors"
+                      onClick={() => { setReactSteps([]); setReactResult(null); setErrorMsg(''); }}
+                      tabIndex={0}
+                      aria-label="重置"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      重置
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* ReAct 步骤时间线 */}
+              {reactSteps.length > 0 && (
+                <div className="space-y-3">
+                  {reactSteps.map((step, i) => (
+                    <div key={i} className={clsx(
+                      'rounded-xl border p-4 space-y-2 transition-all',
+                      step.isFinal ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-white'
+                    )}>
+                      <div className="flex items-center gap-2 text-xs text-slate-400">
+                        <span className="font-mono">#{step.index}</span>
+                        <span className="text-slate-300">|</span>
+                        <span>{step.duration}ms</span>
+                      </div>
+
+                      {/* Thought */}
+                      <div className="flex items-start gap-2">
+                        <Lightbulb className="w-3.5 h-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
+                        <div className="text-sm text-slate-700">
+                          <span className="text-xs font-semibold text-amber-600 mr-1">Thought:</span>
+                          {step.thought}
+                        </div>
+                      </div>
+
+                      {/* Action */}
+                      {step.action && (
+                        <div className="flex items-start gap-2">
+                          <Wrench className="w-3.5 h-3.5 text-sky-500 mt-0.5 flex-shrink-0" />
+                          <div className="text-sm">
+                            <span className="text-xs font-semibold text-sky-600 mr-1">Action:</span>
+                            <code className="text-xs bg-sky-50 px-1.5 py-0.5 rounded text-sky-700">{step.action}</code>
+                            {step.actionInput && Object.keys(step.actionInput).length > 0 && (
+                              <pre className="mt-1 text-[10px] bg-slate-50 rounded-lg p-2 text-slate-600 overflow-auto max-h-24">
+                                {JSON.stringify(step.actionInput, null, 2)}
+                              </pre>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Observation */}
+                      {step.observation && (
+                        <div className="flex items-start gap-2">
+                          <Eye className="w-3.5 h-3.5 text-violet-500 mt-0.5 flex-shrink-0" />
+                          <div className="text-sm">
+                            <span className="text-xs font-semibold text-violet-600 mr-1">Observation:</span>
+                            <pre className="mt-1 text-[10px] bg-slate-50 rounded-lg p-2 text-slate-600 overflow-auto max-h-32 whitespace-pre-wrap">
+                              {step.observation}
+                            </pre>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Final Answer */}
+                      {step.finalAnswer && (
+                        <div className="flex items-start gap-2 mt-2 pt-2 border-t border-emerald-200">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5 flex-shrink-0" />
+                          <div className="text-sm text-emerald-800 whitespace-pre-wrap">
+                            {step.finalAnswer}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* ReAct 结果统计 */}
+              {reactResult && (
+                <div className="bg-white rounded-2xl border border-emerald-200 shadow-sm p-4">
+                  <div className="flex items-center gap-4 text-xs text-slate-500">
+                    <span>✅ 完成</span>
+                    <span>步骤: {reactResult.totalSteps}</span>
+                    <span>工具调用: {reactResult.toolCallCount} 次</span>
+                    <span>总耗时: {(reactResult.totalDuration / 1000).toFixed(1)}s</span>
+                  </div>
                 </div>
               )}
             </>

@@ -23,8 +23,8 @@ import {
 } from '@ant-design/icons';
 import {
   fetchMcpServers, createMcpServer, updateMcpServer, deleteMcpServer,
-  connectMcpServer, disconnectMcpServer,
-  type McpServerConfig,
+  connectMcpServer, disconnectMcpServer, callMcpTool,
+  type McpServerConfig, type McpTool,
 } from '../api';
 
 const { Text, Paragraph } = Typography;
@@ -60,7 +60,7 @@ const TransportTag = ({ type }: { type: 'stdio' | 'sse' }) => {
 
 // ─── 工具列表展示 ──────────────────────────────────────────────────────────────
 
-const ToolList = ({ tools }: { tools: McpServerConfig['tools'] }) => {
+const ToolList = ({ tools, onTestTool }: { tools: McpServerConfig['tools']; onTestTool?: (tool: McpTool) => void }) => {
   if (!tools || tools.length === 0) {
     return <Text type="secondary">暂无工具（请先连接 Server）</Text>;
   }
@@ -79,6 +79,17 @@ const ToolList = ({ tools }: { tools: McpServerConfig['tools'] }) => {
               <Tag color="default" className="text-xs">
                 {tool.parameters?.length || 0} 个参数
               </Tag>
+              {onTestTool && (
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<ThunderboltOutlined />}
+                  onClick={() => onTestTool(tool)}
+                  className="text-xs p-0 h-auto"
+                >
+                  测试
+                </Button>
+              )}
             </div>
             <Paragraph
               type="secondary"
@@ -91,6 +102,129 @@ const ToolList = ({ tools }: { tools: McpServerConfig['tools'] }) => {
         </div>
       ))}
     </div>
+  );
+};
+
+// ─── MCP 工具测试弹窗 ─────────────────────────────────────────────────────────
+
+interface ToolTestModalProps {
+  open: boolean;
+  tool: McpTool | null;
+  onClose: () => void;
+}
+
+const ToolTestModal = ({ open, tool, onClose }: ToolTestModalProps) => {
+  const [argsJson, setArgsJson] = useState('{}');
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<{ success: boolean; data?: unknown; error?: string } | null>(null);
+
+  useEffect(() => {
+    if (open && tool) {
+      // 根据工具参数生成默认 JSON 模板
+      const schema = tool.inputSchema as Record<string, unknown> | undefined;
+      const properties = (schema?.properties || {}) as Record<string, { type?: string; description?: string }>;
+      const template: Record<string, string> = {};
+      for (const [key, val] of Object.entries(properties)) {
+        template[key] = val.description ? `<${val.description}>` : '';
+      }
+      setArgsJson(JSON.stringify(template, null, 2));
+      setResult(null);
+    }
+  }, [open, tool]);
+
+  const handleExecute = async () => {
+    if (!tool) return;
+    setLoading(true);
+    setResult(null);
+    try {
+      let parsedArgs: Record<string, unknown> = {};
+      try {
+        parsedArgs = JSON.parse(argsJson);
+        // 清理模板占位符
+        for (const [key, val] of Object.entries(parsedArgs)) {
+          if (typeof val === 'string' && val.startsWith('<') && val.endsWith('>')) {
+            delete parsedArgs[key];
+          }
+        }
+      } catch {
+        message.error('参数 JSON 格式不正确');
+        setLoading(false);
+        return;
+      }
+      const res = await callMcpTool(tool.name, parsedArgs);
+      setResult(res);
+    } catch (err: unknown) {
+      setResult({ success: false, error: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Modal
+      title={
+        <div className="flex items-center gap-2">
+          <ThunderboltOutlined className="text-amber-500" />
+          <span>测试工具：{tool?.name}</span>
+        </div>
+      }
+      open={open}
+      onCancel={onClose}
+      footer={null}
+      width={700}
+      destroyOnClose
+    >
+      {tool && (
+        <div className="space-y-4 mt-4">
+          {/* 工具描述 */}
+          <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
+            <Text type="secondary" className="text-sm">{tool.description || '无描述'}</Text>
+          </div>
+
+          {/* 参数输入 */}
+          <div>
+            <Text strong className="text-sm block mb-2">请求参数（JSON）</Text>
+            <Input.TextArea
+              value={argsJson}
+              onChange={(e) => setArgsJson(e.target.value)}
+              rows={8}
+              className="font-mono text-xs"
+              placeholder='{"key": "value"}'
+            />
+          </div>
+
+          {/* 执行按钮 */}
+          <Button
+            type="primary"
+            icon={<ThunderboltOutlined />}
+            loading={loading}
+            onClick={handleExecute}
+            block
+          >
+            执行工具调用
+          </Button>
+
+          {/* 结果展示 */}
+          {result && (
+            <div className="space-y-2">
+              <Text strong className="text-sm block">
+                执行结果
+                {result.success
+                  ? <Tag color="success" className="ml-2">成功</Tag>
+                  : <Tag color="error" className="ml-2">失败</Tag>
+                }
+              </Text>
+              <pre className="p-4 rounded-lg bg-slate-900 text-green-400 text-xs overflow-auto max-h-80 whitespace-pre-wrap">
+                {result.error
+                  ? result.error
+                  : JSON.stringify(result, null, 2)
+                }
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
+    </Modal>
   );
 };
 
@@ -285,6 +419,8 @@ const McpAdminPage = () => {
   const [formOpen, setFormOpen] = useState(false);
   const [editingServer, setEditingServer] = useState<McpServerConfig | null>(null);
   const [connectingKeys, setConnectingKeys] = useState<Set<string>>(new Set());
+  const [testToolOpen, setTestToolOpen] = useState(false);
+  const [testingTool, setTestingTool] = useState<McpTool | null>(null);
 
   // 加载 MCP Server 列表
   const loadServers = useCallback(async () => {
@@ -557,7 +693,13 @@ const McpAdminPage = () => {
                       <ToolOutlined className="mr-1" />
                       工具列表（{server.tools?.length || 0}）
                     </Text>
-                    <ToolList tools={server.tools} />
+                    <ToolList
+                      tools={server.tools}
+                      onTestTool={(tool) => {
+                        setTestingTool(tool);
+                        setTestToolOpen(true);
+                      }}
+                    />
                   </div>
 
                   {/* 操作按钮 */}
@@ -620,6 +762,13 @@ const McpAdminPage = () => {
         onClose={() => { setFormOpen(false); setEditingServer(null); }}
         onSuccess={loadServers}
         editingServer={editingServer}
+      />
+
+      {/* MCP 工具测试弹窗 */}
+      <ToolTestModal
+        open={testToolOpen}
+        tool={testingTool}
+        onClose={() => { setTestToolOpen(false); setTestingTool(null); }}
       />
     </div>
   );

@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
-import { BookOpen, Plus, Trash2, ChevronLeft, ChevronRight, X, RefreshCw, Loader2, Database, Sparkles } from 'lucide-react';
-import { fetchAdminKnowledge, createKnowledge, deleteKnowledge, triggerAdminIngest, triggerKnowledgeIngest } from '../api';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { BookOpen, Plus, Trash2, ChevronLeft, ChevronRight, X, RefreshCw, Loader2, Database, Sparkles, Upload, Globe, FileText } from 'lucide-react';
+import { fetchAdminKnowledge, createKnowledge, deleteKnowledge, triggerAdminIngest, triggerKnowledgeIngest, uploadDocumentToKnowledge, refreshUrlKnowledge, refreshAllUrlKnowledge } from '../api';
 
 interface KnowledgeItem {
   _id: string;
@@ -23,6 +23,9 @@ const KnowledgeAdminPage = () => {
   const [ingestLoading, setIngestLoading] = useState(false);
   const [knowledgeIngestLoading, setKnowledgeIngestLoading] = useState(false);
   const [ingestMsg, setIngestMsg] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [refreshingUrls, setRefreshingUrls] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState({
     titleZh: '', titleEn: '', content: '',
     sourceType: 'text' as 'markdown' | 'text' | 'url',
@@ -111,6 +114,41 @@ const KnowledgeAdminPage = () => {
     }
   };
 
+  // 文档上传处理
+  const handleDocumentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setIngestMsg('');
+    try {
+      const result = await uploadDocumentToKnowledge(file);
+      setIngestMsg(result.message || `✅ 文档已导入：${result.data.chunkCount} 个知识块`);
+      await loadItems();
+    } catch (err) {
+      setIngestMsg('❌ 文档上传失败');
+      console.error('Document upload failed', err);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  // URL 知识源批量刷新
+  const handleRefreshAllUrls = async () => {
+    setRefreshingUrls(true);
+    setIngestMsg('');
+    try {
+      const result = await refreshAllUrlKnowledge();
+      setIngestMsg(`✅ URL 刷新完成：共 ${result.total} 个，更新 ${result.updated}，未变 ${result.unchanged}，失败 ${result.errors}`);
+      await loadItems();
+    } catch (err) {
+      setIngestMsg('❌ URL 刷新失败');
+      console.error('URL refresh failed', err);
+    } finally {
+      setRefreshingUrls(false);
+    }
+  };
+
   const totalPages = Math.ceil(total / 20);
 
   return (
@@ -146,6 +184,36 @@ const KnowledgeAdminPage = () => {
           >
             {knowledgeIngestLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
             生成知识库
+          </button>
+          <button
+            className="btn-secondary flex items-center gap-1.5 text-blue-600 border-blue-200 hover:bg-blue-50"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            aria-label="上传文档"
+            tabIndex={0}
+            title="上传 PDF/Word/Excel/TXT 文档，自动解析并导入知识库"
+          >
+            {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+            上传文档
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.docx,.xlsx,.xls,.txt,.md"
+            className="hidden"
+            onChange={handleDocumentUpload}
+            aria-hidden="true"
+          />
+          <button
+            className="btn-secondary flex items-center gap-1.5 text-orange-600 border-orange-200 hover:bg-orange-50"
+            onClick={handleRefreshAllUrls}
+            disabled={refreshingUrls}
+            aria-label="刷新 URL 知识源"
+            tabIndex={0}
+            title="重新抓取所有 URL 类型知识源的内容"
+          >
+            {refreshingUrls ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
+            刷新 URL
           </button>
           <button className="btn-primary" onClick={() => setShowCreate(true)} aria-label="新建知识条目" tabIndex={0}>
             <Plus className="w-4 h-4" />
@@ -286,7 +354,19 @@ const KnowledgeAdminPage = () => {
                     <div className="text-sm text-slate-700 font-medium">{item.title.zh || item.title.en}</div>
                     <div className="text-xs text-slate-400 truncate max-w-48">{item.title.en}</div>
                   </td>
-                  <td className="px-4 py-3"><span className="badge bg-slate-100 text-slate-500">{item.sourceType}</span></td>
+                  <td className="px-4 py-3">
+                    <span className={`badge ${
+                      item.sourceType === 'url' ? 'bg-orange-100 text-orange-600' :
+                      item.sourceType === 'pdf' || item.sourceType === 'docx' || item.sourceType === 'xlsx' ? 'bg-blue-100 text-blue-600' :
+                      'bg-slate-100 text-slate-500'
+                    }`}>
+                      {item.sourceType === 'pdf' ? '📄 PDF' :
+                       item.sourceType === 'docx' ? '📝 Word' :
+                       item.sourceType === 'xlsx' ? '📊 Excel' :
+                       item.sourceType === 'url' ? '🔗 URL' :
+                       item.sourceType}
+                    </span>
+                  </td>
                   <td className="px-4 py-3"><span className="text-xs text-slate-500">{item.categoryKey || '-'}</span></td>
                   <td className="px-4 py-3"><span className="text-xs text-slate-500">{item.stats.chunkCount}</span></td>
                   <td className="px-4 py-3"><span className="text-xs text-slate-400">{new Date(item.createdAt).toLocaleDateString()}</span></td>

@@ -12,7 +12,7 @@ export interface IKnowledgeChunk {
 export interface IKnowledgeBase extends Document {
   title: ILocalizedText;
   description: ILocalizedText;
-  sourceType: 'markdown' | 'text' | 'url';
+  sourceType: 'markdown' | 'text' | 'url' | 'pdf' | 'docx' | 'xlsx';
   sourcePath?: string;
   sourceUrl?: string;
   categoryKey?: string;
@@ -42,7 +42,7 @@ const knowledgeBaseSchema = new Schema<IKnowledgeBase>(
   {
     title: localizedTextSchema,
     description: localizedTextSchema,
-    sourceType: { type: String, enum: ['markdown', 'text', 'url'], default: 'markdown' },
+    sourceType: { type: String, enum: ['markdown', 'text', 'url', 'pdf', 'docx', 'xlsx'], default: 'markdown' },
     sourcePath: { type: String },
     sourceUrl: { type: String },
     categoryKey: { type: String, index: true },

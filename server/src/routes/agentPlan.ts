@@ -241,3 +241,82 @@ agentPlanRouter.get('/agent/tools', async (ctx) => {
     },
   };
 });
+
+// ─── ReAct 自主决策模式（SSE）  POST /api/agent/react ────────────────────────
+
+import { executeReActLoop } from '../lib/reactLoop.js';
+
+agentPlanRouter.post('/agent/react', async (ctx) => {
+  const {
+    prompt,
+    provider = env.activeProvider,
+    modelType = 'text',
+    maxIterations = 8,
+    systemPromptPrefix,
+  } = ctx.request.body as {
+    prompt: string;
+    provider?: string;
+    modelType?: string;
+    maxIterations?: number;
+    systemPromptPrefix?: string;
+  };
+
+  if (!prompt?.trim()) {
+    ctx.status = 400;
+    ctx.body = { success: false, message: '请提供任务描述' };
+    return;
+  }
+
+  ctx.set({
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+  ctx.status = 200;
+
+  const res = ctx.res;
+  const send = (data: Record<string, unknown>) => {
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+
+  send({ type: 'start', mode: 'react', message: '启动 ReAct 自主决策循环...' });
+
+  try {
+    const result = await executeReActLoop(prompt, {
+      provider,
+      modelType,
+      maxIterations,
+      systemPromptPrefix,
+      onStepComplete: (step) => {
+        send({
+          type: 'react_step',
+          step: {
+            index: step.index,
+            thought: step.thought,
+            action: step.action,
+            actionInput: step.actionInput,
+            observation: step.observation?.slice(0, 1000),
+            isFinal: step.isFinal,
+            finalAnswer: step.finalAnswer?.slice(0, 2000),
+            duration: step.duration,
+          },
+        });
+      },
+    });
+
+    send({
+      type: 'done',
+      success: result.success,
+      finalAnswer: result.finalAnswer,
+      totalSteps: result.totalSteps,
+      toolCallCount: result.toolCallCount,
+      totalDuration: result.totalDuration,
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    send({ type: 'error', message });
+  } finally {
+    res.end();
+  }
+});

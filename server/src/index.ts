@@ -17,6 +17,7 @@ import { restoreDeployedApps } from './routes/vibeAppRuntime.js';
 import { disconnectAllMcpServers } from './services/mcpService.js';
 import { seedBuiltinSkills } from './lib/builtinSkills.js';
 import { seedBuiltinRoles } from './models/Role.js';
+import { startKnowledgeScheduler, stopKnowledgeScheduler } from './services/knowledgeScheduler.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -147,6 +148,9 @@ const bootstrap = async () => {
   // 恢复已部署的 Vibe App 后端（动态路由）
   await restoreDeployedApps();
 
+  // 启动知识库 URL 定时更新（每 6 小时）
+  startKnowledgeScheduler(6);
+
   const server = app.listen(env.port, () => {
     console.log(`🚀 Agency Agents Platform v2.0 running on http://127.0.0.1:${env.port}`);
     console.log(`📦 Provider: ${env.activeProvider}`);
@@ -158,6 +162,7 @@ const bootstrap = async () => {
   });
 
   const shutdown = async () => {
+    stopKnowledgeScheduler();
     disconnectAllMcpServers();
     server.close(async () => {
       await disconnectFromMongo();

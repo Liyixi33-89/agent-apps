@@ -809,10 +809,74 @@ export const installMcpTemplate = async (key: string, overrides?: Record<string,
   return data;
 };
 
+/** 调用 MCP 工具（测试台） */
+export const callMcpTool = async (name: string, args: Record<string, unknown> = {}): Promise<{ success: boolean; content?: unknown; error?: string }> => {
+  const { data } = await runtimeApi.post<{ success: boolean; content?: unknown; error?: string }>('/mcp/tools/call', { name, arguments: args });
+  return data;
+};
+
+// ─── 文档上传 ────────────────────────────────────────────────────────────────
+
+/** 上传文档并解析（PDF/Word/Excel/TXT） */
+export const uploadDocument = async (file: File) => {
+  const formData = new FormData();
+  formData.append('document', file);
+  const { data } = await runtimeApi.post<{ success: boolean; data: {
+    fileName: string; fileType: string; content: string;
+    wordCount: number; pageCount?: number; parseTime: number;
+    contentPreview: string;
+  } }>('/upload/document', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120_000,
+  });
+  return data.data;
+};
+
+/** 上传文档并导入知识库 */
+export const uploadDocumentToKnowledge = async (
+  file: File,
+  options?: { categoryKey?: string; agentSlug?: string; tags?: string; maxChunkSize?: number }
+) => {
+  const formData = new FormData();
+  formData.append('document', file);
+  if (options?.categoryKey) formData.append('categoryKey', options.categoryKey);
+  if (options?.agentSlug) formData.append('agentSlug', options.agentSlug);
+  if (options?.tags) formData.append('tags', options.tags);
+  if (options?.maxChunkSize) formData.append('maxChunkSize', String(options.maxChunkSize));
+  const { data } = await runtimeApi.post<{ success: boolean; data: {
+    knowledgeId: string; title: string; fileType: string;
+    wordCount: number; chunkCount: number; pageCount?: number; parseTime: number;
+  }; message: string }>('/upload/document-to-knowledge', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120_000,
+  });
+  return data;
+};
+
 // ─── 扩展功能状态 ────────────────────────────────────────────────────────────
 
 /** 获取扩展功能状态 */
 export const fetchExtensionsStatus = async () => {
   const { data } = await runtimeApi.get<{ success: boolean; data: Record<string, unknown> }>('/extensions/status');
+  return data.data;
+};
+
+// ─── 知识库 URL 刷新 ────────────────────────────────────────────────────────
+
+/** 刷新单个 URL 知识源 */
+export const refreshUrlKnowledge = async (id: string) => {
+  const { data } = await api.post<{ success: boolean; data: {
+    knowledgeId: string; title: string; url: string;
+    status: 'updated' | 'unchanged' | 'error'; message?: string;
+    newWordCount?: number; newChunkCount?: number;
+  } }>(`/knowledge/${id}/refresh-url`);
+  return data.data;
+};
+
+/** 刷新所有 URL 知识源 */
+export const refreshAllUrlKnowledge = async () => {
+  const { data } = await api.post<{ success: boolean; data: {
+    total: number; updated: number; unchanged: number; errors: number;
+  } }>('/knowledge/refresh-all-urls');
   return data.data;
 };

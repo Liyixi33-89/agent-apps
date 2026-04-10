@@ -19,6 +19,7 @@ import {
 } from '../api';
 import { useAppStore } from '../store';
 import type { ChatSession, ChatMessage, Agent, Provider, ModelType } from '../types';
+import MessageRating from '../components/MessageRating';
 
 const { Text } = Typography;
 
@@ -314,6 +315,13 @@ const ChatPage = () => {
                 <CopyOutlined style={{ fontSize: 12 }} />
               </button>
             </Tooltip>
+            <MessageRating
+              agentSlug={selectedAgent || 'default'}
+              chatId={currentSession?.sessionId}
+              messageId={`msg_${i}`}
+              userInput={messages.filter((m) => m.role !== 'system')[i - 1]?.content || ''}
+              agentOutput={msg.content}
+            />
           </div>
         ),
       styles: {

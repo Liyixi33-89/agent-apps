@@ -101,6 +101,20 @@ export const env = {
   /** 是否启用多租户模式 */
   multiTenantEnabled: process.env.MULTI_TENANT_ENABLED === 'true',
 
+  // ─── OAuth 第三方登录 ──────────────────────────────────────────────────────
+  /** GitHub OAuth */
+  githubClientId: process.env.GITHUB_CLIENT_ID || '',
+  githubClientSecret: process.env.GITHUB_CLIENT_SECRET || '',
+  /** Google OAuth */
+  googleClientId: process.env.GOOGLE_CLIENT_ID || '',
+  googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
+  /** 企业微信 OAuth */
+  wechatCorpId: process.env.WECHAT_CORP_ID || '',
+  wechatCorpSecret: process.env.WECHAT_CORP_SECRET || '',
+  wechatAgentId: process.env.WECHAT_AGENT_ID || '',
+  /** OAuth 回调基础 URL */
+  oauthCallbackBase: process.env.OAUTH_CALLBACK_BASE || 'http://127.0.0.1:4000',
+
   // ─── RAG 向量检索 ─────────────────────────────────────────────────────────
   /** 向量嵌入 Provider（使用 LLM Provider 的 embedding 接口） */
   embeddingProvider: (process.env.EMBEDDING_PROVIDER || 'openai') as LLMProvider,

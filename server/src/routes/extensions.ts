@@ -478,6 +478,72 @@ extensionsRouter.get('/extensions/status', async (ctx) => {
         enabled: true,
         templateCount: MCP_TEMPLATES.length,
       },
+      evaluation: {
+        enabled: true,
+      },
     },
   };
+});
+
+// =============================================================================
+// 8. Agent 评估体系
+// =============================================================================
+
+import { submitUserRating, autoEvaluateQuality, getAgentEvalStats } from '../services/evaluationService.js';
+
+/** 提交用户评分/反馈  POST /api/evaluations */
+extensionsRouter.post('/evaluations', async (ctx) => {
+  const body = ctx.request.body as {
+    agentSlug: string;
+    chatId?: string;
+    messageId?: string;
+    rating: number;
+    feedback?: string;
+    userInput: string;
+    agentOutput: string;
+    evaluatedBy?: string;
+  };
+
+  if (!body.agentSlug || !body.userInput || !body.agentOutput) {
+    ctx.status = 400;
+    ctx.body = { success: false, message: '缺少必填字段：agentSlug, userInput, agentOutput' };
+    return;
+  }
+
+  if (body.rating && (body.rating < 1 || body.rating > 5)) {
+    ctx.status = 400;
+    ctx.body = { success: false, message: '评分范围为 1-5' };
+    return;
+  }
+
+  const evaluation = await submitUserRating(body);
+  ctx.body = { success: true, data: evaluation };
+});
+
+/** 触发自动质量评估  POST /api/evaluations/auto */
+extensionsRouter.post('/evaluations/auto', async (ctx) => {
+  const body = ctx.request.body as {
+    agentSlug: string;
+    chatId?: string;
+    messageId?: string;
+    userInput: string;
+    agentOutput: string;
+    provider?: string;
+    model?: string;
+  };
+
+  if (!body.agentSlug || !body.userInput || !body.agentOutput) {
+    ctx.status = 400;
+    ctx.body = { success: false, message: '缺少必填字段' };
+    return;
+  }
+
+  const evaluation = await autoEvaluateQuality(body);
+  ctx.body = { success: true, data: evaluation };
+});
+
+/** 获取 Agent 评估统计  GET /api/evaluations/:agentSlug/stats */
+extensionsRouter.get('/evaluations/:agentSlug/stats', async (ctx) => {
+  const stats = await getAgentEvalStats(ctx.params.agentSlug);
+  ctx.body = { success: true, data: stats };
 });

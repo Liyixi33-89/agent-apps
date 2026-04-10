@@ -195,6 +195,13 @@ export type PlanSSEEvent =
   | { type: 'done'; success: boolean; finalResult: string; plan: Pick<ExecutionPlan, 'planId' | 'steps'> }
   | { type: 'error'; message: string };
 
+// ReAct SSE 事件类型
+export type ReActSSEEvent =
+  | { type: 'start'; mode: string; message: string }
+  | { type: 'react_step'; step: { index: number; thought: string; action?: string; actionInput?: Record<string, unknown>; observation?: string; isFinal: boolean; finalAnswer?: string; duration: number } }
+  | { type: 'done'; success: boolean; finalAnswer: string; totalSteps: number; toolCallCount: number; totalDuration: number }
+  | { type: 'error'; message: string };
+
 // ─── 扩展功能类型 ───────────────────────────────────────────────────────────────
 
 /** LLM Provider 信息 */

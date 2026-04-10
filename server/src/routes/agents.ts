@@ -52,6 +52,7 @@ import { vibeAppRuntimeRouter } from './vibeAppRuntime.js';
 import { compileRouter } from './compile.js';
 import { mcpRouter } from './mcp.js';
 import { skillRouter } from './skill.js';
+import { oauthRouter } from './oauth.js';
 
 // =============================================================================
 // § 1  基础设施 — Prompt 读取工具 / Router 实例
@@ -180,3 +181,4 @@ agentsRouter.use(vibeAppRuntimeRouter.routes(), vibeAppRuntimeRouter.allowedMeth
 agentsRouter.use(compileRouter.routes(), compileRouter.allowedMethods());
 agentsRouter.use(mcpRouter.routes(), mcpRouter.allowedMethods());
 agentsRouter.use(skillRouter.routes(), skillRouter.allowedMethods());
+agentsRouter.use(oauthRouter.routes(), oauthRouter.allowedMethods());

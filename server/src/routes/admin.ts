@@ -251,6 +251,22 @@ adminRouter.delete('/knowledge/:id', requireAdmin, async (ctx) => {
   ctx.body = { success: true, message: 'Knowledge entry deleted' };
 });
 
+// ─── 知识库 URL 定时更新 ──────────────────────────────────────────────────────
+
+import { updateUrlKnowledge, updateAllUrlKnowledge } from '../services/knowledgeScheduler.js';
+
+/** 手动触发单个 URL 知识源更新 */
+adminRouter.post('/knowledge/:id/refresh-url', requireAdmin, async (ctx) => {
+  const result = await updateUrlKnowledge(ctx.params.id);
+  ctx.body = { success: result.status !== 'error', data: result };
+});
+
+/** 手动触发所有 URL 知识源更新 */
+adminRouter.post('/knowledge/refresh-all-urls', requireAdmin, async (ctx) => {
+  const result = await updateAllUrlKnowledge();
+  ctx.body = { success: true, data: result };
+});
+
 // ─── 导入管理 ──────────────────────────────────────────────────────────────────
 
 adminRouter.post('/ingest', requireAdmin, async (ctx) => {
