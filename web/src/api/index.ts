@@ -548,7 +548,7 @@ export const executeMultiAgent = async (params: {
     finalOutput?: string;
     rounds?: Array<{ round: number; arguments: CollaborationStepResult[] }>;
     verdict?: string;
-  } }>('/multi-agent/execute', params);
+  } }>('/multi-agent/execute', params, { timeout: 5 * 60_000 }); // 协作任务可能耗时较长，5 分钟超时
   return data.data;
 };
 

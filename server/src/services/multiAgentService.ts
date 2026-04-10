@@ -257,7 +257,7 @@ export const debateCollaboration = async (
         const messages: LLMMessage[] = [
           {
             role: 'system',
-            content: `${systemPrompt}\n\n你正在参与一场关于以下问题的辩论。请从你的专业角度给出独特的观点和论据。${round > 1 ? '请回应其他参与者的观点。' : ''}`,
+            content: `${systemPrompt}\n\n你正在参与一场关于以下问题的辩论。请从你的专业角度给出独特的观点和论据。回答请控制在 300 字以内，突出核心论点。${round > 1 ? '请简要回应其他参与者的观点，并补充新论据。' : ''}`,
           },
           {
             role: 'user',
@@ -296,13 +296,18 @@ export const debateCollaboration = async (
 
   // 裁判总结
   const allArguments = allRounds.flatMap(r =>
-    r.arguments.filter(a => a.status === 'success').map(a => `[第${r.round}轮] ${a.agentName}: ${a.output}`)
+    r.arguments.filter(a => a.status === 'success').map(a => `[第${r.round}轮] ${a.agentName}: ${a.output.slice(0, 500)}`)
   ).join('\n\n');
+
+  // 如果所有辩论都失败了，直接返回空裁决
+  if (!allArguments.trim()) {
+    return { taskId, rounds: allRounds, verdict: '所有参与者的辩论均未成功，无法给出裁决。' };
+  }
 
   const verdictResponse = await callLLM([
     {
       role: 'system',
-      content: '你是一个公正的裁判。请综合所有参与者的观点，给出一个全面、平衡的总结和结论。',
+      content: '你是一个公正的裁判。请综合所有参与者的观点，给出一个全面、平衡的总结和结论。回答请控制在 500 字以内。',
     },
     {
       role: 'user',

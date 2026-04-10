@@ -335,25 +335,38 @@ extensionsRouter.post('/multi-agent/execute', async (ctx) => {
     return;
   }
 
-  let result;
-  switch (mode) {
-    case 'sequential':
-      result = await sequentialCollaboration(userPrompt, agents, { userId: options?.userId });
-      break;
-    case 'parallel':
-      result = await parallelCollaboration(userPrompt, agents, {
-        userId: options?.userId,
-        mergeStrategy: (options?.mergeStrategy as 'concat' | 'llm_merge') || 'llm_merge',
-      });
-      break;
-    case 'debate':
-      result = await debateCollaboration(userPrompt, agents, { rounds: options?.rounds });
-      break;
-    default:
-      result = await sequentialCollaboration(userPrompt, agents, { userId: options?.userId });
-  }
+  // 协作任务可能耗时较长（debate 模式 5+ 次 LLM 调用），设置 5 分钟超时
+  const TIMEOUT_MS = 5 * 60 * 1000;
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error('协作任务超时（5分钟），请减少 Agent 数量或切换为 parallel 模式')), TIMEOUT_MS)
+  );
 
-  ctx.body = { success: true, data: result };
+  try {
+    let taskPromise: Promise<unknown>;
+    switch (mode) {
+      case 'sequential':
+        taskPromise = sequentialCollaboration(userPrompt, agents, { userId: options?.userId });
+        break;
+      case 'parallel':
+        taskPromise = parallelCollaboration(userPrompt, agents, {
+          userId: options?.userId,
+          mergeStrategy: (options?.mergeStrategy as 'concat' | 'llm_merge') || 'llm_merge',
+        });
+        break;
+      case 'debate':
+        taskPromise = debateCollaboration(userPrompt, agents, { rounds: options?.rounds });
+        break;
+      default:
+        taskPromise = sequentialCollaboration(userPrompt, agents, { userId: options?.userId });
+    }
+
+    const result = await Promise.race([taskPromise, timeoutPromise]);
+    ctx.body = { success: true, data: result };
+  } catch (err: unknown) {
+    console.error('[Multi-Agent] 协作执行失败:', err);
+    ctx.status = 500;
+    ctx.body = { success: false, message: err instanceof Error ? err.message : '协作执行失败' };
+  }
 });
 
 /** 获取可用于协作的 Agent 列表 */
