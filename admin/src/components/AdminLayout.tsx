@@ -7,6 +7,7 @@ import {
   DashboardOutlined, RobotOutlined, BookOutlined, BranchesOutlined,
   MessageOutlined, SettingOutlined, LogoutOutlined, MenuOutlined,
   ThunderboltOutlined, AppstoreOutlined, CloudOutlined, ApiOutlined,
+  SafetyOutlined, BarChartOutlined, StarOutlined,
 } from '@ant-design/icons';
 import { useAdminStore } from '../store';
 
@@ -24,6 +25,9 @@ const navItems = [
   { path: '/vibe-apps',       label: '已发布应用', icon: <CloudOutlined /> },
   { path: '/mcp',             label: 'MCP 管理',   icon: <ApiOutlined /> },
   { path: '/skills',          label: 'Skill 管理', icon: <ThunderboltOutlined /> },
+  { path: '/rbac',            label: '权限管理',   icon: <SafetyOutlined /> },
+  { path: '/token-usage',     label: 'Token 用量', icon: <BarChartOutlined /> },
+  { path: '/evaluations',     label: '评估统计',   icon: <StarOutlined /> },
   { path: '/settings',        label: '系统设置',   icon: <SettingOutlined /> },
 ];
 

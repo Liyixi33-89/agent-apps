@@ -13,6 +13,9 @@ import VibeTemplatesAdminPage from './pages/VibeTemplatesAdminPage';
 import VibeAppsAdminPage from './pages/VibeAppsAdminPage';
 import McpAdminPage from './pages/McpAdminPage';
 import SkillsAdminPage from './pages/SkillsAdminPage';
+import RbacAdminPage from './pages/RbacAdminPage';
+import TokenUsagePage from './pages/TokenUsagePage';
+import EvaluationAdminPage from './pages/EvaluationAdminPage';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { isAuthenticated } = useAdminStore();
@@ -40,6 +43,9 @@ const App = () => {
                 <Route path="/vibe-apps" element={<VibeAppsAdminPage />} />
                 <Route path="/mcp" element={<McpAdminPage />} />
                 <Route path="/skills" element={<SkillsAdminPage />} />
+                <Route path="/rbac" element={<RbacAdminPage />} />
+                <Route path="/token-usage" element={<TokenUsagePage />} />
+                <Route path="/evaluations" element={<EvaluationAdminPage />} />
               </Routes>
             </AdminLayout>
           </ProtectedRoute>

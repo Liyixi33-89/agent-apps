@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { BookOpen, Plus, Trash2, ChevronLeft, ChevronRight, X, RefreshCw, Loader2, Database, Sparkles, Upload, Globe, FileText } from 'lucide-react';
-import { fetchAdminKnowledge, createKnowledge, deleteKnowledge, triggerAdminIngest, triggerKnowledgeIngest, uploadDocumentToKnowledge, refreshUrlKnowledge, refreshAllUrlKnowledge } from '../api';
+import { BookOpen, Plus, Trash2, ChevronLeft, ChevronRight, X, RefreshCw, Loader2, Database, Sparkles, Upload, Globe, FileText, Cpu } from 'lucide-react';
+import { fetchAdminKnowledge, createKnowledge, deleteKnowledge, triggerAdminIngest, triggerKnowledgeIngest, uploadDocumentToKnowledge, refreshUrlKnowledge, refreshAllUrlKnowledge, buildAllKnowledgeEmbeddings } from '../api';
 
 interface KnowledgeItem {
   _id: string;
@@ -25,6 +25,7 @@ const KnowledgeAdminPage = () => {
   const [ingestMsg, setIngestMsg] = useState('');
   const [uploading, setUploading] = useState(false);
   const [refreshingUrls, setRefreshingUrls] = useState(false);
+  const [buildingEmbeddings, setBuildingEmbeddings] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState({
     titleZh: '', titleEn: '', content: '',
@@ -149,6 +150,20 @@ const KnowledgeAdminPage = () => {
     }
   };
 
+  // 向量索引构建
+  const handleBuildEmbeddings = async () => {
+    setBuildingEmbeddings(true);
+    setIngestMsg('');
+    try {
+      const result = await buildAllKnowledgeEmbeddings();
+      setIngestMsg(`✅ 向量索引构建完成：${result.totalKBs} 个知识库，${result.embeddedChunks}/${result.totalChunks} 个块已向量化，${result.errors} 个失败`);
+    } catch {
+      setIngestMsg('❌ 向量索引构建失败');
+    } finally {
+      setBuildingEmbeddings(false);
+    }
+  };
+
   const totalPages = Math.ceil(total / 20);
 
   return (
@@ -184,6 +199,17 @@ const KnowledgeAdminPage = () => {
           >
             {knowledgeIngestLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
             生成知识库
+          </button>
+          <button
+            className="btn-secondary flex items-center gap-1.5 text-purple-600 border-purple-200 hover:bg-purple-50"
+            onClick={handleBuildEmbeddings}
+            disabled={buildingEmbeddings}
+            aria-label="构建向量索引"
+            tabIndex={0}
+            title="为所有知识库构建向量索引，支持语义搜索"
+          >
+            {buildingEmbeddings ? <Loader2 className="w-4 h-4 animate-spin" /> : <Cpu className="w-4 h-4" />}
+            构建向量
           </button>
           <button
             className="btn-secondary flex items-center gap-1.5 text-blue-600 border-blue-200 hover:bg-blue-50"

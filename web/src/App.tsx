@@ -15,6 +15,8 @@ const PipelinesPage = lazy(() => import('./pages/PipelinesPage'));
 const AgentPlanPage = lazy(() => import('./pages/AgentPlanPage'));
 const PreviewPage = lazy(() => import('./pages/PreviewPage'));
 const OAuthCallbackPage = lazy(() => import('./pages/OAuthCallbackPage'));
+const MultiAgentPage = lazy(() => import('./pages/MultiAgentPage'));
+const MemoryPage = lazy(() => import('./pages/MemoryPage'));
 
 // 全局加载指示器
 const PageLoading = () => (
@@ -54,6 +56,8 @@ const MainRoutes = () => (
         <Route path="/knowledge" element={<KnowledgePage />} />
         <Route path="/pipelines" element={<PipelinesPage />} />
         <Route path="/plan" element={<AgentPlanPage />} />
+        <Route path="/multi-agent" element={<MultiAgentPage />} />
+        <Route path="/memory" element={<MemoryPage />} />
         <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>

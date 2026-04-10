@@ -7,9 +7,10 @@ import {
   HomeOutlined, RobotOutlined, ThunderboltOutlined, AppstoreOutlined,
   MessageOutlined, BookOutlined, BranchesOutlined, MenuOutlined,
   GlobalOutlined, ApiOutlined, SafetyCertificateOutlined, CheckSquareOutlined,
+  TeamOutlined, LoginOutlined, UserOutlined, BulbOutlined,
 } from '@ant-design/icons';
 import { useAppStore } from '../store';
-import { fetchOverview } from '../api';
+import { fetchOverview, fetchOAuthProviders } from '../api';
 
 const { Sider, Header, Content } = Layout;
 
@@ -22,6 +23,8 @@ const navItems = [
   { path: '/knowledge', labelZh: '知识库',       labelEn: 'Knowledge',       icon: <BookOutlined />,              exact: false },
   { path: '/pipelines', labelZh: '流水线',       labelEn: 'Pipelines',       icon: <BranchesOutlined />,          exact: false },
   { path: '/plan',      labelZh: '任务规划',     labelEn: 'Plan & Execute',  icon: <CheckSquareOutlined />,       exact: false },
+  { path: '/multi-agent', labelZh: '多Agent协作',  labelEn: 'Multi-Agent',     icon: <TeamOutlined />,              exact: false },
+  { path: '/memory',      labelZh: 'Agent 记忆',   labelEn: 'Memory',          icon: <BulbOutlined />,              exact: false },
 ];
 
 interface LayoutProps {
@@ -32,6 +35,9 @@ const AppLayout = ({ children }: LayoutProps) => {
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { lang, setLang, activeProvider, setActiveProvider } = useAppStore();
+  const [oauthProviders, setOauthProviders] = useState<Array<{ key: string; name: string; icon: string; enabled: boolean }>>([]);
+  const isLoggedIn = !!localStorage.getItem('token');
+  const username = localStorage.getItem('username');
 
   // 应用启动时从后端同步真实的 activeProvider
   useEffect(() => {
@@ -42,6 +48,11 @@ const AppLayout = ({ children }: LayoutProps) => {
         }
       })
       .catch((err) => console.warn('同步 Provider 配置失败:', err));
+
+    // 加载 OAuth Provider 列表
+    fetchOAuthProviders()
+      .then((data) => setOauthProviders(data.filter((p) => p.enabled)))
+      .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -129,6 +140,43 @@ const AppLayout = ({ children }: LayoutProps) => {
             <span className="text-xs">管理后台</span>
           </Button>
         </a>
+
+        {/* OAuth 登录 / 用户信息 */}
+        {isLoggedIn ? (
+          <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-sky-50">
+            <UserOutlined style={{ fontSize: 12, color: '#0284c7' }} />
+            <span className="text-xs text-sky-700 truncate flex-1">{username || '已登录'}</span>
+            <Button
+              type="text"
+              size="small"
+              className="text-[10px] text-slate-400 hover:text-red-500 p-0"
+              onClick={() => { localStorage.removeItem('token'); localStorage.removeItem('username'); window.location.reload(); }}
+              aria-label="退出登录"
+            >
+              退出
+            </Button>
+          </div>
+        ) : oauthProviders.length > 0 ? (
+          <div className="space-y-0.5">
+            {oauthProviders.map((p) => (
+              <a
+                key={p.key}
+                href={`/api/oauth/${p.key}`}
+                aria-label={`${p.name} 登录`}
+                tabIndex={0}
+              >
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<LoginOutlined />}
+                  className="w-full text-left text-slate-500 hover:text-sky-600"
+                >
+                  <span className="text-xs">{p.icon} {p.name} 登录</span>
+                </Button>
+              </a>
+            ))}
+          </div>
+        ) : null}
       </div>
     </div>
   );
