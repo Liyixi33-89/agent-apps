@@ -1,5 +1,12 @@
 import axios, { AxiosError } from 'axios';
-import { env } from '../config/env.js';
+import { env, type LLMProvider } from '../config/env.js';
+import {
+  callClaude, streamClaude,
+  callGemini, streamGemini,
+  callDeepSeek, streamDeepSeek,
+  callWithFallback, trackTokenUsage, isOverBudget,
+  getProviderConfig,
+} from './providerRegistry.js';
 
 // ─── 429 重试工具函数 ──────────────────────────────────────────────────────────
 
@@ -58,7 +65,7 @@ export interface LLMMessage {
 
 export interface LLMResponse {
   content: string;
-  provider: 'ollama' | 'openai';
+  provider: LLMProvider;
   model: string;
   usage?: { promptTokens: number; completionTokens: number };
 }
@@ -318,7 +325,7 @@ export interface ToolCall {
 export interface LLMToolResponse {
   content: string;
   toolCalls?: ToolCall[];
-  provider: 'ollama' | 'openai';
+  provider: LLMProvider;
   model: string;
   finishReason?: string;
 }
@@ -330,7 +337,7 @@ export const callLLMWithTools = async (
   tools: unknown[],
   options: {
     modelType?: 'text' | 'vision';
-  provider?: 'ollama' | 'openai';
+  provider?: LLMProvider;
   } = {}
 ): Promise<LLMToolResponse> => {
   const provider = options.provider || env.activeProvider;
@@ -410,27 +417,63 @@ export const callLLMWithTools = async (
 
 // ─── 统一调用入口 ──────────────────────────────────────────────────────────────
 
+/**
+ * 统一非流式调用入口 — 支持所有 Provider + Fallback
+ */
 export const callLLM = async (
   messages: LLMMessage[],
   options: {
     modelType?: 'text' | 'vision';
-  provider?: 'ollama' | 'openai';
+    provider?: LLMProvider;
   } = {}
 ): Promise<LLMResponse> => {
+  // Token 预算检查
+  if (isOverBudget()) {
+    throw new Error('今日 Token 预算已用尽，请明天再试或联系管理员调整配额');
+  }
+
   const provider = options.provider || env.activeProvider;
   const modelType = options.modelType || 'text';
 
-  if (provider === 'openai') {
-    return callOpenAI(messages, modelType);
+  const doCall = async (p: LLMProvider): Promise<LLMResponse> => {
+    let result: LLMResponse;
+    switch (p) {
+      case 'openai':   result = await callOpenAI(messages, modelType); break;
+      case 'ollama':   result = await callOllama(messages, modelType); break;
+      case 'claude':   result = await callClaude(messages, modelType); break;
+      case 'gemini':   result = await callGemini(messages, modelType); break;
+      case 'deepseek': result = await callDeepSeek(messages, modelType); break;
+      default: throw new Error(`不支持的 Provider: ${p}`);
+    }
+    // 追踪 Token 用量
+    if (result.usage) {
+      trackTokenUsage({
+        provider: p,
+        model: result.model,
+        promptTokens: result.usage.promptTokens,
+        completionTokens: result.usage.completionTokens,
+        timestamp: new Date(),
+      });
+    }
+    return result;
+  };
+
+  // 如果启用了 Fallback 策略
+  if (env.modelRoutingStrategy === 'fallback' && env.fallbackProviders.length > 0) {
+    return callWithFallback(doCall, provider);
   }
-  return callOllama(messages, modelType);
+
+  return doCall(provider);
 };
 
+/**
+ * 统一流式调用入口 — 支持所有 Provider
+ */
 export const streamLLM = (
   messages: LLMMessage[],
   options: {
     modelType?: 'text' | 'vision';
-    provider?: 'ollama' | 'openai';
+    provider?: LLMProvider;
     /** 可选：覆盖默认 temperature（编程任务建议 0.2-0.4） */
     temperature?: number;
     /** 可选：覆盖默认 max_tokens / num_predict */
@@ -447,8 +490,22 @@ export const streamLLM = (
     model: options.model,
   };
 
-  if (provider === 'openai') {
-    return streamOpenAI(messages, modelType, extraOptions);
+  switch (provider) {
+    case 'openai':   return streamOpenAI(messages, modelType, extraOptions);
+    case 'ollama':   return streamOllama(messages, modelType, extraOptions);
+    case 'claude':   return streamClaude(messages, modelType, extraOptions);
+    case 'gemini':   return streamGemini(messages, modelType, extraOptions);
+    case 'deepseek': return streamDeepSeek(messages, modelType, extraOptions);
+    default:         return streamOpenAI(messages, modelType, extraOptions);
   }
-  return streamOllama(messages, modelType, extraOptions);
+};
+
+/** 获取所有已配置的 Provider 列表 */
+export const getAvailableProviders = (): Array<{ provider: LLMProvider; configured: boolean; textModel: string; visionModel: string }> => {
+  const providers: LLMProvider[] = ['ollama', 'openai', 'claude', 'gemini', 'deepseek'];
+  return providers.map(p => {
+    const config = getProviderConfig(p);
+    const configured = p === 'ollama' || !!config.apiKey;
+    return { provider: p, configured, textModel: config.textModel, visionModel: config.visionModel };
+  });
 };

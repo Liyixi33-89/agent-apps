@@ -84,7 +84,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: string;
-  provider?: 'ollama' | 'openai';
+  provider?: Provider;
   imageUrl?: string;
 }
 
@@ -95,7 +95,7 @@ export interface ChatSession {
   agentName?: string;
   title: string;
   messages: ChatMessage[];
-  provider: 'ollama' | 'openai';
+  provider: Provider;
   modelType: 'text' | 'vision';
   updatedAt: string;
 }
@@ -120,7 +120,7 @@ export interface OverviewStats {
   knowledgeCount: number;
 }
 
-export type Provider = 'ollama' | 'openai';
+export type Provider = 'ollama' | 'openai' | 'claude' | 'gemini' | 'deepseek';
 export type ModelType = 'text' | 'vision';
 export type Lang = 'zh' | 'en';
 
@@ -194,3 +194,133 @@ export type PlanSSEEvent =
   | { type: 'step_update'; step: { id: string; index: number; title: string; status: StepStatus; result?: string; toolResults?: Array<{ toolName: string; success: boolean; summary?: string }>; error?: string; retryCount: number } }
   | { type: 'done'; success: boolean; finalResult: string; plan: Pick<ExecutionPlan, 'planId' | 'steps'> }
   | { type: 'error'; message: string };
+
+// ─── 扩展功能类型 ───────────────────────────────────────────────────────────────
+
+/** LLM Provider 信息 */
+export interface ProviderInfo {
+  provider: Provider;
+  configured: boolean;
+  textModel: string;
+  visionModel: string;
+}
+
+/** Token 用量统计 */
+export interface TokenUsageStats {
+  totalTokens: number;
+  totalCost: number;
+  callCount: number;
+  avgDuration: number;
+  successRate: number;
+  budget: number;
+  remaining: number;
+}
+
+/** Token 用量记录 */
+export interface TokenUsageRecord {
+  _id: string;
+  provider: string;
+  model: string;
+  callType: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  estimatedCost: number;
+  duration: number;
+  success: boolean;
+  createdAt: string;
+}
+
+/** RBAC 角色 */
+export interface Role {
+  _id: string;
+  key: string;
+  name: string;
+  description: string;
+  permissions: Array<{ resource: string; actions: string[] }>;
+  isBuiltin: boolean;
+  isActive: boolean;
+  createdAt: string;
+}
+
+/** 用户信息（含角色） */
+export interface UserInfo {
+  _id: string;
+  username: string;
+  email: string;
+  role: string;
+  avatar?: string;
+  tenantId?: string;
+  preferences?: {
+    lang: 'zh' | 'en';
+    theme: 'light' | 'dark' | 'auto';
+    defaultProvider?: string;
+  };
+  dailyTokenQuota: number;
+  todayTokenUsed: number;
+  isActive: boolean;
+  lastLoginAt?: string;
+  createdAt: string;
+}
+
+/** Agent 记忆条目 */
+export interface MemoryEntry {
+  memoryId: string;
+  type: 'session' | 'long_term' | 'working';
+  content: string;
+  summary: string;
+  importance: 'low' | 'medium' | 'high' | 'critical';
+  tags: string[];
+  accessCount: number;
+  lastAccessedAt: string;
+  createdAt: string;
+}
+
+/** 语义搜索结果 */
+export interface SemanticSearchResult {
+  knowledgeId: string;
+  title: LocalizedText;
+  chunkId: string;
+  content: LocalizedText;
+  score: number;
+  categoryKey?: string;
+  agentSlug?: string;
+}
+
+/** Multi-Agent 协作模式 */
+export type CollaborationMode = 'sequential' | 'parallel' | 'debate';
+
+/** 协作步骤结果 */
+export interface CollaborationStepResult {
+  agentSlug: string;
+  agentName: string;
+  output: string;
+  duration: number;
+  status: 'success' | 'failed';
+  error?: string;
+}
+
+/** MCP 模板 */
+export interface McpTemplate {
+  key: string;
+  name: string;
+  description: string;
+  icon: string;
+  category: string;
+  transportType: 'stdio' | 'sse';
+  installGuide: string;
+  expectedTools: Array<{ name: string; description: string }>;
+}
+
+/** 扩展功能状态 */
+export interface ExtensionsStatus {
+  multiProvider: { enabled: boolean; activeProvider: string; configuredProviders: string[] };
+  rag: { enabled: boolean; embeddingProvider: string; embeddingModel: string };
+  rbac: { enabled: boolean; builtinRoles: string[] };
+  multiTenant: { enabled: boolean };
+  tokenBudget: { enabled: boolean; dailyBudget: number; userQuota: number };
+  rateLimit: { enabled: boolean; perMinute: number };
+  memory: { enabled: boolean };
+  multiAgent: { enabled: boolean; modes: string[] };
+  mcpMarket: { enabled: boolean; templateCount: number };
+}

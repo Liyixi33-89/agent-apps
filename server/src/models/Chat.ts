@@ -4,7 +4,7 @@ export interface IChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   modelType?: 'text' | 'vision';
-  provider?: 'ollama' | 'openai';
+  provider?: 'ollama' | 'openai' | 'claude' | 'gemini' | 'deepseek';
   timestamp: Date;
   imageUrl?: string;
 }
@@ -15,7 +15,7 @@ export interface IChat extends Document {
   agentName?: string;
   title: string;
   messages: IChatMessage[];
-  provider: 'ollama' | 'openai';
+  provider: 'ollama' | 'openai' | 'claude' | 'gemini' | 'deepseek';
   modelType: 'text' | 'vision';
   systemPrompt?: string;
   /** 会话类型：vibe=Vibe Coding 页面，chat=普通对话页面 */

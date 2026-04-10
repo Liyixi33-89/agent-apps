@@ -9,12 +9,14 @@ import { env, isProduction } from './config/env.js';
 import { connectToMongo, disconnectFromMongo } from './db/mongo.js';
 import { agentsRouter } from './routes/agents.js';
 import { adminRouter } from './routes/admin.js';
+import { extensionsRouter } from './routes/extensions.js';
 import { Agent } from './models/Agent.js';
 import { KnowledgeBase } from './models/KnowledgeBase.js';
 import { ingestAgentsFromMarkdown, ingestKnowledgeFromAgents } from './services/agentIngestionService.js';
 import { restoreDeployedApps } from './routes/vibeAppRuntime.js';
 import { disconnectAllMcpServers } from './services/mcpService.js';
 import { seedBuiltinSkills } from './lib/builtinSkills.js';
+import { seedBuiltinRoles } from './models/Role.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -69,6 +71,8 @@ app.use(agentsRouter.routes());
 app.use(agentsRouter.allowedMethods());
 app.use(adminRouter.routes());
 app.use(adminRouter.allowedMethods());
+app.use(extensionsRouter.routes());
+app.use(extensionsRouter.allowedMethods());
 
 // ─── 启动 ──────────────────────────────────────────────────────────────────────
 
@@ -137,6 +141,9 @@ const bootstrap = async () => {
   // 初始化内置 Skill
   await seedBuiltinSkills();
 
+  // 初始化内置角色（RBAC）
+  await seedBuiltinRoles();
+
   // 恢复已部署的 Vibe App 后端（动态路由）
   await restoreDeployedApps();
 
@@ -145,6 +152,9 @@ const bootstrap = async () => {
     console.log(`📦 Provider: ${env.activeProvider}`);
     console.log(`🤖 Text Model: ${env.activeProvider === 'ollama' ? env.ollamaTextModel : env.openaiTextModel}`);
     console.log(`👁️  Vision Model: ${env.activeProvider === 'ollama' ? env.ollamaVisionModel : env.openaiVisionModel}`);
+    console.log(`🔐 RBAC: 已启用 | 多租户: ${env.multiTenantEnabled ? '已启用' : '未启用'}`);
+    console.log(`💰 Token 预算: ${env.dailyTokenBudget > 0 ? env.dailyTokenBudget + '/天' : '不限制'}`);
+    console.log(`🔄 模型路由: ${env.modelRoutingStrategy}${env.fallbackProviders.length > 0 ? ' | Fallback: ' + env.fallbackProviders.join('→') : ''}`);
   });
 
   const shutdown = async () => {

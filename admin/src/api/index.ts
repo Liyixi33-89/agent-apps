@@ -632,3 +632,187 @@ export const fetchSkillOverviewStats = async () => {
   const { data } = await runtimeApi.get<{ success: boolean; data: SkillOverviewStats }>('/skills/overview/stats');
   return data.data;
 };
+
+// =============================================================================
+// 扩展功能 API
+// =============================================================================
+
+// ─── 多 Provider 管理 ─────────────────────────────────────────────────────────
+
+export interface ProviderInfo {
+  provider: string;
+  configured: boolean;
+  textModel: string;
+  visionModel: string;
+}
+
+/** 获取所有可用的 LLM Provider */
+export const fetchProviders = async () => {
+  const { data } = await runtimeApi.get<{ success: boolean; data: {
+    activeProvider: string;
+    providers: ProviderInfo[];
+    routingStrategy: string;
+    fallbackChain: string[];
+  } }>('/providers');
+  return data.data;
+};
+
+// ─── Token 用量统计 ──────────────────────────────────────────────────────────
+
+export interface TokenUsageOverview {
+  totalTokens: number;
+  totalCost: number;
+  callCount: number;
+  avgDuration: number;
+  successRate: number;
+  budget: number;
+  remaining: number;
+}
+
+/** 获取今日 Token 用量 */
+export const fetchTokenUsageToday = async (): Promise<TokenUsageOverview> => {
+  const { data } = await runtimeApi.get<{ success: boolean; data: TokenUsageOverview }>('/token-usage/today');
+  return data.data;
+};
+
+/** 获取 Token 用量统计 */
+export const fetchTokenUsageStats = async (params?: {
+  startDate?: string; endDate?: string; groupBy?: string;
+}) => {
+  const { data } = await runtimeApi.get<{ success: boolean; data: Array<Record<string, unknown>> }>('/token-usage/stats', { params });
+  return data.data;
+};
+
+/** 获取 Token 用量历史 */
+export const fetchTokenUsageHistory = async (params?: {
+  page?: number; limit?: number; provider?: string; callType?: string;
+}) => {
+  const { data } = await runtimeApi.get<{ success: boolean; data: Array<Record<string, unknown>>; pagination: { page: number; limit: number; total: number } }>('/token-usage/history', { params });
+  return data;
+};
+
+// ─── RBAC 角色管理 ──────────────────────────────────────────────────────────
+
+export interface RoleConfig {
+  _id: string;
+  key: string;
+  name: string;
+  description: string;
+  permissions: Array<{ resource: string; actions: string[] }>;
+  isBuiltin: boolean;
+  isActive: boolean;
+}
+
+/** 获取所有角色 */
+export const fetchRoles = async (): Promise<RoleConfig[]> => {
+  const { data } = await api.get<{ success: boolean; data: RoleConfig[] }>('/roles');
+  return data.data;
+};
+
+/** 创建角色 */
+export const createRole = async (body: { key: string; name: string; description?: string; permissions: Array<{ resource: string; actions: string[] }> }) => {
+  const { data } = await api.post<{ success: boolean; data: RoleConfig }>('/roles', body);
+  return data.data;
+};
+
+/** 更新角色 */
+export const updateRole = async (key: string, body: Partial<RoleConfig>) => {
+  const { data } = await api.put<{ success: boolean; data: RoleConfig }>(`/roles/${key}`, body);
+  return data.data;
+};
+
+/** 删除角色 */
+export const deleteRole = async (key: string) => {
+  await api.delete(`/roles/${key}`);
+};
+
+/** 初始化内置角色 */
+export const seedRoles = async () => {
+  const { data } = await api.post<{ success: boolean; message: string }>('/roles/seed');
+  return data;
+};
+
+// ─── 用户管理（含角色） ──────────────────────────────────────────────────────
+
+export interface UserAdmin {
+  _id: string;
+  username: string;
+  email: string;
+  role: string;
+  avatar?: string;
+  tenantId?: string;
+  dailyTokenQuota: number;
+  todayTokenUsed: number;
+  isActive: boolean;
+  lastLoginAt?: string;
+  createdAt: string;
+}
+
+/** 获取用户列表 */
+export const fetchUsers = async (params?: { page?: number; limit?: number; role?: string; search?: string }) => {
+  const { data } = await api.get<{ success: boolean; data: UserAdmin[]; pagination: { page: number; limit: number; total: number } }>('/users', { params });
+  return data;
+};
+
+/** 更新用户角色 */
+export const updateUserRole = async (id: string, role: string) => {
+  const { data } = await api.put<{ success: boolean; data: UserAdmin }>(`/users/${id}/role`, { role });
+  return data.data;
+};
+
+/** 更新用户 Token 配额 */
+export const updateUserQuota = async (id: string, dailyTokenQuota: number) => {
+  const { data } = await api.put<{ success: boolean; data: UserAdmin }>(`/users/${id}/quota`, { dailyTokenQuota });
+  return data.data;
+};
+
+// ─── RAG 向量索引 ────────────────────────────────────────────────────────────
+
+/** 构建单个知识库的向量索引 */
+export const buildKnowledgeEmbeddings = async (id: string) => {
+  const { data } = await api.post<{ success: boolean; data: { totalChunks: number; embeddedChunks: number; errors: number } }>(`/knowledge/${id}/build-embeddings`);
+  return data.data;
+};
+
+/** 构建所有知识库的向量索引 */
+export const buildAllKnowledgeEmbeddings = async () => {
+  const { data } = await api.post<{ success: boolean; data: { totalKBs: number; totalChunks: number; embeddedChunks: number; errors: number } }>('/knowledge/build-all-embeddings');
+  return data.data;
+};
+
+// ─── MCP 工具市场 ────────────────────────────────────────────────────────────
+
+export interface McpTemplateInfo {
+  key: string;
+  name: string;
+  description: string;
+  icon: string;
+  category: string;
+  transportType: 'stdio' | 'sse';
+  installGuide: string;
+  expectedTools: Array<{ name: string; description: string }>;
+}
+
+/** 获取 MCP 模板列表 */
+export const fetchMcpTemplates = async (category?: string) => {
+  const { data } = await runtimeApi.get<{ success: boolean; data: {
+    templates: McpTemplateInfo[];
+    categories: Array<{ key: string; name: string; count: number }>;
+    total: number;
+  } }>('/mcp/templates', { params: category ? { category } : undefined });
+  return data.data;
+};
+
+/** 从模板安装 MCP Server */
+export const installMcpTemplate = async (key: string, overrides?: Record<string, unknown>) => {
+  const { data } = await runtimeApi.post<{ success: boolean; data: unknown; message: string }>(`/mcp/templates/${key}/install`, { overrides });
+  return data;
+};
+
+// ─── 扩展功能状态 ────────────────────────────────────────────────────────────
+
+/** 获取扩展功能状态 */
+export const fetchExtensionsStatus = async () => {
+  const { data } = await runtimeApi.get<{ success: boolean; data: Record<string, unknown> }>('/extensions/status');
+  return data.data;
+};

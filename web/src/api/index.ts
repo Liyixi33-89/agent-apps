@@ -429,3 +429,160 @@ export const fetchDeployedVibeApps = async (): Promise<Array<{ appId: string; ti
   const { data } = await api.get<{ success: boolean; data: Array<{ appId: string; title: string; basePath: string; collectionCount: number; deployedAt: string }> }>('/vibe-runtime/apps');
   return data.data;
 };
+
+// =============================================================================
+// 扩展功能 API
+// =============================================================================
+
+import type {
+  ProviderInfo, TokenUsageStats, TokenUsageRecord, Role, UserInfo,
+  MemoryEntry, SemanticSearchResult, CollaborationMode, CollaborationStepResult,
+  McpTemplate, ExtensionsStatus,
+} from '../types';
+
+// ─── 多 Provider 管理 ─────────────────────────────────────────────────────────
+
+/** 获取所有可用的 LLM Provider */
+export const fetchProviders = async () => {
+  const { data } = await api.get<{ success: boolean; data: {
+    activeProvider: string;
+    providers: ProviderInfo[];
+    routingStrategy: string;
+    fallbackChain: string[];
+  } }>('/providers');
+  return data.data;
+};
+
+// ─── Token 用量统计 ──────────────────────────────────────────────────────────
+
+/** 获取今日 Token 用量概览 */
+export const fetchTokenUsageToday = async (): Promise<TokenUsageStats> => {
+  const { data } = await api.get<{ success: boolean; data: TokenUsageStats }>('/token-usage/today');
+  return data.data;
+};
+
+/** 获取 Token 用量统计 */
+export const fetchTokenUsageStats = async (params?: {
+  startDate?: string; endDate?: string; groupBy?: string; userId?: string;
+}) => {
+  const { data } = await api.get<{ success: boolean; data: Array<Record<string, unknown>> }>('/token-usage/stats', { params });
+  return data.data;
+};
+
+/** 获取 Token 用量历史 */
+export const fetchTokenUsageHistory = async (params?: {
+  page?: number; limit?: number; provider?: string; callType?: string;
+}) => {
+  const { data } = await api.get<{ success: boolean; data: TokenUsageRecord[]; pagination: { page: number; limit: number; total: number } }>('/token-usage/history', { params });
+  return data;
+};
+
+// ─── RAG 向量检索 ────────────────────────────────────────────────────────────
+
+/** 语义搜索知识库 */
+export const semanticSearchKnowledge = async (params: {
+  query: string; categoryKey?: string; agentSlug?: string; limit?: number; minScore?: number;
+}): Promise<SemanticSearchResult[]> => {
+  const { data } = await api.post<{ success: boolean; data: SemanticSearchResult[] }>('/knowledge/semantic-search', params);
+  return data.data;
+};
+
+/** 混合搜索知识库 */
+export const hybridSearchKnowledge = async (params: {
+  query: string; categoryKey?: string; agentSlug?: string; limit?: number;
+}): Promise<SemanticSearchResult[]> => {
+  const { data } = await api.post<{ success: boolean; data: SemanticSearchResult[] }>('/knowledge/hybrid-search', params);
+  return data.data;
+};
+
+// ─── Agent 记忆系统 ──────────────────────────────────────────────────────────
+
+/** 添加记忆 */
+export const addAgentMemory = async (params: {
+  userId: string; agentSlug?: string; content: string;
+  type: 'session' | 'long_term' | 'working'; importance?: string; tags?: string[];
+}): Promise<MemoryEntry> => {
+  const { data } = await api.post<{ success: boolean; data: MemoryEntry }>('/memory', params);
+  return data.data;
+};
+
+/** 获取记忆列表 */
+export const fetchAgentMemories = async (params: {
+  userId: string; agentSlug?: string; type?: string; limit?: number;
+}): Promise<MemoryEntry[]> => {
+  const { data } = await api.get<{ success: boolean; data: MemoryEntry[] }>('/memory', { params });
+  return data.data;
+};
+
+/** 搜索记忆 */
+export const searchAgentMemories = async (params: {
+  userId: string; query: string; agentSlug?: string; limit?: number;
+}): Promise<Array<MemoryEntry & { score: number }>> => {
+  const { data } = await api.post<{ success: boolean; data: Array<MemoryEntry & { score: number }> }>('/memory/search', params);
+  return data.data;
+};
+
+/** 删除记忆 */
+export const deleteAgentMemory = async (memoryId: string, userId: string): Promise<void> => {
+  await api.delete(`/memory/${memoryId}`, { params: { userId } });
+};
+
+/** 整合记忆 */
+export const consolidateAgentMemories = async (userId: string, agentSlug?: string) => {
+  const { data } = await api.post<{ success: boolean; data: { consolidated: number; newLongTermMemories: number } }>('/memory/consolidate', { userId, agentSlug });
+  return data.data;
+};
+
+// ─── Multi-Agent 协作 ────────────────────────────────────────────────────────
+
+/** 执行 Multi-Agent 协作 */
+export const executeMultiAgent = async (params: {
+  mode: CollaborationMode;
+  userPrompt: string;
+  agents: string[];
+  options?: { userId?: string; mergeStrategy?: string; rounds?: number };
+}) => {
+  const { data } = await api.post<{ success: boolean; data: {
+    taskId: string;
+    results?: CollaborationStepResult[];
+    finalOutput?: string;
+    rounds?: Array<{ round: number; arguments: CollaborationStepResult[] }>;
+    verdict?: string;
+  } }>('/multi-agent/execute', params);
+  return data.data;
+};
+
+/** 获取可协作的 Agent 列表 */
+export const fetchCollaborationAgents = async () => {
+  const { data } = await api.get<{ success: boolean; data: Array<{
+    _id: string; slug: string; name: { zh: string; en: string };
+    description: { zh: string; en: string }; emoji: string; categoryKey: string;
+  }> }>('/multi-agent/agents');
+  return data.data;
+};
+
+// ─── MCP 工具市场 ────────────────────────────────────────────────────────────
+
+/** 获取 MCP 模板列表 */
+export const fetchMcpTemplates = async (category?: string) => {
+  const { data } = await api.get<{ success: boolean; data: {
+    templates: McpTemplate[];
+    categories: Array<{ key: string; name: string; count: number }>;
+    total: number;
+  } }>('/mcp/templates', { params: category ? { category } : undefined });
+  return data.data;
+};
+
+/** 从模板安装 MCP Server */
+export const installMcpTemplate = async (key: string, overrides?: Record<string, unknown>) => {
+  const { data } = await api.post<{ success: boolean; data: unknown; message: string }>(`/mcp/templates/${key}/install`, { overrides });
+  return data;
+};
+
+// ─── 扩展功能状态 ────────────────────────────────────────────────────────────
+
+/** 获取所有扩展功能状态 */
+export const fetchExtensionsStatus = async (): Promise<ExtensionsStatus> => {
+  const { data } = await api.get<{ success: boolean; data: ExtensionsStatus }>('/extensions/status');
+  return data.data;
+};

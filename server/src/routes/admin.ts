@@ -310,7 +310,15 @@ adminRouter.get('/settings', requireAdmin, async (ctx) => {
     data: {
       activeProvider: env.activeProvider,
       ollama: { baseUrl: env.ollamaBaseUrl, textModel: env.ollamaTextModel, visionModel: env.ollamaVisionModel },
-      openai: { baseUrl: env.openaiBaseUrl, textModel: env.openaiTextModel, visionModel: env.openaiVisionModel }
+      openai: { baseUrl: env.openaiBaseUrl, textModel: env.openaiTextModel, visionModel: env.openaiVisionModel },
+      claude: { baseUrl: env.claudeBaseUrl, textModel: env.claudeTextModel, visionModel: env.claudeVisionModel },
+      gemini: { baseUrl: env.geminiBaseUrl, textModel: env.geminiTextModel, visionModel: env.geminiVisionModel },
+      deepseek: { baseUrl: env.deepseekBaseUrl, textModel: env.deepseekTextModel, visionModel: env.deepseekVisionModel },
+      routing: { strategy: env.modelRoutingStrategy, fallbackProviders: env.fallbackProviders },
+      tokenBudget: { daily: env.dailyTokenBudget, userQuota: env.userDailyTokenQuota },
+      rateLimit: { perMinute: env.rateLimitPerMinute },
+      multiTenant: { enabled: env.multiTenantEnabled },
+      embedding: { provider: env.embeddingProvider, model: env.embeddingModel, dimension: env.embeddingDimension },
     }
   };
 });

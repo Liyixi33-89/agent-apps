@@ -38,7 +38,7 @@ export interface IAgent extends Document {
   };
   modelPreferences: {
     primary: 'text' | 'vision';
-    recommendedProvider: 'ollama' | 'openai';
+    recommendedProvider: 'ollama' | 'openai' | 'claude' | 'gemini' | 'deepseek';
   };
   stats: {
     sectionCount: number;
