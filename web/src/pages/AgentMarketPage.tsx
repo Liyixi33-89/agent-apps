@@ -9,7 +9,7 @@ import {
   fetchAgentMarket, exportAgent, importAgent, shareAgent, unshareAgent,
   fetchAgents,
 } from '../api';
-import { useAppStore } from '../store';
+import { useLang } from '../store';
 import type { AgentMarketItem, AgentExportFormat, Agent } from '../types';
 
 // ─── Agent 市场卡片 ──────────────────────────────────────────────────────────
@@ -238,7 +238,7 @@ const ImportModal = ({ lang, onImport, onClose }: ImportModalProps) => {
 // ─── 主页面 ──────────────────────────────────────────────────────────────────
 
 const AgentMarketPage = () => {
-  const { lang } = useAppStore();
+  const lang = useLang();
   const navigate = useNavigate();
 
   const [marketAgents, setMarketAgents] = useState<AgentMarketItem[]>([]);

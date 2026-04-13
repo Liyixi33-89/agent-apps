@@ -12,7 +12,7 @@ import { Sender } from '@ant-design/x';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { fetchKnowledge, searchKnowledge, ragQuery, fetchCategories } from '../api';
-import { useAppStore } from '../store';
+import { useAppStoreShallow } from '../store';
 import type { KnowledgeBase, Category } from '../types';
 import type { RagSource } from '../api';
 
@@ -26,7 +26,7 @@ interface RagHistoryItem {
 
 const KnowledgePage = () => {
   const [searchParams] = useSearchParams();
-  const { lang, activeProvider } = useAppStore();
+  const { lang, activeProvider } = useAppStoreShallow((s) => ({ lang: s.lang, activeProvider: s.activeProvider }));
   const [knowledge, setKnowledge] = useState<KnowledgeBase[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);

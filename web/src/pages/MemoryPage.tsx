@@ -10,7 +10,7 @@ import {
   addAgentMemory, fetchAgentMemories, searchAgentMemories,
   deleteAgentMemory, consolidateAgentMemories, fetchCollaborationAgents,
 } from '../api';
-import { useAppStore } from '../store';
+import { useLang } from '../store';
 import type { MemoryEntry } from '../types';
 
 const { Text } = Typography;
@@ -22,7 +22,7 @@ const MEMORY_TYPE_CONFIG: Record<string, { label: string; color: string; icon: s
 };
 
 const MemoryPage = () => {
-  const { lang } = useAppStore();
+  const lang = useLang();
   const userId = localStorage.getItem('username') || 'anonymous';
 
   const [memories, setMemories] = useState<MemoryEntry[]>([]);

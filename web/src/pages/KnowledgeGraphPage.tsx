@@ -17,7 +17,7 @@ import {
 import '@react-sigma/core/lib/style.css';
 
 import { fetchKnowledgeGraph } from '../api';
-import { useAppStore } from '../store';
+import { useLang } from '../store';
 import type { KnowledgeGraphData, GraphNode, GraphEdge } from '../types';
 
 // ─── 节点颜色配置 ─────────────────────────────────────────────────────────────
@@ -359,7 +359,7 @@ const NodeDetailPanel = ({ nodeId, graphData, onClose }: NodeDetailPanelProps) =
 // ─── 主页面 ──────────────────────────────────────────────────────────────────
 
 const KnowledgeGraphPage = () => {
-  const { lang } = useAppStore();
+  const lang = useLang();
 
   const [graphData, setGraphData] = useState<KnowledgeGraphData | null>(null);
   const [loading, setLoading] = useState(true);

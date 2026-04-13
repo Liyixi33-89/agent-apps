@@ -154,7 +154,10 @@ chatRouter.post('/chat/stream', async (ctx) => {
   }
 
   chat.messages.push({ role: 'user', content: message, timestamp: new Date(), imageUrl });
-  await chat.save();
+  // 异步保存用户消息，不阻塞 SSE 流的开始（提升首字节响应速度）
+  const savePromise = chat.save().catch((err: unknown) => {
+    console.error('[Chat] 保存用户消息失败:', err);
+  });
 
   ctx.set({
     'Content-Type': 'text/event-stream',

@@ -4,7 +4,7 @@ import { ArrowLeft, MessageSquare, Zap, BookOpen, Tag, ChevronDown, ChevronUp } 
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { fetchAgent } from '../api';
-import { useAppStore } from '../store';
+import { useLang } from '../store';
 import type { Agent } from '../types';
 
 const colorMap: Record<string, string> = {
@@ -27,7 +27,7 @@ const colorMap: Record<string, string> = {
 const AgentDetailPage = () => {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
-  const { lang } = useAppStore();
+  const lang = useLang();
   const [agent, setAgent] = useState<Agent | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['overview']));

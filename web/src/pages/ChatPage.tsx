@@ -17,7 +17,7 @@ import {
   createChatSession, fetchChatSessions, fetchChatSession,
   fetchAgents, deleteChatSession, renameChatSession,
 } from '../api';
-import { useAppStore } from '../store';
+import { useAppStoreShallow } from '../store';
 import type { ChatSession, ChatMessage, Agent, Provider, ModelType } from '../types';
 import MessageRating from '../components/MessageRating';
 
@@ -27,7 +27,7 @@ const ChatPage = () => {
   const { sessionId: paramSessionId } = useParams<{ sessionId?: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { lang, activeProvider } = useAppStore();
+  const { lang, activeProvider } = useAppStoreShallow((s) => ({ lang: s.lang, activeProvider: s.activeProvider }));
 
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [currentSession, setCurrentSession] = useState<ChatSession | null>(null);
@@ -71,8 +71,14 @@ const ChatPage = () => {
     }
   }, [paramSessionId]);
 
+  // 节流滚动：流式响应时每个 token 都会更新 streamingContent，使用 rAF 限制滚动频率
+  const scrollRafRef = useRef<number>(0);
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current);
+    scrollRafRef.current = requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: streamingContent ? 'auto' : 'smooth' });
+    });
+    return () => { if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current); };
   }, [messages, streamingContent]);
 
   const handleNewSession = async () => {

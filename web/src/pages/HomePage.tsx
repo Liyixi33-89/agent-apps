@@ -8,7 +8,7 @@ import {
   BranchesOutlined, ArrowRightOutlined, ReloadOutlined, ApiOutlined,
 } from '@ant-design/icons';
 import { fetchOverview, triggerIngest } from '../api';
-import { useAppStore } from '../store';
+import { useAppStoreShallow } from '../store';
 import type { Agent, Category } from '../types';
 
 const { Title, Text, Paragraph } = Typography;
@@ -83,7 +83,7 @@ const CategoryCard = ({ category, lang }: { category: Category; lang: 'zh' | 'en
 };
 
 const HomePage = () => {
-  const { lang, activeProvider } = useAppStore();
+  const { lang, activeProvider } = useAppStoreShallow((s) => ({ lang: s.lang, activeProvider: s.activeProvider }));
   const [overview, setOverview] = useState<Awaited<ReturnType<typeof fetchOverview>> | null>(null);
   const [loading, setLoading] = useState(true);
   const [ingesting, setIngesting] = useState(false);

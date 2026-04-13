@@ -51,4 +51,8 @@ const chatSchema = new Schema<IChat>(
   { timestamps: true }
 );
 
+// ─── 索引优化 ──────────────────────────────────────────────────────────────────
+chatSchema.index({ updatedAt: -1 });
+chatSchema.index({ sessionType: 1, updatedAt: -1 });
+
 export const Chat = mongoose.models.Chat || mongoose.model<IChat>('Chat', chatSchema);

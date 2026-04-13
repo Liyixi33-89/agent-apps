@@ -10,7 +10,7 @@ import {
   TeamOutlined, LoginOutlined, UserOutlined, BulbOutlined,
   DeploymentUnitOutlined, ShareAltOutlined, ApartmentOutlined,
 } from '@ant-design/icons';
-import { useAppStore } from '../store';
+import { useAppStoreShallow } from '../store';
 import { fetchOverview, fetchOAuthProviders } from '../api';
 
 const { Sider, Header, Content } = Layout;
@@ -38,7 +38,9 @@ interface LayoutProps {
 const AppLayout = ({ children }: LayoutProps) => {
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const { lang, setLang, activeProvider, setActiveProvider } = useAppStore();
+  const { lang, setLang, activeProvider, setActiveProvider } = useAppStoreShallow((s) => ({
+    lang: s.lang, setLang: s.setLang, activeProvider: s.activeProvider, setActiveProvider: s.setActiveProvider,
+  }));
   const [oauthProviders, setOauthProviders] = useState<Array<{ key: string; name: string; icon: string; enabled: boolean }>>([]);
   const isLoggedIn = !!localStorage.getItem('token');
   const username = localStorage.getItem('username');

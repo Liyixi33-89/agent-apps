@@ -4,6 +4,27 @@ import type { Agent, Category, Pipeline, ChatSession, KnowledgeBase, OverviewSta
 
 const api = axios.create({ baseURL: '/api', timeout: 60_000 });
 
+// ─── 防抖/取消工具 ─────────────────────────────────────────────────────────────
+
+/** 创建可取消的请求 — 同一 key 的请求会自动取消前一个 */
+const pendingRequests = new Map<string, AbortController>();
+
+export const cancelableRequest = <T>(key: string, requestFn: (signal: AbortSignal) => Promise<T>): Promise<T> => {
+  // 取消同 key 的前一个请求
+  const prev = pendingRequests.get(key);
+  if (prev) prev.abort();
+
+  const controller = new AbortController();
+  pendingRequests.set(key, controller);
+
+  return requestFn(controller.signal).finally(() => {
+    // 只清理自己的 controller（避免清理后续请求的）
+    if (pendingRequests.get(key) === controller) {
+      pendingRequests.delete(key);
+    }
+  });
+};
+
 // ─── 请求拦截器 ────────────────────────────────────────────────────────────────
 
 api.interceptors.request.use(

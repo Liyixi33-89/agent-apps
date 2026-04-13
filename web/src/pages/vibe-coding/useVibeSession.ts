@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useAppStore } from '../../store';
+import { useAppStoreShallow } from '../../store';
 import { fetchAgents, createChatSession, fetchVibeAppRuntimeStatus } from '../../api';
 import type { Agent, Provider, ModelType, ChatMessage, TaskComplexity, StepStatus } from '../../types';
 import type { PipelineStep, VibeSession, CodeParts, VibeHistoryItem, ServerParts, DbSchema } from './types';
@@ -25,7 +25,7 @@ export type SideView = 'chat' | 'history';
  */
 export const useVibeSession = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { lang, activeProvider } = useAppStore();
+  const { lang, activeProvider } = useAppStoreShallow((s) => ({ lang: s.lang, activeProvider: s.activeProvider }));
 
   // ─── 会话状态 ──────────────────────────────────────────────────────────────
   const [session, setSession] = useState<VibeSession | null>(null);

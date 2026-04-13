@@ -14,7 +14,7 @@ import {
   executeReActLoop,
 } from '../api';
 import type { ExecutionPlan, PlanStep, StepStatus, TaskComplexity, ToolDefinition, PlanSSEEvent, ReActSSEEvent } from '../types';
-import { useAppStore } from '../store';
+import { useActiveProvider } from '../store';
 
 // ─── 常量 ──────────────────────────────────────────────────────────────────────
 
@@ -271,7 +271,7 @@ const ToolsPanel = ({ tools }: ToolsPanelProps) => {
 type TabKey = 'plan' | 'react' | 'tools';
 
 const AgentPlanPage = () => {
-  const { activeProvider } = useAppStore();
+  const activeProvider = useActiveProvider();
 
   // 输入
   const [prompt, setPrompt] = useState('');

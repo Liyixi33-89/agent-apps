@@ -101,4 +101,9 @@ const agentSchema = new Schema<IAgent>(
   { timestamps: true }
 );
 
+// ─── 索引优化 ──────────────────────────────────────────────────────────────────
+agentSchema.index({ slug: 1 }, { unique: true });
+agentSchema.index({ 'name.zh': 'text', 'name.en': 'text', 'description.zh': 'text', 'description.en': 'text' });
+agentSchema.index({ 'stats.wordCount': -1 });
+
 export const Agent = mongoose.models.Agent || mongoose.model<IAgent>('Agent', agentSchema);

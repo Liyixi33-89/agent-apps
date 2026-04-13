@@ -4,6 +4,7 @@ import bodyParser from 'koa-bodyparser';
 import koaStatic from 'koa-static';
 import path from 'node:path';
 import fs from 'node:fs';
+import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { env, isProduction } from './config/env.js';
 import { connectToMongo, disconnectFromMongo } from './db/mongo.js';
@@ -39,6 +40,31 @@ app.use(
     credentials: true
   })
 );
+
+// ─── Gzip 压缩（减少 API 响应体积）────────────────────────────────────────────
+
+app.use(async (ctx, next) => {
+  await next();
+
+  // 跳过 SSE 流式响应和空响应
+  if (!ctx.body || ctx.res.headersSent) return;
+  if (ctx.response.get('Content-Type')?.includes('text/event-stream')) return;
+
+  const acceptEncoding = ctx.request.headers['accept-encoding'] || '';
+  if (!acceptEncoding.includes('gzip')) return;
+
+  // 只压缩 JSON 和文本响应
+  const contentType = ctx.response.get('Content-Type') || '';
+  if (!contentType.includes('json') && !contentType.includes('text')) return;
+
+  const body = typeof ctx.body === 'string' ? ctx.body : JSON.stringify(ctx.body);
+  if (body.length < 1024) return; // 小于 1KB 不压缩
+
+  const compressed = zlib.gzipSync(body);
+  ctx.set('Content-Encoding', 'gzip');
+  ctx.set('Vary', 'Accept-Encoding');
+  ctx.body = compressed;
+});
 
 // ─── Body Parser ───────────────────────────────────────────────────────────────
 

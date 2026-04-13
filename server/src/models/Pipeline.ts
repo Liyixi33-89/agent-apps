@@ -42,4 +42,7 @@ const pipelineSchema = new Schema<IPipeline>(
   { timestamps: true }
 );
 
+// ─── 索引优化 ──────────────────────────────────────────────────────────────────
+pipelineSchema.index({ createdAt: -1 });
+
 export const Pipeline = mongoose.models.Pipeline || mongoose.model<IPipeline>('Pipeline', pipelineSchema);

@@ -69,31 +69,36 @@ skillRouter.get('/skills', async (ctx) => {
 // ⚠️ 必须放在 /skills/:key 之前，否则 "overview" 会被当作 :key 参数
 
 skillRouter.get('/skills/overview/stats', async (ctx) => {
-  const [totalSkills, activeSkills, totalExecutions, recentExecutions] = await Promise.all([
+  const [totalSkills, activeSkills, totalExecutions, recentStats] = await Promise.all([
     Skill.countDocuments(),
     Skill.countDocuments({ isActive: true }),
-    SkillExecution.countDocuments(),
-    SkillExecution.find()
-      .sort({ createdAt: -1 })
-      .limit(100)
-      .lean(),
+    SkillExecution.estimatedDocumentCount(),
+    // 使用 aggregate 在数据库层面计算统计，避免拉取 100 条文档到内存
+    SkillExecution.aggregate([
+      { $sort: { createdAt: -1 } },
+      { $limit: 100 },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: 1 },
+          successCount: { $sum: { $cond: [{ $eq: ['$status', 'success'] }, 1, 0] } },
+          avgDuration: { $avg: '$totalDuration' },
+        },
+      },
+    ]),
   ]);
 
-  const successCount = recentExecutions.filter(e => e.status === 'success').length;
-  const avgDuration = recentExecutions.length > 0
-    ? Math.round(recentExecutions.reduce((sum, e) => sum + e.totalDuration, 0) / recentExecutions.length)
-    : 0;
+  const stats = recentStats[0] || { total: 0, successCount: 0, avgDuration: 0 };
 
-  // 按 Skill 分组统计
-  const skillUsage: Record<string, number> = {};
-  for (const exec of recentExecutions) {
-    skillUsage[exec.skillKey] = (skillUsage[exec.skillKey] || 0) + 1;
-  }
-
-  const topSkills = Object.entries(skillUsage)
-    .sort(([, a], [, b]) => b - a)
-    .slice(0, 5)
-    .map(([key, count]) => ({ key, count }));
+  // 按 Skill 分组统计（使用 aggregate）
+  const topSkillsAgg = await SkillExecution.aggregate([
+    { $sort: { createdAt: -1 } },
+    { $limit: 100 },
+    { $group: { _id: '$skillKey', count: { $sum: 1 } } },
+    { $sort: { count: -1 } },
+    { $limit: 5 },
+    { $project: { key: '$_id', count: 1, _id: 0 } },
+  ]);
 
   ctx.body = {
     success: true,
@@ -101,9 +106,9 @@ skillRouter.get('/skills/overview/stats', async (ctx) => {
       totalSkills,
       activeSkills,
       totalExecutions,
-      recentSuccessRate: recentExecutions.length > 0 ? successCount / recentExecutions.length : 1,
-      avgDuration,
-      topSkills,
+      recentSuccessRate: stats.total > 0 ? stats.successCount / stats.total : 1,
+      avgDuration: Math.round(stats.avgDuration || 0),
+      topSkills: topSkillsAgg,
     },
   };
 });

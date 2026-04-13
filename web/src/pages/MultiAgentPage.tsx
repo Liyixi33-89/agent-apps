@@ -9,7 +9,7 @@ import { Typography, Tag, Spin } from 'antd';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { fetchCollaborationAgents, executeMultiAgent } from '../api';
-import { useAppStore } from '../store';
+import { useAppStoreShallow } from '../store';
 import type { CollaborationMode } from '../types';
 
 const { Text } = Typography;
@@ -30,7 +30,7 @@ const MODE_CONFIG: Record<CollaborationMode, { label: string; desc: string; icon
 };
 
 const MultiAgentPage = () => {
-  const { lang, activeProvider } = useAppStore();
+  const { lang, activeProvider } = useAppStoreShallow((s) => ({ lang: s.lang, activeProvider: s.activeProvider }));
   const [agents, setAgents] = useState<AgentOption[]>([]);
   const [agentsLoading, setAgentsLoading] = useState(true);
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);

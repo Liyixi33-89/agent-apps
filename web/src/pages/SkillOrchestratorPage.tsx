@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef, memo } from 'react';
 import {
   Zap, Play, Search, Filter, ArrowRight, Loader2, RefreshCw, GitBranch,
   Settings, MessageSquare, GitMerge, Code, Layers, X, Send, Target,
@@ -9,7 +9,7 @@ import {
   fetchSkills, executeSkill, fetchSkillOverviewStats, testSkillMatch,
   fetchSkillExecutions,
 } from '../api';
-import { useAppStore } from '../store';
+import { useLang } from '../store';
 import type { Skill, SkillStep, SkillStepType, SkillExecutionResult } from '../types';
 
 // ─── 步骤类型配置 ─────────────────────────────────────────────────────────────
@@ -34,7 +34,7 @@ const CATEGORY_LABELS: Record<string, { zh: string; en: string; emoji: string }>
 
 // ─── 步骤流程可视化 ──────────────────────────────────────────────────────────
 
-const StepFlowVisualization = ({ steps }: { steps: SkillStep[] }) => {
+const StepFlowVisualization = memo(({ steps }: { steps: SkillStep[] }) => {
   if (!steps.length) return <div className="text-xs text-slate-400 italic py-2">暂无步骤</div>;
 
   return (
@@ -66,7 +66,8 @@ const StepFlowVisualization = ({ steps }: { steps: SkillStep[] }) => {
       })}
     </div>
   );
-};
+});
+StepFlowVisualization.displayName = 'StepFlowVisualization';
 
 // ─── Skill 卡片（用户视角，无管理按钮）──────────────────────────────────────
 
@@ -76,7 +77,7 @@ interface SkillCardProps {
   isSelected: boolean;
 }
 
-const SkillCard = ({ skill, onTry, isSelected }: SkillCardProps) => {
+const SkillCard = memo(({ skill, onTry, isSelected }: SkillCardProps) => {
   const catInfo = CATEGORY_LABELS[skill.category] || CATEGORY_LABELS.custom;
   const [expanded, setExpanded] = useState(false);
 
@@ -224,7 +225,8 @@ const SkillCard = ({ skill, onTry, isSelected }: SkillCardProps) => {
       )}
     </div>
   );
-};
+});
+SkillCard.displayName = 'SkillCard';
 
 // ─── 试用 Skill 面板 ─────────────────────────────────────────────────────────
 
@@ -636,7 +638,7 @@ const RouteMatchPanel = ({ lang }: { lang: 'zh' | 'en' }) => {
 type TabKey = 'gallery' | 'try' | 'match';
 
 const SkillOrchestratorPage = () => {
-  const { lang } = useAppStore();
+  const lang = useLang();
   const [skills, setSkills] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState('');
@@ -648,18 +650,26 @@ const SkillOrchestratorPage = () => {
     recentSuccessRate: number; avgDuration: number; topSkills: Array<{ key: string; count: number }>;
   } | null>(null);
 
+  // 防抖搜索：避免快速输入时发出大量并发请求
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => {
+    debounceTimerRef.current = setTimeout(() => setDebouncedSearch(searchText), 300);
+    return () => clearTimeout(debounceTimerRef.current);
+  }, [searchText]);
+
   const loadSkills = useCallback(async () => {
     setLoading(true);
     try {
       const [skillsRes, statsRes] = await Promise.all([
-        fetchSkills({ limit: 100, category: categoryFilter !== 'all' ? categoryFilter : undefined, search: searchText || undefined }),
+        fetchSkills({ limit: 100, category: categoryFilter !== 'all' ? categoryFilter : undefined, search: debouncedSearch || undefined }),
         fetchSkillOverviewStats(),
       ]);
       setSkills(skillsRes.data);
       setStats(statsRes);
     } catch { /* 拦截器已处理 */ }
     finally { setLoading(false); }
-  }, [categoryFilter, searchText]);
+  }, [categoryFilter, debouncedSearch]);
 
   useEffect(() => { loadSkills(); }, [loadSkills]);
 

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { useShallow } from 'zustand/react/shallow';
 import type { Agent, Category, Pipeline, ChatSession, OverviewStats, Provider, ModelType, Lang } from '../types';
 
 interface AppState {
@@ -92,3 +93,18 @@ export const useAppStore = create<AppState>()(
     }
   )
 );
+
+// ─── 细粒度选择器 Hooks（避免全量订阅导致不必要的重渲染）─────────────────────
+
+/** 只订阅 lang */
+export const useLang = () => useAppStore((s) => s.lang);
+/** 只订阅 setLang */
+export const useSetLang = () => useAppStore((s) => s.setLang);
+/** 只订阅 activeProvider */
+export const useActiveProvider = () => useAppStore((s) => s.activeProvider);
+/** 只订阅 setActiveProvider */
+export const useSetActiveProvider = () => useAppStore((s) => s.setActiveProvider);
+
+/** 浅比较多字段选择器 — 用于需要同时读取多个字段的场景 */
+export const useAppStoreShallow = <T>(selector: (state: AppState) => T): T =>
+  useAppStore(useShallow(selector));

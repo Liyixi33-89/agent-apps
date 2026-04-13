@@ -8,7 +8,7 @@ import {
   SearchOutlined, RobotOutlined, EyeOutlined, MessageOutlined, FilterOutlined,
 } from '@ant-design/icons';
 import { fetchAgents, fetchCategories } from '../api';
-import { useAppStore } from '../store';
+import { useLang } from '../store';
 import type { Agent, Category } from '../types';
 
 const { Text, Paragraph } = Typography;
@@ -21,7 +21,7 @@ const colorMap: Record<string, string> = {
 };
 
 const AgentsPage = () => {
-  const { lang } = useAppStore();
+  const lang = useLang();
   const [searchParams, setSearchParams] = useSearchParams();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);

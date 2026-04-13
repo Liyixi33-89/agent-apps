@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { fetchVibeTemplates, fetchVibeTemplate } from '../api';
 import { buildHtmlFromParts } from './vibe-coding/utils';
-import { useAppStore } from '../store';
+import { useLang } from '../store';
 import type { VibeTemplateItem, VibeTemplateDetail } from '../api';
 import type { CodeParts } from './vibe-coding/types';
 
@@ -258,7 +258,7 @@ const SORT_OPTIONS: { key: SortKey; label: { zh: string; en: string } }[] = [
 
 const TemplateMarketPage = () => {
   const navigate = useNavigate();
-  const { lang } = useAppStore();
+  const lang = useLang();
 
   const [templates, setTemplates]         = useState<VibeTemplateItem[]>([]);
   const [loading, setLoading]             = useState(false);

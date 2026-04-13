@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { GitBranch, Loader2, Search, X, Filter, Play, ArrowRight, Sparkles, Zap, ChevronRight, ExternalLink, Lightbulb, LayoutGrid, List } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { fetchPipelines } from '../api';
-import { useAppStore } from '../store';
+import { useLang } from '../store';
 import type { Pipeline } from '../types';
 
 // ─── 预设应用场景模板 ─────────────────────────────────────────────────────────
@@ -109,7 +109,7 @@ const StepFlow = ({ steps, lang }: { steps: Pipeline['steps']; lang: 'zh' | 'en'
 // ─── 主页面 ──────────────────────────────────────────────────────────────────
 
 const PipelinesPage = () => {
-  const { lang } = useAppStore();
+  const lang = useLang();
   const navigate = useNavigate();
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [loading, setLoading] = useState(true);
