@@ -26,7 +26,7 @@ const navItems = [
   { path: '/plan',      labelZh: '任务规划',     labelEn: 'Plan & Execute',  icon: <CheckSquareOutlined />,       exact: false },
   { path: '/multi-agent', labelZh: '多Agent协作',  labelEn: 'Multi-Agent',     icon: <TeamOutlined />,              exact: false },
   { path: '/memory',      labelZh: 'Agent 记忆',   labelEn: 'Memory',          icon: <BulbOutlined />,              exact: false },
-  { path: '/skills',      labelZh: 'Skill 编排',   labelEn: 'Skills',          icon: <DeploymentUnitOutlined />,    exact: false },
+  { path: '/skills',      labelZh: 'Skill 能力',   labelEn: 'Skills',          icon: <DeploymentUnitOutlined />,    exact: false },
   { path: '/knowledge-graph', labelZh: '知识图谱',  labelEn: 'Knowledge Graph', icon: <ApartmentOutlined />,         exact: false },
   { path: '/agent-market', labelZh: 'Agent 市场',   labelEn: 'Agent Market',    icon: <ShareAltOutlined />,          exact: false },
 ];

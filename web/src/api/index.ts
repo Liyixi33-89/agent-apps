@@ -647,6 +647,27 @@ export const fetchSkillOverviewStats = async () => {
   return data.data;
 };
 
+/** 测试路由匹配 — 输入消息，看会触发哪个 Skill */
+export const testSkillMatch = async (message: string, useLLM = false) => {
+  const { data } = await api.post<{ success: boolean; data: {
+    matched: boolean; skillKey?: string; skillName?: string;
+    confidence?: number; method?: string; matchedTrigger?: string;
+  } }>('/skills/match', { message, useLLM });
+  return data.data;
+};
+
+/** 获取 Skill 执行历史 */
+export const fetchSkillExecutions = async (key: string, page = 1, limit = 10) => {
+  const { data } = await api.get<{ success: boolean; data: {
+    executions: Array<{
+      executionId: string; status: string; totalDuration: number;
+      totalTokens: number; triggerMethod: string; createdAt: string;
+      stepResults?: Array<{ stepId: string; status: string; duration: number; outputSummary: string }>;
+    }>; total: number;
+  } }>(`/skills/${key}/executions`, { params: { page, limit } });
+  return data.data;
+};
+
 // ─── 知识图谱 API ────────────────────────────────────────────────────────────
 
 /** 获取完整知识图谱数据 */

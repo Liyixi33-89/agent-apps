@@ -15,17 +15,19 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Card, Table, Tag, Button, Input, Select, Space, Modal, Tooltip,
   Switch, Badge, Statistic, Row, Col, Descriptions, Steps, message,
-  Tabs, Typography, Empty, Spin, Divider,
+  Tabs, Typography, Empty, Spin, Divider, Form, InputNumber, Popconfirm,
 } from 'antd';
 import {
   ThunderboltOutlined, SearchOutlined, PlayCircleOutlined, HistoryOutlined,
   BarChartOutlined, ReloadOutlined, AimOutlined, BranchesOutlined,
   CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined,
-  ExperimentOutlined,
+  ExperimentOutlined, PlusOutlined, EditOutlined, DeleteOutlined,
+  RollbackOutlined,
 } from '@ant-design/icons';
 import {
   fetchSkills, toggleSkill, executeSkill, fetchSkillStats,
   fetchSkillExecutions, testSkillMatch, fetchSkillOverviewStats,
+  createSkill, updateSkill, deleteSkill, rollbackSkill,
   type Skill, type SkillStats, type SkillOverviewStats,
 } from '../api';
 
@@ -51,7 +53,10 @@ const STEP_TYPE_MAP: Record<string, { label: string; color: string }> = {
   condition: { label: '条件分支', color: '#faad14' },
   transform: { label: '数据转换', color: '#13c2c2' },
   parallel:  { label: '并行执行', color: '#eb2f96' },
+  sub_skill: { label: '嵌套 Skill', color: '#2f54eb' },
 };
+
+const CATEGORY_OPTIONS = Object.entries(CATEGORY_MAP).map(([k, v]) => ({ value: k, label: v.label }));
 
 // =============================================================================
 // 主组件
@@ -85,6 +90,12 @@ const SkillsAdminPage = () => {
   const [matchMessage, setMatchMessage] = useState('');
   const [matchResult, setMatchResult] = useState<any>(null);
   const [matchLoading, setMatchLoading] = useState(false);
+
+  // 创建/编辑弹窗
+  const [editVisible, setEditVisible] = useState(false);
+  const [editSkill, setEditSkill] = useState<Skill | null>(null); // null = 创建模式
+  const [editLoading, setEditLoading] = useState(false);
+  const [editForm] = Form.useForm();
 
   // ── 加载数据 ──
   const loadSkills = useCallback(async () => {
@@ -170,6 +181,105 @@ const SkillsAdminPage = () => {
     }
   };
 
+  // ── 创建/编辑 ──
+  const handleOpenCreate = () => {
+    setEditSkill(null);
+    editForm.resetFields();
+    editForm.setFieldsValue({
+      icon: '⚡',
+      category: 'custom',
+      config: { timeout: 30000, retryCount: 1, cacheTTL: 0, concurrency: 3 },
+      triggers: { keywords: '', patterns: '', intentDescription: '' },
+    });
+    setEditVisible(true);
+  };
+
+  const handleOpenEdit = (skill: Skill) => {
+    setEditSkill(skill);
+    editForm.setFieldsValue({
+      key: skill.key,
+      name: skill.name,
+      description: skill.description,
+      icon: skill.icon,
+      category: skill.category,
+      config: skill.config,
+      triggers: {
+        keywords: skill.triggers.keywords.join(', '),
+        patterns: skill.triggers.patterns.join(', '),
+        intentDescription: skill.triggers.intentDescription,
+      },
+    });
+    setEditVisible(true);
+  };
+
+  const handleSaveSkill = async () => {
+    try {
+      const values = await editForm.validateFields();
+      setEditLoading(true);
+
+      // 解析触发条件
+      const triggers = {
+        keywords: values.triggers?.keywords ? values.triggers.keywords.split(',').map((s: string) => s.trim()).filter(Boolean) : [],
+        patterns: values.triggers?.patterns ? values.triggers.patterns.split(',').map((s: string) => s.trim()).filter(Boolean) : [],
+        contextRules: [],
+        intentDescription: values.triggers?.intentDescription || '',
+      };
+
+      const body = {
+        ...values,
+        triggers,
+      };
+
+      if (editSkill) {
+        // 编辑模式
+        await updateSkill(editSkill.key, body);
+        message.success(`Skill "${editSkill.key}" 已更新`);
+      } else {
+        // 创建模式
+        await createSkill(body);
+        message.success(`Skill "${values.key}" 已创建`);
+      }
+
+      setEditVisible(false);
+      loadSkills();
+    } catch (err: any) {
+      if (err?.errorFields) return; // 表单校验失败
+      message.error(err?.response?.data?.message || '保存失败');
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  // ── 删除 ──
+  const handleDelete = async (key: string, isBuiltin: boolean) => {
+    if (isBuiltin) {
+      message.warning('内置 Skill 不可删除，只能禁用');
+      return;
+    }
+    try {
+      await deleteSkill(key);
+      message.success(`Skill "${key}" 已删除`);
+      loadSkills();
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || '删除失败');
+    }
+  };
+
+  // ── 版本回退 ──
+  const handleRollback = async (key: string, targetVersion: string) => {
+    try {
+      const res = await rollbackSkill(key, targetVersion);
+      message.success(res.message || `已回退到版本 ${targetVersion}`);
+      loadSkills();
+      // 刷新详情
+      if (detailSkill?.key === key) {
+        handleViewDetail({ ...detailSkill, ...res.data } as Skill);
+      }
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || '回退失败');
+    }
+  };
+
   // ── 表格列定义 ──
   const columns = [
     {
@@ -247,7 +357,7 @@ const SkillsAdminPage = () => {
     {
       title: '操作',
       key: 'actions',
-      width: 160,
+      width: 220,
       render: (_: unknown, record: Skill) => (
         <Space size="small">
           <Tooltip title="查看详情">
@@ -275,6 +385,37 @@ const SkillsAdminPage = () => {
               tabIndex={0}
             />
           </Tooltip>
+          <Tooltip title="编辑">
+            <Button
+              type="text"
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => handleOpenEdit(record)}
+              aria-label="编辑"
+              tabIndex={0}
+            />
+          </Tooltip>
+          {!record.isBuiltin && (
+            <Popconfirm
+              title={`确定删除 Skill "${record.name}"？`}
+              description="删除后不可恢复"
+              onConfirm={() => handleDelete(record.key, record.isBuiltin)}
+              okText="删除"
+              cancelText="取消"
+              okButtonProps={{ danger: true }}
+            >
+              <Tooltip title="删除">
+                <Button
+                  type="text"
+                  size="small"
+                  danger
+                  icon={<DeleteOutlined />}
+                  aria-label="删除"
+                  tabIndex={0}
+                />
+              </Tooltip>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -292,6 +433,13 @@ const SkillsAdminPage = () => {
           <Text type="secondary">管理和监控 AI 技能编排系统</Text>
         </div>
         <Space>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={handleOpenCreate}
+          >
+            创建 Skill
+          </Button>
           <Button
             icon={<AimOutlined />}
             onClick={() => setMatchVisible(true)}
@@ -602,6 +750,22 @@ const SkillsAdminPage = () => {
                       { title: '版本', dataIndex: 'version', key: 'version', render: (v: string) => <Tag>{v}</Tag> },
                       { title: '变更说明', dataIndex: 'changelog', key: 'changelog' },
                       { title: '时间', dataIndex: 'createdAt', key: 'time', render: (v: string) => new Date(v).toLocaleString('zh-CN') },
+                      {
+                        title: '操作',
+                        key: 'action',
+                        width: 80,
+                        render: (_: unknown, record: { version: string }) => (
+                          <Popconfirm
+                            title={`确定回退到版本 ${record.version}？`}
+                            description="当前版本会被保存为快照"
+                            onConfirm={() => handleRollback(detailSkill.key, record.version)}
+                            okText="回退"
+                            cancelText="取消"
+                          >
+                            <Button type="link" size="small" icon={<RollbackOutlined />}>回退</Button>
+                          </Popconfirm>
+                        ),
+                      },
                     ]}
                   />
                 ) : (
@@ -680,6 +844,90 @@ const SkillsAdminPage = () => {
             </Card>
           )}
         </div>
+      </Modal>
+
+      {/* ── 创建/编辑 Skill 弹窗 ── */}
+      <Modal
+        title={
+          <span className="flex items-center gap-2">
+            {editSkill ? <EditOutlined className="text-blue-500" /> : <PlusOutlined className="text-green-500" />}
+            {editSkill ? `编辑 Skill — ${editSkill.name}` : '创建 Skill'}
+          </span>
+        }
+        open={editVisible}
+        onCancel={() => setEditVisible(false)}
+        onOk={handleSaveSkill}
+        confirmLoading={editLoading}
+        okText={editSkill ? '保存' : '创建'}
+        width={700}
+        destroyOnClose
+      >
+        <Form form={editForm} layout="vertical" className="mt-4">
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="key"
+                label="Skill Key"
+                rules={[{ required: true, message: '请输入唯一标识' }, { pattern: /^[a-z0-9_]+$/, message: '仅支持小写字母、数字和下划线' }]}
+                tooltip="唯一标识，创建后不可修改"
+              >
+                <Input placeholder="web_research" disabled={!!editSkill} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入名称' }]}>
+                <Input placeholder="网页调研" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item name="description" label="描述" rules={[{ required: true, message: '请输入描述' }]}>
+            <TextArea rows={2} placeholder="给 LLM 看的描述，决定何时触发此 Skill" />
+          </Form.Item>
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item name="icon" label="图标 Emoji">
+                <Input placeholder="⚡" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="category" label="分类" rules={[{ required: true }]}>
+                <Select options={CATEGORY_OPTIONS} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name={['config', 'timeout']} label="超时 (ms)">
+                <InputNumber min={1000} max={300000} step={1000} className="w-full" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item name={['config', 'retryCount']} label="重试次数">
+                <InputNumber min={0} max={5} className="w-full" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name={['config', 'concurrency']} label="并发数">
+                <InputNumber min={1} max={10} className="w-full" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name={['config', 'cacheTTL']} label="缓存 TTL (秒)">
+                <InputNumber min={0} max={86400} className="w-full" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Divider orientation={'left' as any} plain>触发条件</Divider>
+          <Form.Item name={['triggers', 'keywords']} label="关键词 (逗号分隔)" tooltip="L1 级别触发，零成本">
+            <Input placeholder="搜索, 查找, 调研, research" />
+          </Form.Item>
+          <Form.Item name={['triggers', 'patterns']} label="正则模式 (逗号分隔)" tooltip="L2 级别触发">
+            <Input placeholder="搜索.*新特性, .*怎么用" />
+          </Form.Item>
+          <Form.Item name={['triggers', 'intentDescription']} label="LLM 意图描述" tooltip="L3 级别触发，仅在 L1/L2 不确定时使用">
+            <TextArea rows={2} placeholder="用户想要在网上搜索信息、查找资料、了解最新动态" />
+          </Form.Item>
+        </Form>
       </Modal>
 
       {/* ── 路由匹配测试弹窗 ── */}
