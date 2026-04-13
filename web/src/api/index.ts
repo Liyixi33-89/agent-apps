@@ -587,6 +587,138 @@ export const fetchExtensionsStatus = async (): Promise<ExtensionsStatus> => {
   return data.data;
 };
 
+// ─── Skill 可视化编排器 API ──────────────────────────────────────────────────
+
+import type { Skill, SkillExecutionResult, KnowledgeGraphData, AgentMarketItem, AgentExportFormat, McpResource, McpPrompt } from '../types';
+
+/** 获取 Skill 列表 */
+export const fetchSkills = async (params?: { page?: number; limit?: number; category?: string; search?: string; sort?: string }) => {
+  const { data } = await api.get<{ success: boolean; data: Skill[]; pagination: { page: number; limit: number; total: number } }>('/skills', { params });
+  return data;
+};
+
+/** 获取 Skill 详情 */
+export const fetchSkill = async (key: string): Promise<Skill> => {
+  const { data } = await api.get<{ success: boolean; data: Skill }>(`/skills/${key}`);
+  return data.data;
+};
+
+/** 创建 Skill */
+export const createSkill = async (body: Partial<Skill>): Promise<Skill> => {
+  const { data } = await api.post<{ success: boolean; data: Skill }>('/skills', body);
+  return data.data;
+};
+
+/** 更新 Skill */
+export const updateSkill = async (key: string, body: Partial<Skill>): Promise<Skill> => {
+  const { data } = await api.put<{ success: boolean; data: Skill }>(`/skills/${key}`, body);
+  return data.data;
+};
+
+/** 删除 Skill */
+export const deleteSkill = async (key: string): Promise<void> => {
+  await api.delete(`/skills/${key}`);
+};
+
+/** 执行 Skill */
+export const executeSkill = async (key: string, input: Record<string, unknown>, options?: { provider?: string; modelType?: string }): Promise<SkillExecutionResult> => {
+  const { data } = await api.post<{ success: boolean; data: SkillExecutionResult }>(`/skills/${key}/execute`, { input, ...options });
+  return data.data;
+};
+
+/** 切换 Skill 启用/禁用 */
+export const toggleSkill = async (key: string) => {
+  const { data } = await api.post<{ success: boolean; data: { key: string; isActive: boolean } }>(`/skills/${key}/toggle`);
+  return data.data;
+};
+
+/** 获取 Skill 统计 */
+export const fetchSkillStats = async (key: string) => {
+  const { data } = await api.get<{ success: boolean; data: unknown }>(`/skills/${key}/stats`);
+  return data.data;
+};
+
+/** 获取 Skill 全局统计 */
+export const fetchSkillOverviewStats = async () => {
+  const { data } = await api.get<{ success: boolean; data: {
+    totalSkills: number; activeSkills: number; totalExecutions: number;
+    recentSuccessRate: number; avgDuration: number; topSkills: Array<{ key: string; count: number }>;
+  } }>('/skills/overview/stats');
+  return data.data;
+};
+
+// ─── 知识图谱 API ────────────────────────────────────────────────────────────
+
+/** 获取完整知识图谱数据 */
+export const fetchKnowledgeGraph = async (): Promise<KnowledgeGraphData> => {
+  const { data } = await api.get<{ success: boolean; data: KnowledgeGraphData }>('/knowledge-graph');
+  return data.data;
+};
+
+/** 获取单个 Agent 的关系子图 */
+export const fetchAgentGraph = async (slug: string) => {
+  const { data } = await api.get<{ success: boolean; data: { nodes: KnowledgeGraphData['nodes']; edges: KnowledgeGraphData['edges']; center: string } }>(`/knowledge-graph/agent/${slug}`);
+  return data.data;
+};
+
+// ─── Agent 市场 API ──────────────────────────────────────────────────────────
+
+/** 获取 Agent 市场列表 */
+export const fetchAgentMarket = async (params?: { page?: number; limit?: number; category?: string; search?: string; sort?: string }) => {
+  const { data } = await api.get<{ success: boolean; data: AgentMarketItem[]; pagination: { page: number; limit: number; total: number } }>('/agent-market', { params });
+  return data;
+};
+
+/** 导出 Agent 配置 */
+export const exportAgent = async (slug: string): Promise<AgentExportFormat> => {
+  const { data } = await api.get<AgentExportFormat>(`/agent-market/${slug}/export`);
+  return data;
+};
+
+/** 导入 Agent 配置 */
+export const importAgent = async (agentData: AgentExportFormat) => {
+  const { data } = await api.post<{ success: boolean; data: unknown; message: string; action: string }>('/agent-market/import', agentData);
+  return data;
+};
+
+/** 分享 Agent 到市场 */
+export const shareAgent = async (slug: string) => {
+  const { data } = await api.post<{ success: boolean; message: string }>(`/agent-market/${slug}/share`);
+  return data;
+};
+
+/** 取消分享 Agent */
+export const unshareAgent = async (slug: string) => {
+  const { data } = await api.delete<{ success: boolean; message: string }>(`/agent-market/${slug}/share`);
+  return data;
+};
+
+// ─── MCP Resource/Prompt API ─────────────────────────────────────────────────
+
+/** 获取 MCP Server 的资源列表 */
+export const fetchMcpResources = async (serverKey: string): Promise<McpResource[]> => {
+  const { data } = await api.get<{ success: boolean; data: McpResource[] }>(`/mcp/servers/${serverKey}/resources`);
+  return data.data;
+};
+
+/** 读取 MCP Resource 内容 */
+export const readMcpResource = async (serverKey: string, uri: string) => {
+  const { data } = await api.post<{ success: boolean; data: Array<{ uri: string; text?: string; mimeType?: string }> }>(`/mcp/servers/${serverKey}/resources/read`, { uri });
+  return data.data;
+};
+
+/** 获取 MCP Server 的 Prompt 列表 */
+export const fetchMcpPrompts = async (serverKey: string): Promise<McpPrompt[]> => {
+  const { data } = await api.get<{ success: boolean; data: McpPrompt[] }>(`/mcp/servers/${serverKey}/prompts`);
+  return data.data;
+};
+
+/** 获取 MCP Prompt 消息内容 */
+export const getMcpPromptMessages = async (serverKey: string, name: string, args?: Record<string, string>) => {
+  const { data } = await api.post<{ success: boolean; data: Array<{ role: string; content: { type: string; text?: string } }> }>(`/mcp/servers/${serverKey}/prompts/get`, { name, arguments: args });
+  return data.data;
+};
+
 // ─── Agent 评估/反馈 ────────────────────────────────────────────────────────
 
 /** 提交用户评分/反馈 */

@@ -16,6 +16,7 @@ export interface Agent {
   color: string;
   sourcePath: string;
   rawMarkdown: string;
+  frontmatter: Record<string, unknown>;
   sections: Section[];
   tags: string[];
   capabilities: LocalizedText[];
@@ -330,4 +331,154 @@ export interface ExtensionsStatus {
   memory: { enabled: boolean };
   multiAgent: { enabled: boolean; modes: string[] };
   mcpMarket: { enabled: boolean; templateCount: number };
+}
+
+// ─── Skill 可视化编排器类型 ──────────────────────────────────────────────────
+
+export type SkillCategory = 'research' | 'coding' | 'analysis' | 'creative' | 'workflow' | 'custom';
+export type SkillStepType = 'tool' | 'llm' | 'condition' | 'transform' | 'parallel' | 'sub_skill';
+
+export interface SkillStep {
+  id: string;
+  type: SkillStepType;
+  label: string;
+  toolName?: string;
+  toolArgs?: Record<string, string>;
+  promptKey?: string;
+  promptTemplate?: string;
+  llmOptions?: { temperature?: number; maxTokens?: number; stream?: boolean };
+  condition?: string;
+  ifTrue?: string;
+  ifFalse?: string;
+  transformExpr?: string;
+  parallelStepIds?: string[];
+  subSkillKey?: string;
+  subSkillInput?: Record<string, string>;
+  maxNestingDepth?: number;
+  inputMapping?: Record<string, string>;
+  outputKey: string;
+  optional: boolean;
+  timeout: number;
+  retryCount: number;
+}
+
+export interface Skill {
+  _id: string;
+  key: string;
+  name: string;
+  description: string;
+  icon: string;
+  category: SkillCategory;
+  inputSchema: { type: string; properties: Record<string, unknown>; required: string[] };
+  outputDescription: string;
+  steps: SkillStep[];
+  triggers: { keywords: string[]; patterns: string[]; contextRules: string[]; intentDescription: string };
+  config: { timeout: number; retryCount: number; cacheTTL: number; concurrency: number; streamOutput: boolean };
+  dependsOn: string[];
+  version: string;
+  isActive: boolean;
+  isBuiltin: boolean;
+  sortOrder: number;
+  usageCount: number;
+  avgDuration: number;
+  successRate: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SkillExecutionResult {
+  executionId: string;
+  skillKey: string;
+  success: boolean;
+  output: unknown;
+  error?: string;
+  totalDuration: number;
+  totalTokens: number;
+  stepResults: Array<{ stepId: string; status: string; duration: number; outputSummary: string }>;
+}
+
+// ─── 知识图谱类型 ────────────────────────────────────────────────────────────
+
+export interface GraphNode {
+  id: string;
+  label: string;
+  type: 'agent' | 'category' | 'skill' | 'knowledge' | 'tool';
+  emoji?: string;
+  color?: string;
+  size?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface GraphEdge {
+  source: string;
+  target: string;
+  label: string;
+  type: 'belongs_to' | 'uses_skill' | 'has_knowledge' | 'depends_on' | 'collaborates' | 'uses_tool';
+  weight?: number;
+}
+
+export interface KnowledgeGraphData {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  stats: {
+    totalNodes: number;
+    totalEdges: number;
+    agentCount: number;
+    categoryCount: number;
+    skillCount: number;
+    knowledgeCount: number;
+  };
+}
+
+// ─── Agent 市场类型 ──────────────────────────────────────────────────────────
+
+export interface AgentMarketItem {
+  _id: string;
+  slug: string;
+  name: LocalizedText;
+  description: LocalizedText;
+  emoji: string;
+  color: string;
+  categoryKey: string;
+  tags: string[];
+  modelPreferences: { primary: 'text' | 'vision'; recommendedProvider: string };
+  stats: { sectionCount: number; wordCount: number };
+  updatedAt: string;
+  category?: { key: string; name: LocalizedText; icon: string };
+}
+
+export interface AgentExportFormat {
+  formatVersion: '1.0.0';
+  exportedAt: string;
+  platform: 'agency-agents';
+  agent: {
+    slug: string;
+    categoryKey: string;
+    name: LocalizedText;
+    description: LocalizedText;
+    vibe: LocalizedText;
+    emoji: string;
+    color: string;
+    tags: string[];
+    capabilities: LocalizedText[];
+    workflow: { summary: LocalizedText; nodes: WorkflowNode[] };
+    modelPreferences: { primary: 'text' | 'vision'; recommendedProvider: string };
+    sections: Section[];
+  };
+  knowledgeSummary?: Array<{ title: LocalizedText; description: LocalizedText; sourceType: string; tags: string[] }>;
+}
+
+// ─── MCP Resource/Prompt 类型 ────────────────────────────────────────────────
+
+export interface McpResource {
+  uri: string;
+  name: string;
+  description?: string;
+  mimeType?: string;
+}
+
+export interface McpPrompt {
+  name: string;
+  description?: string;
+  arguments?: Array<{ name: string; description?: string; required?: boolean }>;
 }

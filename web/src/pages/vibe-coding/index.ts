@@ -18,5 +18,6 @@ export type {
   PipelineStep, VibeSession, CodeParts, PreviewTab, CodeTab,
   PromptCategory, VibeHistoryItem, FavoritePrompt,
   ServerParts, DbSchema, FullStackParts,
+  ProjectFile, VibeProject,
 } from './types';
 export type { VibeSessionContext, AgentPlanStep, SideView } from './useVibeSession';

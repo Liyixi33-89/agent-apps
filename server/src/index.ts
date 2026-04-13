@@ -18,6 +18,8 @@ import { disconnectAllMcpServers } from './services/mcpService.js';
 import { seedBuiltinSkills } from './lib/builtinSkills.js';
 import { seedBuiltinRoles } from './models/Role.js';
 import { startKnowledgeScheduler, stopKnowledgeScheduler } from './services/knowledgeScheduler.js';
+import { knowledgeGraphRouter } from './routes/knowledgeGraph.js';
+import { agentMarketRouter } from './routes/agentMarket.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -74,6 +76,10 @@ app.use(adminRouter.routes());
 app.use(adminRouter.allowedMethods());
 app.use(extensionsRouter.routes());
 app.use(extensionsRouter.allowedMethods());
+app.use(knowledgeGraphRouter.routes());
+app.use(knowledgeGraphRouter.allowedMethods());
+app.use(agentMarketRouter.routes());
+app.use(agentMarketRouter.allowedMethods());
 
 // ─── 启动 ──────────────────────────────────────────────────────────────────────
 

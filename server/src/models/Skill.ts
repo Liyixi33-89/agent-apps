@@ -32,7 +32,8 @@ export type SkillStepType =
   | 'llm'         // 调用 LLM（流式/非流式）
   | 'condition'   // 条件分支
   | 'transform'   // 数据转换（JS 表达式）
-  | 'parallel';   // 并行执行多个子步骤
+  | 'parallel'    // 并行执行多个子步骤
+  | 'sub_skill';  // 嵌套调用其他 Skill（组合嵌套）
 
 /** Skill 步骤定义 */
 export interface ISkillStep {
@@ -76,6 +77,14 @@ export interface ISkillStep {
   // ── type = 'parallel' ──
   /** 并行执行的步骤 ID 列表 */
   parallelStepIds?: string[];
+
+  // ── type = 'sub_skill' ──
+  /** 嵌套调用的 Skill key */
+  subSkillKey?: string;
+  /** 传递给子 Skill 的输入映射 */
+  subSkillInput?: Record<string, string>;
+  /** 最大嵌套深度（防止无限递归，默认 3） */
+  maxNestingDepth?: number;
 
   // ── 通用字段 ──
   /** 输入映射：将上下文中的值映射到本步骤的输入 */
@@ -211,7 +220,7 @@ const SKILL_CATEGORIES: SkillCategory[] = [
 ];
 
 const STEP_TYPES: SkillStepType[] = [
-  'tool', 'llm', 'condition', 'transform', 'parallel',
+  'tool', 'llm', 'condition', 'transform', 'parallel', 'sub_skill',
 ];
 
 const skillStepSchema = new Schema<ISkillStep>(
@@ -233,6 +242,9 @@ const skillStepSchema = new Schema<ISkillStep>(
     ifFalse:         { type: String },
     transformExpr:   { type: String },
     parallelStepIds: { type: [String] },
+    subSkillKey:     { type: String },
+    subSkillInput:   { type: Schema.Types.Mixed },
+    maxNestingDepth: { type: Number, default: 3 },
     inputMapping:    { type: Schema.Types.Mixed },
     outputKey:       { type: String, required: true },
     optional:        { type: Boolean, default: false },

@@ -351,6 +351,58 @@ const executeStepInternal = async (
       return { success: true, data: { isParallel: true, parallelStepIds: step.parallelStepIds } };
     }
 
+    // ── 嵌套 Skill 步骤（组合嵌套）──
+    case 'sub_skill': {
+      if (!step.subSkillKey) {
+        return { success: false, data: null, error: '步骤缺少 subSkillKey' };
+      }
+
+      // 防止无限递归：检查嵌套深度
+      const currentDepth = (ctx.metadata as any)._nestingDepth || 0;
+      const maxDepth = step.maxNestingDepth || 3;
+      if (currentDepth >= maxDepth) {
+        return { success: false, data: null, error: `嵌套深度超过限制 (${maxDepth})，可能存在循环依赖` };
+      }
+
+      // 构建子 Skill 的输入参数
+      const subInput: Record<string, unknown> = {};
+      if (step.subSkillInput) {
+        for (const [key, template] of Object.entries(step.subSkillInput)) {
+          subInput[key] = resolveTemplateVar(template, ctx);
+        }
+      } else {
+        // 默认传递当前 Skill 的全部输入
+        Object.assign(subInput, ctx.input);
+      }
+
+      // 递归执行子 Skill
+      try {
+        console.log(`[SkillEngine] 🔗 嵌套执行 Skill: ${step.subSkillKey} (深度 ${currentDepth + 1}/${maxDepth})`);
+        const subResult = await executeSkill(step.subSkillKey, subInput, {
+          ...options,
+          triggerMethod: 'api',
+          triggerMatch: `sub_skill of ${ctx.metadata.skillKey}`,
+          callbacks: undefined, // 子 Skill 不回调给上层
+          _nestingDepth: currentDepth + 1,
+        } as any);
+
+        stepExec.toolName = `sub_skill:${step.subSkillKey}`;
+        stepExec.toolSuccess = subResult.success;
+
+        return {
+          success: subResult.success,
+          data: subResult.output,
+          error: subResult.error,
+        };
+      } catch (err) {
+        return {
+          success: false,
+          data: null,
+          error: `嵌套 Skill "${step.subSkillKey}" 执行失败: ${err instanceof Error ? err.message : String(err)}`,
+        };
+      }
+    }
+
     default:
       return { success: false, data: null, error: `未知步骤类型: ${step.type}` };
   }

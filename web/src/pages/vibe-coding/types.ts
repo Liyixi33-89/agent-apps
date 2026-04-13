@@ -79,3 +79,45 @@ export interface FavoritePrompt {
   createdAt: string;
 }
 
+// ─── 多文件项目支持 ──────────────────────────────────────────────────────────
+
+/** 项目文件 */
+export interface ProjectFile {
+  /** 文件路径（相对于项目根目录），如 "src/App.tsx"、"src/components/Header.tsx" */
+  path: string;
+  /** 文件内容 */
+  content: string;
+  /** 文件语言类型 */
+  language: 'html' | 'css' | 'javascript' | 'typescript' | 'tsx' | 'jsx' | 'json' | 'markdown';
+  /** 是否为入口文件 */
+  isEntry?: boolean;
+  /** 最后修改时间 */
+  lastModified?: string;
+}
+
+/** 多文件项目 */
+export interface VibeProject {
+  /** 项目 ID */
+  id: string;
+  /** 项目名称 */
+  name: string;
+  /** 项目描述 */
+  description?: string;
+  /** 项目类型 */
+  projectType: 'single' | 'multi-file' | 'fullstack';
+  /** 项目文件列表 */
+  files: ProjectFile[];
+  /** 入口文件路径 */
+  entryFile: string;
+  /** 项目配置 */
+  config?: {
+    framework?: 'react' | 'vue' | 'vanilla';
+    cssFramework?: 'tailwind' | 'css' | 'scss';
+    buildTool?: 'vite' | 'webpack' | 'none';
+  };
+  /** 创建时间 */
+  createdAt: string;
+  /** 更新时间 */
+  updatedAt: string;
+}
+

@@ -21,6 +21,10 @@ import {
   executeMcpTool,
   getMcpToolDefinitions,
   getMcpServerStatuses,
+  discoverMcpResources,
+  readMcpResource,
+  discoverMcpPrompts,
+  getMcpPromptMessages,
 } from '../services/mcpService.js';
 
 export const mcpRouter = new Router({ prefix: '/mcp' });
@@ -207,6 +211,80 @@ mcpRouter.post('/tools/call', async (ctx) => {
     ctx.body = {
       success: false,
       message: `工具调用失败: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+});
+
+// ─── MCP Resource 协议 ───────────────────────────────────────────────────────
+
+/** 获取 MCP Server 的资源列表  GET /api/mcp/servers/:key/resources */
+mcpRouter.get('/servers/:key/resources', async (ctx) => {
+  try {
+    const resources = await discoverMcpResources(ctx.params.key);
+    ctx.body = { success: true, data: resources };
+  } catch (err: unknown) {
+    ctx.status = 500;
+    ctx.body = {
+      success: false,
+      message: `获取资源列表失败: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+});
+
+/** 读取 MCP Resource 内容  POST /api/mcp/servers/:key/resources/read */
+mcpRouter.post('/servers/:key/resources/read', async (ctx) => {
+  const { uri } = ctx.request.body as { uri: string };
+  if (!uri) {
+    ctx.status = 400;
+    ctx.body = { success: false, message: '缺少资源 URI' };
+    return;
+  }
+
+  try {
+    const contents = await readMcpResource(ctx.params.key, uri);
+    ctx.body = { success: true, data: contents };
+  } catch (err: unknown) {
+    ctx.status = 500;
+    ctx.body = {
+      success: false,
+      message: `读取资源失败: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+});
+
+// ─── MCP Prompt 协议 ────────────────────────────────────────────────────────
+
+/** 获取 MCP Server 的 Prompt 模板列表  GET /api/mcp/servers/:key/prompts */
+mcpRouter.get('/servers/:key/prompts', async (ctx) => {
+  try {
+    const prompts = await discoverMcpPrompts(ctx.params.key);
+    ctx.body = { success: true, data: prompts };
+  } catch (err: unknown) {
+    ctx.status = 500;
+    ctx.body = {
+      success: false,
+      message: `获取 Prompt 列表失败: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+});
+
+/** 获取 MCP Prompt 消息内容  POST /api/mcp/servers/:key/prompts/get */
+mcpRouter.post('/servers/:key/prompts/get', async (ctx) => {
+  const { name, arguments: args } = ctx.request.body as { name: string; arguments?: Record<string, string> };
+  if (!name) {
+    ctx.status = 400;
+    ctx.body = { success: false, message: '缺少 Prompt 名称' };
+    return;
+  }
+
+  try {
+    const messages = await getMcpPromptMessages(ctx.params.key, name, args);
+    ctx.body = { success: true, data: messages };
+  } catch (err: unknown) {
+    ctx.status = 500;
+    ctx.body = {
+      success: false,
+      message: `获取 Prompt 内容失败: ${err instanceof Error ? err.message : String(err)}`,
     };
   }
 });

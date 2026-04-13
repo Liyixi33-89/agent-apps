@@ -670,3 +670,127 @@ export const disconnectAllMcpServers = (): void => {
   activeSseConnections.clear();
   console.log('[MCP] 所有连接已断开');
 };
+
+// =============================================================================
+// MCP Resource 协议扩展
+// =============================================================================
+
+/** MCP Resource 定义 */
+export interface McpResource {
+  uri: string;
+  name: string;
+  description?: string;
+  mimeType?: string;
+}
+
+/** MCP Resource 内容 */
+export interface McpResourceContent {
+  uri: string;
+  mimeType?: string;
+  text?: string;
+  blob?: string;
+}
+
+/**
+ * 发现 MCP Server 提供的资源列表
+ */
+export const discoverMcpResources = async (serverKey: string): Promise<McpResource[]> => {
+  const server = await McpServer.findOne({ key: serverKey });
+  if (!server) throw new Error(`MCP Server "${serverKey}" 不存在`);
+
+  const sendRequest = server.transportType === 'stdio'
+    ? (method: string, params?: Record<string, unknown>) => sendStdioRequest(serverKey, method, params)
+    : (method: string, params?: Record<string, unknown>) => sendSseRequest(serverKey, method, params, server.sseConfig?.headers);
+
+  try {
+    const result = await sendRequest('resources/list') as { resources: McpResource[] };
+    return result?.resources || [];
+  } catch (err) {
+    console.warn(`[MCP:${serverKey}] resources/list 不支持:`, err instanceof Error ? err.message : String(err));
+    return [];
+  }
+};
+
+/**
+ * 读取 MCP Resource 内容
+ */
+export const readMcpResource = async (serverKey: string, uri: string): Promise<McpResourceContent[]> => {
+  const server = await McpServer.findOne({ key: serverKey });
+  if (!server) throw new Error(`MCP Server "${serverKey}" 不存在`);
+
+  const sendRequest = server.transportType === 'stdio'
+    ? (method: string, params?: Record<string, unknown>) => sendStdioRequest(serverKey, method, params)
+    : (method: string, params?: Record<string, unknown>) => sendSseRequest(serverKey, method, params, server.sseConfig?.headers);
+
+  const result = await sendRequest('resources/read', { uri }) as { contents: McpResourceContent[] };
+  return result?.contents || [];
+};
+
+// =============================================================================
+// MCP Prompt 协议扩展
+// =============================================================================
+
+/** MCP Prompt 定义 */
+export interface McpPrompt {
+  name: string;
+  description?: string;
+  arguments?: Array<{
+    name: string;
+    description?: string;
+    required?: boolean;
+  }>;
+}
+
+/** MCP Prompt 消息 */
+export interface McpPromptMessage {
+  role: 'user' | 'assistant';
+  content: {
+    type: 'text' | 'image' | 'resource';
+    text?: string;
+    data?: string;
+    mimeType?: string;
+  };
+}
+
+/**
+ * 发现 MCP Server 提供的 Prompt 模板列表
+ */
+export const discoverMcpPrompts = async (serverKey: string): Promise<McpPrompt[]> => {
+  const server = await McpServer.findOne({ key: serverKey });
+  if (!server) throw new Error(`MCP Server "${serverKey}" 不存在`);
+
+  const sendRequest = server.transportType === 'stdio'
+    ? (method: string, params?: Record<string, unknown>) => sendStdioRequest(serverKey, method, params)
+    : (method: string, params?: Record<string, unknown>) => sendSseRequest(serverKey, method, params, server.sseConfig?.headers);
+
+  try {
+    const result = await sendRequest('prompts/list') as { prompts: McpPrompt[] };
+    return result?.prompts || [];
+  } catch (err) {
+    console.warn(`[MCP:${serverKey}] prompts/list 不支持:`, err instanceof Error ? err.message : String(err));
+    return [];
+  }
+};
+
+/**
+ * 获取 MCP Prompt 模板的实际消息内容
+ */
+export const getMcpPromptMessages = async (
+  serverKey: string,
+  promptName: string,
+  args?: Record<string, string>
+): Promise<McpPromptMessage[]> => {
+  const server = await McpServer.findOne({ key: serverKey });
+  if (!server) throw new Error(`MCP Server "${serverKey}" 不存在`);
+
+  const sendRequest = server.transportType === 'stdio'
+    ? (method: string, params?: Record<string, unknown>) => sendStdioRequest(serverKey, method, params)
+    : (method: string, params?: Record<string, unknown>) => sendSseRequest(serverKey, method, params, server.sseConfig?.headers);
+
+  const result = await sendRequest('prompts/get', {
+    name: promptName,
+    arguments: args || {},
+  }) as { messages: McpPromptMessage[] };
+
+  return result?.messages || [];
+};

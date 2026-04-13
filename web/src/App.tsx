@@ -17,6 +17,9 @@ const PreviewPage = lazy(() => import('./pages/PreviewPage'));
 const OAuthCallbackPage = lazy(() => import('./pages/OAuthCallbackPage'));
 const MultiAgentPage = lazy(() => import('./pages/MultiAgentPage'));
 const MemoryPage = lazy(() => import('./pages/MemoryPage'));
+const SkillOrchestratorPage = lazy(() => import('./pages/SkillOrchestratorPage'));
+const KnowledgeGraphPage = lazy(() => import('./pages/KnowledgeGraphPage'));
+const AgentMarketPage = lazy(() => import('./pages/AgentMarketPage'));
 
 // 全局加载指示器
 const PageLoading = () => (
@@ -58,6 +61,9 @@ const MainRoutes = () => (
         <Route path="/plan" element={<AgentPlanPage />} />
         <Route path="/multi-agent" element={<MultiAgentPage />} />
         <Route path="/memory" element={<MemoryPage />} />
+        <Route path="/skills" element={<SkillOrchestratorPage />} />
+        <Route path="/knowledge-graph" element={<KnowledgeGraphPage />} />
+        <Route path="/agent-market" element={<AgentMarketPage />} />
         <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
