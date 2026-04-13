@@ -12,6 +12,8 @@ import { Agent } from '../models/Agent.js';
 import { Category } from '../models/Category.js';
 import { Skill } from '../models/Skill.js';
 import { KnowledgeBase } from '../models/KnowledgeBase.js';
+import { McpServer } from '../models/McpServer.js';
+import { AGENT_TOOLS } from '../lib/agentTools.js';
 
 export const knowledgeGraphRouter = new Router({ prefix: '/api/knowledge-graph' });
 
@@ -217,6 +219,73 @@ knowledgeGraphRouter.get('/', async (ctx) => {
     }
   }
 
+  // ── 构建内置工具节点（全量）──
+  for (const toolDef of AGENT_TOOLS) {
+    const toolId = `tool_${toolDef.function.name}`;
+    if (!nodeIds.has(toolId)) {
+      nodes.push({
+        id: toolId,
+        label: toolDef.function.name,
+        type: 'tool',
+        emoji: '🔧',
+        size: 15,
+        metadata: {
+          description: toolDef.function.description,
+          paramCount: Object.keys(toolDef.function.parameters.properties || {}).length,
+          source: 'builtin',
+        },
+      });
+      nodeIds.add(toolId);
+    }
+  }
+
+  // ── 构建 MCP Server 节点 + 边 ──
+  const mcpServers = await McpServer.find({ isActive: true }, {
+    key: 1, name: 1, icon: 1, tools: 1, status: 1, transportType: 1,
+  }).lean();
+
+  for (const mcp of mcpServers) {
+    const mcpId = `mcp_${mcp.key}`;
+    nodes.push({
+      id: mcpId,
+      label: (mcp as any).name || mcp.key,
+      type: 'tool' as const,
+      emoji: (mcp as any).icon || '🔌',
+      color: 'violet',
+      size: 22,
+      metadata: {
+        key: mcp.key,
+        transportType: (mcp as any).transportType,
+        toolCount: ((mcp as any).tools || []).length,
+        status: (mcp as any).status,
+        source: 'mcp',
+      },
+    });
+    nodeIds.add(mcpId);
+
+    // MCP Server 提供的工具 → 工具节点
+    for (const tool of (mcp as any).tools || []) {
+      const mcpToolId = `tool_mcp_${mcp.key}_${tool.name}`;
+      if (!nodeIds.has(mcpToolId)) {
+        nodes.push({
+          id: mcpToolId,
+          label: tool.name,
+          type: 'tool',
+          emoji: '⚙️',
+          size: 12,
+          metadata: { description: tool.description, source: 'mcp', serverKey: mcp.key },
+        });
+        nodeIds.add(mcpToolId);
+      }
+      edges.push({
+        source: mcpId,
+        target: mcpToolId,
+        label: '提供',
+        type: 'uses_tool',
+      });
+    }
+  }
+
   // 过滤掉目标节点不存在的边
   const validEdges = edges.filter(e => nodeIds.has(e.source) && nodeIds.has(e.target));
 
@@ -232,6 +301,8 @@ knowledgeGraphRouter.get('/', async (ctx) => {
         categoryCount: categories.length,
         skillCount: skills.length,
         knowledgeCount: knowledgeBases.length,
+        toolCount: AGENT_TOOLS.length,
+        mcpCount: mcpServers.length,
       },
     },
   };

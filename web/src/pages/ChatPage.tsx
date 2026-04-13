@@ -20,6 +20,7 @@ import {
 import { useAppStoreShallow } from '../store';
 import type { ChatSession, ChatMessage, Agent, Provider, ModelType } from '../types';
 import MessageRating from '../components/MessageRating';
+import ContextUsageIndicator from '../components/ContextUsageIndicator';
 
 const { Text } = Typography;
 
@@ -627,6 +628,8 @@ const ChatPage = () => {
                   )}
                 </div>
               </div>
+              {/* Context 使用量指示器 */}
+              <ContextUsageIndicator messages={messages} className="hidden sm:flex" />
             </div>
 
             {/* 消息列表 */}

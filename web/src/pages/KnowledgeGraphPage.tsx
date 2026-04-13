@@ -426,14 +426,20 @@ const KnowledgeGraphPage = () => {
             </h1>
             <p className="text-slate-400 text-sm mt-1">
               {lang === 'zh'
-                ? 'Agent、Skill、知识库之间的关系可视化'
-                : 'Visualize relationships between Agents, Skills, and Knowledge'}
+                ? 'Agent ↔ Skill ↔ Tool ↔ MCP ↔ 知识库 平台能力拓扑图'
+                : 'Platform capability topology: Agent ↔ Skill ↔ Tool ↔ MCP ↔ Knowledge'}
             </p>
           </div>
           {graphData && (
             <div className="flex items-center gap-3 text-xs text-slate-400">
               <span>{graphData.stats.totalNodes} {lang === 'zh' ? '节点' : 'nodes'}</span>
               <span>{graphData.stats.totalEdges} {lang === 'zh' ? '关系' : 'edges'}</span>
+              {graphData.stats.toolCount && graphData.stats.toolCount > 0 && (
+                <span>🔧 {graphData.stats.toolCount} {lang === 'zh' ? '工具' : 'tools'}</span>
+              )}
+              {graphData.stats.mcpCount && graphData.stats.mcpCount > 0 && (
+                <span>🔌 {graphData.stats.mcpCount} MCP</span>
+              )}
               <button
                 className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors"
                 onClick={loadGraph}

@@ -427,6 +427,8 @@ export interface KnowledgeGraphData {
     categoryCount: number;
     skillCount: number;
     knowledgeCount: number;
+    toolCount?: number;
+    mcpCount?: number;
   };
 }
 

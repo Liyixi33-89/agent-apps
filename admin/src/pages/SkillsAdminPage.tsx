@@ -22,13 +22,15 @@ import {
   BarChartOutlined, ReloadOutlined, AimOutlined, BranchesOutlined,
   CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined,
   ExperimentOutlined, PlusOutlined, EditOutlined, DeleteOutlined,
-  RollbackOutlined,
+  RollbackOutlined, ApiOutlined,
 } from '@ant-design/icons';
 import {
   fetchSkills, toggleSkill, executeSkill, fetchSkillStats,
   fetchSkillExecutions, testSkillMatch, fetchSkillOverviewStats,
   createSkill, updateSkill, deleteSkill, rollbackSkill,
+  fetchAgentTools, callAgentTool, fetchMcpTools, callMcpTool,
   type Skill, type SkillStats, type SkillOverviewStats,
+  type AgentToolDefinition,
 } from '../api';
 
 const { TextArea } = Input;
@@ -62,7 +64,323 @@ const CATEGORY_OPTIONS = Object.entries(CATEGORY_MAP).map(([k, v]) => ({ value: 
 // 主组件
 // =============================================================================
 
+// =============================================================================
+// Tool 管理 Tab 组件
+// =============================================================================
+
+interface ToolItem {
+  name: string;
+  description: string;
+  source: 'builtin' | 'mcp';
+  paramCount: number;
+  requiredCount: number;
+  parameters?: Record<string, any>;
+  required?: string[];
+}
+
+const ToolManagementTab = () => {
+  const [tools, setTools] = useState<ToolItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState('');
+  const [sourceFilter, setSourceFilter] = useState<'all' | 'builtin' | 'mcp'>('all');
+
+  // 测试台
+  const [testVisible, setTestVisible] = useState(false);
+  const [testTool, setTestTool] = useState<ToolItem | null>(null);
+  const [testArgs, setTestArgs] = useState('{}');
+  const [testResult, setTestResult] = useState<any>(null);
+  const [testLoading, setTestLoading] = useState(false);
+
+  const loadTools = useCallback(async () => {
+    setLoading(true);
+    try {
+      // 并行加载内置工具和 MCP 工具
+      const [agentRes, mcpRes] = await Promise.allSettled([
+        fetchAgentTools(),
+        fetchMcpTools(),
+      ]);
+
+      const allTools: ToolItem[] = [];
+
+      if (agentRes.status === 'fulfilled') {
+        for (const t of agentRes.value.tools) {
+          allTools.push({
+            name: t.name,
+            description: t.description,
+            source: 'builtin',
+            paramCount: Object.keys(t.parameters.properties || {}).length,
+            requiredCount: (t.parameters.required || []).length,
+            parameters: t.parameters.properties,
+            required: t.parameters.required,
+          });
+        }
+      }
+
+      if (mcpRes.status === 'fulfilled') {
+        for (const t of mcpRes.value.tools) {
+          allTools.push({
+            name: t.name,
+            description: t.description,
+            source: 'mcp',
+            paramCount: Object.keys(t.parameters || {}).length,
+            requiredCount: 0,
+            parameters: t.parameters as any,
+          });
+        }
+      }
+
+      setTools(allTools);
+    } catch {
+      message.error('加载工具列表失败');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadTools(); }, [loadTools]);
+
+  const handleTest = async () => {
+    if (!testTool) return;
+    setTestLoading(true);
+    setTestResult(null);
+    try {
+      const args = JSON.parse(testArgs);
+      const res = testTool.source === 'builtin'
+        ? await callAgentTool(testTool.name, args)
+        : await callMcpTool(testTool.name, args);
+      setTestResult(res);
+    } catch (err) {
+      setTestResult({ success: false, error: err instanceof Error ? err.message : '调用失败' });
+    } finally {
+      setTestLoading(false);
+    }
+  };
+
+  const filteredTools = tools.filter(t => {
+    if (sourceFilter !== 'all' && t.source !== sourceFilter) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      return t.name.toLowerCase().includes(q) || t.description.toLowerCase().includes(q);
+    }
+    return true;
+  });
+
+  const builtinCount = tools.filter(t => t.source === 'builtin').length;
+  const mcpCount = tools.filter(t => t.source === 'mcp').length;
+
+  const toolColumns = [
+    {
+      title: '工具名称',
+      key: 'name',
+      render: (_: unknown, record: ToolItem) => (
+        <div>
+          <div className="font-medium text-slate-800">{record.name}</div>
+          <Text type="secondary" className="text-xs">{record.description.slice(0, 80)}{record.description.length > 80 ? '...' : ''}</Text>
+        </div>
+      ),
+    },
+    {
+      title: '来源',
+      key: 'source',
+      width: 100,
+      render: (_: unknown, record: ToolItem) => (
+        record.source === 'builtin'
+          ? <Tag color="blue">内置</Tag>
+          : <Tag color="purple">MCP</Tag>
+      ),
+    },
+    {
+      title: '参数',
+      key: 'params',
+      width: 100,
+      render: (_: unknown, record: ToolItem) => (
+        <Space size={4}>
+          <Tag>{record.paramCount} 个</Tag>
+          {record.requiredCount > 0 && <Tag color="orange">{record.requiredCount} 必填</Tag>}
+        </Space>
+      ),
+    },
+    {
+      title: '操作',
+      key: 'actions',
+      width: 100,
+      render: (_: unknown, record: ToolItem) => (
+        <Button
+          type="primary"
+          size="small"
+          icon={<PlayCircleOutlined />}
+          onClick={() => {
+            setTestTool(record);
+            setTestArgs('{}');
+            setTestResult(null);
+            setTestVisible(true);
+          }}
+          aria-label={`测试 ${record.name}`}
+          tabIndex={0}
+        >
+          测试
+        </Button>
+      ),
+    },
+  ];
+
+  return (
+    <div className="space-y-4">
+      {/* 统计概览 */}
+      <Row gutter={16}>
+        <Col span={8}>
+          <Card size="small">
+            <Statistic
+              title="总工具数"
+              value={tools.length}
+              prefix={<ThunderboltOutlined className="text-sky-500" />}
+            />
+          </Card>
+        </Col>
+        <Col span={8}>
+          <Card size="small">
+            <Statistic
+              title="内置工具"
+              value={builtinCount}
+              prefix={<CheckCircleOutlined className="text-blue-500" />}
+            />
+          </Card>
+        </Col>
+        <Col span={8}>
+          <Card size="small">
+            <Statistic
+              title="MCP 工具"
+              value={mcpCount}
+              prefix={<ApiOutlined className="text-purple-500" />}
+            />
+          </Card>
+        </Col>
+      </Row>
+
+      {/* 筛选栏 */}
+      <Card size="small">
+        <Space wrap>
+          <Input
+            placeholder="搜索工具..."
+            prefix={<SearchOutlined />}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{ width: 240 }}
+            allowClear
+          />
+          <Select
+            value={sourceFilter}
+            onChange={setSourceFilter}
+            style={{ width: 140 }}
+            options={[
+              { value: 'all', label: '全部来源' },
+              { value: 'builtin', label: '内置工具' },
+              { value: 'mcp', label: 'MCP 工具' },
+            ]}
+          />
+          <Button icon={<ReloadOutlined />} onClick={loadTools}>刷新</Button>
+        </Space>
+      </Card>
+
+      {/* 工具列表 */}
+      <Card>
+        <Table
+          dataSource={filteredTools}
+          columns={toolColumns}
+          rowKey="name"
+          loading={loading}
+          pagination={{ pageSize: 15, showTotal: (t) => `共 ${t} 个工具` }}
+          size="middle"
+        />
+      </Card>
+
+      {/* 测试台弹窗 */}
+      <Modal
+        title={
+          <span className="flex items-center gap-2">
+            <ExperimentOutlined className="text-blue-500" />
+            工具测试台 — {testTool?.name}
+            {testTool && (
+              testTool.source === 'builtin'
+                ? <Tag color="blue">内置</Tag>
+                : <Tag color="purple">MCP</Tag>
+            )}
+          </span>
+        }
+        open={testVisible}
+        onCancel={() => setTestVisible(false)}
+        footer={null}
+        width={700}
+      >
+        {testTool && (
+          <div className="space-y-4">
+            <div className="p-3 bg-slate-50 rounded-lg">
+              <Text type="secondary" className="text-xs">{testTool.description}</Text>
+            </div>
+
+            {/* 参数信息 */}
+            {testTool.parameters && Object.keys(testTool.parameters).length > 0 && (
+              <div>
+                <Text strong className="text-sm">参数定义</Text>
+                <div className="mt-2 space-y-1">
+                  {Object.entries(testTool.parameters).map(([key, param]: [string, any]) => (
+                    <div key={key} className="flex items-center gap-2 text-xs">
+                      <code className="bg-slate-100 px-1.5 py-0.5 rounded">{key}</code>
+                      <Tag className="text-[10px]">{param.type || 'any'}</Tag>
+                      {testTool.required?.includes(key) && <Tag color="orange" className="text-[10px]">必填</Tag>}
+                      <Text type="secondary">{param.description}</Text>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div>
+              <Text strong>输入参数 (JSON)</Text>
+              <TextArea
+                value={testArgs}
+                onChange={e => setTestArgs(e.target.value)}
+                rows={4}
+                className="mt-2 font-mono text-sm"
+                placeholder='{"query": "React 19"}'
+              />
+            </div>
+            <Button
+              type="primary"
+              icon={<PlayCircleOutlined />}
+              onClick={handleTest}
+              loading={testLoading}
+              block
+            >
+              执行工具
+            </Button>
+            {testResult && (
+              <Card
+                size="small"
+                title={testResult.success ? '✅ 调用成功' : '❌ 调用失败'}
+                className={testResult.success ? 'border-green-200' : 'border-red-200'}
+              >
+                <pre className="bg-slate-50 p-3 rounded text-xs max-h-[300px] overflow-auto whitespace-pre-wrap">
+                  {testResult.success
+                    ? JSON.stringify(testResult.data || testResult.content, null, 2)
+                    : testResult.error || testResult.message || '未知错误'
+                  }
+                </pre>
+              </Card>
+            )}
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+};
+
+// =============================================================================
+// 主组件
+// =============================================================================
+
 const SkillsAdminPage = () => {
+  const [activeMainTab, setActiveMainTab] = useState<'skills' | 'tools'>('skills');
   const [skills, setSkills] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(false);
   const [total, setTotal] = useState(0);
@@ -428,24 +746,28 @@ const SkillsAdminPage = () => {
         <div>
           <Title level={3} className="!mb-1 flex items-center gap-2">
             <ThunderboltOutlined className="text-amber-500" />
-            Skill 管理
+            Skill & Tool 管理
           </Title>
-          <Text type="secondary">管理和监控 AI 技能编排系统</Text>
+          <Text type="secondary">管理 AI 技能编排系统和底层工具</Text>
         </div>
         <Space>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={handleOpenCreate}
-          >
-            创建 Skill
-          </Button>
-          <Button
-            icon={<AimOutlined />}
-            onClick={() => setMatchVisible(true)}
-          >
-            路由匹配测试
-          </Button>
+          {activeMainTab === 'skills' && (
+            <>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={handleOpenCreate}
+              >
+                创建 Skill
+              </Button>
+              <Button
+                icon={<AimOutlined />}
+                onClick={() => setMatchVisible(true)}
+              >
+                路由匹配测试
+              </Button>
+            </>
+          )}
           <Button
             icon={<ReloadOutlined />}
             onClick={() => { loadSkills(); loadOverview(); }}
@@ -454,6 +776,23 @@ const SkillsAdminPage = () => {
           </Button>
         </Space>
       </div>
+
+      {/* ── 主 Tab 切换 ── */}
+      <Tabs
+        activeKey={activeMainTab}
+        onChange={(key) => setActiveMainTab(key as 'skills' | 'tools')}
+        items={[
+          { key: 'skills', label: '⚡ Skill 管理', icon: <ThunderboltOutlined /> },
+          { key: 'tools', label: '🔧 Tool 工具', icon: <ExperimentOutlined /> },
+        ]}
+      />
+
+      {/* ── Tool 管理 Tab ── */}
+      {activeMainTab === 'tools' && <ToolManagementTab />}
+
+      {/* ── Skill 管理 Tab ── */}
+      {activeMainTab === 'skills' && (
+        <>
 
       {/* ── 统计概览 ── */}
       {overviewStats && (
@@ -988,6 +1327,9 @@ const SkillsAdminPage = () => {
           )}
         </div>
       </Modal>
+
+      </>
+      )}
     </div>
   );
 };

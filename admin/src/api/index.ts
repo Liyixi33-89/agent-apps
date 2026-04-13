@@ -880,3 +880,33 @@ export const refreshAllUrlKnowledge = async () => {
   } }>('/knowledge/refresh-all-urls');
   return data.data;
 };
+
+// ─── 内置 Agent Tools ────────────────────────────────────────────────────────
+
+export interface AgentToolParam {
+  type: string;
+  description: string;
+  enum?: string[];
+}
+
+export interface AgentToolDefinition {
+  name: string;
+  description: string;
+  parameters: {
+    type: string;
+    properties: Record<string, AgentToolParam>;
+    required: string[];
+  };
+}
+
+/** 获取所有内置 Agent 工具定义 */
+export const fetchAgentTools = async (): Promise<{ total: number; tools: AgentToolDefinition[] }> => {
+  const { data } = await runtimeApi.get<{ success: boolean; data: { total: number; tools: AgentToolDefinition[] } }>('/agent/tools');
+  return data.data;
+};
+
+/** 调用内置 Agent 工具（测试台） */
+export const callAgentTool = async (name: string, args: Record<string, unknown> = {}): Promise<{ success: boolean; data?: unknown; error?: string }> => {
+  const { data } = await runtimeApi.post<{ success: boolean; data?: unknown; error?: string }>('/agent/tool', { name, arguments: args });
+  return data;
+};

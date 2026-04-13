@@ -16,6 +16,7 @@ import SkillsAdminPage from './pages/SkillsAdminPage';
 import RbacAdminPage from './pages/RbacAdminPage';
 import TokenUsagePage from './pages/TokenUsagePage';
 import EvaluationAdminPage from './pages/EvaluationAdminPage';
+import ProviderMonitorPage from './pages/ProviderMonitorPage';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { isAuthenticated } = useAdminStore();
@@ -46,6 +47,7 @@ const App = () => {
                 <Route path="/rbac" element={<RbacAdminPage />} />
                 <Route path="/token-usage" element={<TokenUsagePage />} />
                 <Route path="/evaluations" element={<EvaluationAdminPage />} />
+                <Route path="/providers" element={<ProviderMonitorPage />} />
               </Routes>
             </AdminLayout>
           </ProtectedRoute>

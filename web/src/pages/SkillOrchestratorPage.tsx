@@ -11,6 +11,8 @@ import {
 } from '../api';
 import { useLang } from '../store';
 import type { Skill, SkillStep, SkillStepType, SkillExecutionResult } from '../types';
+import SkillVisualEditor from '../components/SkillVisualEditor';
+import { ToolsPanel } from './ToolsPage';
 
 // ─── 步骤类型配置 ─────────────────────────────────────────────────────────────
 
@@ -494,6 +496,93 @@ const TrySkillPanel = ({ skill, onClose, lang }: TrySkillPanelProps) => {
   );
 };
 
+// ─── 可视化编排器 Tab ────────────────────────────────────────────────────────
+
+const SkillVisualEditorTab = ({ lang }: { lang: 'zh' | 'en' }) => {
+  const [steps, setSteps] = useState<SkillStep[]>([]);
+  const [skillName, setSkillName] = useState('');
+  const [skillDescription, setSkillDescription] = useState('');
+
+  const handleExportJSON = () => {
+    const skillConfig = {
+      name: skillName || '未命名 Skill',
+      description: skillDescription,
+      steps,
+      version: '1.0.0',
+      exportedAt: new Date().toISOString(),
+    };
+    const blob = new Blob([JSON.stringify(skillConfig, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `skill-${skillName || 'untitled'}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* 基本信息 */}
+      <div className="bg-white rounded-xl border border-slate-200 p-4">
+        <h3 className="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-2">
+          ✨ {lang === 'zh' ? '可视化 Skill 编排器' : 'Visual Skill Editor'}
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">Skill 名称</label>
+            <input
+              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:border-violet-400 outline-none"
+              placeholder="如: 网页调研"
+              value={skillName}
+              onChange={(e) => setSkillName(e.target.value)}
+              aria-label="Skill 名称"
+              tabIndex={0}
+            />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">描述</label>
+            <input
+              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:border-violet-400 outline-none"
+              placeholder="简要描述 Skill 的功能"
+              value={skillDescription}
+              onChange={(e) => setSkillDescription(e.target.value)}
+              aria-label="Skill 描述"
+              tabIndex={0}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* 编排器 */}
+      <div className="bg-white rounded-xl border border-slate-200 p-4">
+        <SkillVisualEditor steps={steps} onChange={setSteps} />
+      </div>
+
+      {/* 导出按钮 */}
+      {steps.length > 0 && (
+        <div className="flex justify-end gap-2">
+          <button
+            className="text-xs px-4 py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+            onClick={() => { setSteps([]); setSkillName(''); setSkillDescription(''); }}
+            tabIndex={0}
+            aria-label="清空"
+          >
+            清空
+          </button>
+          <button
+            className="text-xs px-4 py-2 rounded-lg bg-violet-500 text-white hover:bg-violet-600 transition-colors"
+            onClick={handleExportJSON}
+            tabIndex={0}
+            aria-label="导出 JSON"
+          >
+            📦 导出 JSON
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ─── 路由匹配测试面板 ────────────────────────────────────────────────────────
 
 const RouteMatchPanel = ({ lang }: { lang: 'zh' | 'en' }) => {
@@ -635,7 +724,7 @@ const RouteMatchPanel = ({ lang }: { lang: 'zh' | 'en' }) => {
 
 // ─── 主页面 ──────────────────────────────────────────────────────────────────
 
-type TabKey = 'gallery' | 'try' | 'match';
+type TabKey = 'gallery' | 'try' | 'match' | 'editor' | 'tools';
 
 const SkillOrchestratorPage = () => {
   const lang = useLang();
@@ -680,8 +769,10 @@ const SkillOrchestratorPage = () => {
 
   const TAB_CONFIG: Array<{ key: TabKey; label: string; labelEn: string; icon: typeof Zap }> = [
     { key: 'gallery', label: '🎯 Skill 能力库', labelEn: '🎯 Skill Gallery', icon: Sparkles },
+    { key: 'tools',   label: '🔧 Tool 工具',   labelEn: '🔧 Tools',         icon: Settings },
     { key: 'try',     label: '🧪 试用 Skill',   labelEn: '🧪 Try Skill',     icon: Play },
     { key: 'match',   label: '🔍 路由匹配测试', labelEn: '🔍 Route Match',   icon: Target },
+    { key: 'editor',  label: '✨ 可视化编排', labelEn: '✨ Visual Editor', icon: Layers },
   ];
 
   return (
@@ -692,12 +783,12 @@ const SkillOrchestratorPage = () => {
           <div>
             <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
               <Zap className="w-6 h-6 text-amber-500" />
-              {lang === 'zh' ? 'Skill 能力中心' : 'Skill Center'}
+              {lang === 'zh' ? 'Skill & Tool 能力中心' : 'Skill & Tool Center'}
             </h1>
             <p className="text-slate-400 text-sm mt-1">
               {lang === 'zh'
-                ? '探索和试用 AI Skill，了解自动化能力编排'
-                : 'Explore and try AI Skills, understand automated capability orchestration'}
+                ? '探索 AI Skill 编排能力，查看和测试底层 Tool 工具'
+                : 'Explore AI Skill orchestration and test underlying Tools'}
             </p>
           </div>
           <button
@@ -754,6 +845,11 @@ const SkillOrchestratorPage = () => {
       {/* 内容区 */}
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-7xl mx-auto px-6 py-6">
+
+          {/* Tab: Tool 工具 */}
+          {activeTab === 'tools' && (
+            <ToolsPanel />
+          )}
 
           {/* Tab: Skill 能力库 */}
           {activeTab === 'gallery' && (
@@ -881,6 +977,11 @@ const SkillOrchestratorPage = () => {
           {/* Tab: 路由匹配测试 */}
           {activeTab === 'match' && (
             <RouteMatchPanel lang={lang} />
+          )}
+
+          {/* Tab: 可视化编排器 */}
+          {activeTab === 'editor' && (
+            <SkillVisualEditorTab lang={lang} />
           )}
         </div>
       </div>
