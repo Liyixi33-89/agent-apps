@@ -22,6 +22,8 @@
 | vibeAppRuntime.ts | 10 | vibeAppRuntime 相关 API |
 | vibeFullStackPipeline.ts | 3 | vibeFullStackPipeline 相关 API |
 | vibePipeline.ts | 1 | vibePipeline 相关 API |
+| favorite.ts | 4 | 收藏相关 API（v1.2.0 新增） |
+| review.ts | 4 | 评价相关 API（v1.3.0 新增） |
 
 ## 全量 API 列表
 
@@ -182,3 +184,11 @@
 | 153 | POST | /xxx | — | vibeFullStackPipeline.ts |
 | 154 | POST | /vibe/fullstack-pipeline | — | vibeFullStackPipeline.ts |
 | 155 | POST | /vibe/pipeline | — | vibePipeline.ts |
+| 156 | POST | /favorites | requireAuth | favorite.ts |
+| 157 | DELETE | /favorites/:agentId | requireAuth | favorite.ts |
+| 158 | GET | /favorites | requireAuth | favorite.ts |
+| 159 | GET | /favorites/check | requireAuth | favorite.ts |
+| 160 | GET | /agents/:slug/reviews | — | review.ts |
+| 161 | POST | /agents/:slug/reviews | requireAuth | review.ts |
+| 162 | GET | /agents/:slug/reviews/mine | requireAuth | review.ts |
+| 163 | DELETE | /agents/:slug/reviews | requireAuth | review.ts |

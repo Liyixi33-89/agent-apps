@@ -83,4 +83,11 @@
 | 73 | fetchAgentEvalStats |
 | 74 | fetchOAuthProviders |
 | 75 | executeReActLoop |
+| 76 | fetchFavorites | v1.2.0 新增：获取收藏列表 |
+| 77 | toggleFavorite | v1.2.0 新增：收藏/取消收藏 |
+| 78 | checkFavorites | v1.2.0 新增：批量检查收藏状态 |
+| 79 | fetchReviews | v1.3.0 新增：获取评价列表 + 统计 |
+| 80 | submitAgentReview | v1.3.0 新增：提交/更新评价 |
+| 81 | fetchMyReview | v1.3.0 新增：获取我的评价 |
+| 82 | deleteAgentReview | v1.3.0 新增：删除评价 |
 

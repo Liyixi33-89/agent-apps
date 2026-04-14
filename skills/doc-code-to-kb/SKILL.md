@@ -509,10 +509,124 @@ python3 {SKILL_DIR}/scripts/verify_kb.py <kb_root>
 
 ---
 
-## 更新知识库
+## 更新知识库（增量更新模式）
+
+> 🆕 当 Pipeline 中的 KB 更新步骤被触发时，使用此模式。
+> 不需要全量扫描，只更新受影响的索引文件和详情文件。
+
+### 触发条件
+
+以下任一条件满足时触发增量更新：
+- Pipeline 中的 `doc-code-to-kb` 步骤被执行
+- 用户说"更新知识库"、"同步 KB"、"KB 增量更新"
+- 用户说"把 XX 功能更新到知识库"
+
+### 输入
+
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| **版本号** | 否 | 如 `v1.3.0`，用于定位 `version-doc/{版本号}/` 下的设计文档 |
+| **变更文件列表** | 否 | 手动指定变更的源码文件列表 |
+
+如果未提供版本号和变更文件列表，则使用 `detect_changes.py` 自动检测：
 
 ```bash
 python3 {SKILL_DIR}/scripts/detect_changes.py <project_root>
 ```
 
-输出受影响的索引文件列表，只读取对应的规范文件重新生成受影响的索引。
+### 增量更新编排流程
+
+#### IU-1：确定变更范围
+
+**方式 A：从版本文档推断**（推荐）
+
+读取 `version-doc/{版本号}/CHANGELOG.md` 或 `version-doc/{版本号}/design/be-*.md` + `fe-*.md`，提取：
+- 新增的 Model 文件列表
+- 新增/修改的 Route 文件列表
+- 新增的 Service 文件列表
+- 新增的前端组件文件列表
+- 修改的前端页面文件列表
+- 新增的前端 API 函数列表
+- 新增的前端类型定义列表
+
+**方式 B：从 detect_changes.py 推断**
+
+```bash
+python3 {SKILL_DIR}/scripts/detect_changes.py <project_root>
+```
+
+输出受影响的索引文件列表。
+
+**方式 C：用户手动指定**
+
+用户直接告知变更了哪些文件。
+
+#### IU-2：确定受影响的 KB 文件
+
+根据变更范围，映射到需要更新的 KB 文件：
+
+| 变更类型 | 受影响的 KB 文件 |
+|---------|----------------|
+| 新增 Model | `02_index_model.md`（追加条目） |
+| 修改 Model（新增字段） | `02_index_model.md`（更新对应 Model 的字段表） |
+| 新增 Route 文件 | `01_index_api.md`（追加路由挂载 + API 列表）+ 新建 `api/{routeName}.md` 详情 |
+| 修改 Route 文件（新增端点） | `01_index_api.md`（更新端点数 + 追加 API 列表）+ 更新 `api/{routeName}.md` 详情 |
+| 新增 Service | `03_index_service.md`（追加条目）+ 新建 `services/{serviceName}.md` 详情 |
+| 新增前端组件 | `02_index_component.md`（追加条目） |
+| 修改前端页面 | 更新 `pages/{pageName}.md` 详情 |
+| 新增前端 API 函数 | `03_index_api.md`（追加条目） |
+| 新增前端类型 | `05_index_types.md`（追加条目） |
+| 修改 Agent Model（新增字段） | `02_index_model.md` + `05_index_types.md`（前端类型同步） |
+
+#### IU-3：逐文件执行增量更新
+
+对每个受影响的 KB 文件：
+
+1. **读取当前 KB 文件内容**
+2. **读取对应的源码文件**（新增/修改的源码）
+3. **读取对应的规范文件**（`{SKILL_DIR}/references/doc-xxx.md`）
+4. **按规范格式追加/更新内容**：
+   - 索引文件（`0N_index_*.md`）→ 在表格末尾追加新条目，或更新已有条目
+   - 详情文件（`api/*.md`、`services/*.md`、`pages/*.md`）→ 新建或覆盖重写
+5. **写入文件**
+6. **执行 `gen_progress.py done`**
+
+#### IU-4：更新进度文件
+
+更新 `kb/progress.md`，追加新增文件的记录。
+
+#### IU-5：输出增量更新报告
+
+```markdown
+## KB 增量更新完成
+
+**触发来源**：{版本号 / detect_changes / 手动指定}
+
+### 更新的 KB 文件
+
+| # | KB 文件 | 操作 | 说明 |
+|---|---------|------|------|
+| 1 | server/server/01_index_api.md | 更新 | 新增 review.ts 路由（4 端点） |
+| 2 | server/server/02_index_model.md | 更新 | 新增 AgentReview Model + Agent ratingStats 字段 |
+| 3 | server/server/03_index_service.md | 更新 | 新增 reviewService |
+| 4 | server/server/api/review.md | 新建 | 评价路由详情 |
+| 5 | server/server/services/reviewService.md | 新建 | 评价 Service 详情 |
+| 6 | frontend/@agency/web/02_index_component.md | 更新 | 新增 3 个评价组件 |
+| 7 | frontend/@agency/web/03_index_api.md | 更新 | 新增 4 个评价 API 函数 |
+
+### 统计
+
+| 指标 | 数量 |
+|------|------|
+| 更新的索引文件 | {N} |
+| 新建的详情文件 | {N} |
+| 更新的详情文件 | {N} |
+```
+
+### 增量更新约束
+
+1. **只更新受影响的文件**，不触碰未变更的 KB 文件
+2. **追加而非覆盖**：索引文件中已有的条目不要删除，只追加新条目或更新已有条目
+3. **格式一致**：追加的内容必须与已有内容格式一致（表格列数、字段顺序等）
+4. **编号连续**：追加到表格时，序号从已有最大值 +1 开始
+5. **必须读取规范文件**：即使是增量更新，也必须先读取对应的规范文件确认格式

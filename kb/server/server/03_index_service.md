@@ -18,6 +18,7 @@
 | 12 | providerRegistry | services/providerRegistry.ts | 11 | — | — |
 | 13 | skillEngine | services/skillEngine.ts | 3 | Skill, type ISkill, type ISkillStep, SkillExecution, type ISkillExecution, type IStepExecution, type ExecStatus, type TriggerMethod, SystemPrompt | — |
 | 14 | skillRouter | services/skillRouter.ts | 2 | Skill, type ISkill, TriggerMethod | — |
+| 15 | reviewService | services/reviewService.ts | 5 | AgentReview, Agent | — | v1.3.0 新增：评价业务逻辑 |
 
 ## Service 摘要
 

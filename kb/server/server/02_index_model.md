@@ -20,6 +20,8 @@
 | 14 | User | models/User.ts | 1 | 0 | — |
 | 15 | VibeTemplate | models/VibeTemplate.ts | 1 | 0 | — |
 | 16 | shared | models/shared.ts | 2 | 0 | — |
+| 17 | Favorite | models/Favorite.ts | 1 | 0 | v1.2.0 新增：用户收藏 Agent |
+| 18 | AgentReview | models/AgentReview.ts | 1 | 0 | v1.3.0 新增：Agent 评分评价 |
 
 ## Model 详情
 
@@ -528,4 +530,57 @@
 |------|------|------|
 | res | ServerResponse | — |
 | send | (data: Record<string, unknown>) => void | — |
+
+### Favorite
+
+**文件**: server/src/models/Favorite.ts
+**版本**: v1.2.0 新增
+
+**接口 `IFavorite`**:
+
+| 字段 | 类型 | 可选 |
+|------|------|------|
+| userId | mongoose.Types.ObjectId | — |
+| agentId | mongoose.Types.ObjectId | — |
+| createdAt | Date | — |
+
+**索引**:
+
+| 索引名 | 字段 | 类型 | 说明 |
+|--------|------|------|------|
+| userId_agentId | { userId: 1, agentId: 1 } | 唯一复合 | 防止重复收藏 |
+| userId_time | { userId: 1, createdAt: -1 } | 普通复合 | 收藏列表按时间倒序 |
+| agentId | { agentId: 1 } | 普通 | 统计 Agent 收藏数 |
+
+**关联关系**:
+- userId → User._id（N:1）
+- agentId → Agent._id（N:1）
+
+### AgentReview
+
+**文件**: server/src/models/AgentReview.ts
+**版本**: v1.3.0 新增
+
+**接口 `IAgentReview`**:
+
+| 字段 | 类型 | 可选 |
+|------|------|------|
+| agentSlug | string | — |
+| userId | string | — |
+| username | string | — |
+| rating | number | — |
+| content | string | — |
+| createdAt | Date | — |
+| updatedAt | Date | — |
+
+**索引**:
+
+| 索引名 | 字段 | 类型 | 说明 |
+|--------|------|------|------|
+| slug_user_unique | { agentSlug: 1, userId: 1 } | 唯一复合 | 一人一评 |
+| slug_time | { agentSlug: 1, createdAt: -1 } | 普通复合 | 按时间倒序查询 |
+
+**关联关系**:
+- agentSlug → Agent.slug（N:1）
+- userId → User._id（N:1）
 

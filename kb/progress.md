@@ -63,6 +63,9 @@
 - ✅ services/providerRegistry.md (2026-04-13 16:13)
 - ✅ services/skillEngine.md (2026-04-13 16:13)
 - ✅ services/skillRouter.md (2026-04-13 16:13)
+- ✅ api/favorite.md (2026-04-14 15:58) — v1.2.0 增量更新
+- ✅ api/review.md (2026-04-14 15:58) — v1.3.0 增量更新
+- ✅ services/reviewService.md (2026-04-14 15:58) — v1.3.0 增量更新
 
 ## frontend/@agency/web
 
