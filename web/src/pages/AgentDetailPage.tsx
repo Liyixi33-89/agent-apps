@@ -3,8 +3,9 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, MessageSquare, Zap, BookOpen, Tag, ChevronDown, ChevronUp } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { fetchAgent } from '../api';
+import { fetchAgent, checkFavorites } from '../api';
 import { useLang } from '../store';
+import FavoriteButton from '../components/FavoriteButton';
 import type { Agent } from '../types';
 
 const colorMap: Record<string, string> = {
@@ -32,12 +33,21 @@ const AgentDetailPage = () => {
   const [loading, setLoading] = useState(true);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['overview']));
   const [activeTab, setActiveTab] = useState<'overview' | 'workflow' | 'raw'>('overview');
+  const [isFavorited, setIsFavorited] = useState(false);
 
   useEffect(() => {
     if (!slug) return;
     setLoading(true);
     fetchAgent(slug)
-      .then(setAgent)
+      .then((agentData) => {
+        setAgent(agentData);
+        // 检查收藏状态
+        if (localStorage.getItem('token') && agentData._id) {
+          checkFavorites([agentData._id])
+            .then((statusMap) => setIsFavorited(!!statusMap[agentData._id]))
+            .catch(() => {});
+        }
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [slug]);
@@ -116,7 +126,7 @@ const AgentDetailPage = () => {
         </div>
 
         {/* 操作按钮 */}
-        <div className="flex gap-2 mt-4 pt-4 border-t border-slate-100">
+        <div className="flex gap-2 mt-4 pt-4 border-t border-slate-100 items-center">
           <Link
             to={`/chat?agent=${agent.slug}`}
             className="btn-primary text-sm"
@@ -138,6 +148,17 @@ const AgentDetailPage = () => {
             <BookOpen className="w-4 h-4" />
             {lang === 'zh' ? '知识库' : 'Knowledge'}
           </Link>
+          <div className="ml-auto">
+            <FavoriteButton
+              agentId={agent._id}
+              initialFavorited={isFavorited}
+              initialCount={agent.favoriteCount ?? 0}
+              showCount
+              showText
+              size="default"
+              onToggle={(fav) => setIsFavorited(fav)}
+            />
+          </div>
         </div>
       </div>
 

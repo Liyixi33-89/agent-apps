@@ -32,8 +32,24 @@ export interface Agent {
     sectionCount: number;
     wordCount: number;
   };
+  favoriteCount?: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/** 收藏条目 */
+export interface FavoriteItem {
+  favoriteId: string;
+  agent: Agent;
+  createdAt: string;
+}
+
+/** 收藏列表响应 */
+export interface FavoriteListResponse {
+  items: FavoriteItem[];
+  total: number;
+  page: number;
+  limit: number;
 }
 
 export interface Section {

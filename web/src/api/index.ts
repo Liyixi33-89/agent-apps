@@ -761,6 +761,37 @@ export const getMcpPromptMessages = async (serverKey: string, name: string, args
   return data.data;
 };
 
+// ─── 收藏功能 API ────────────────────────────────────────────────────────────
+
+import type { FavoriteItem, FavoriteListResponse } from '../types';
+
+/** 收藏 Agent */
+export const addFavorite = async (agentId: string) => {
+  const { data } = await api.post<{ success: boolean; data: { favoriteId: string; agentId: string; createdAt: string } }>('/favorites', { agentId });
+  return data.data;
+};
+
+/** 取消收藏 Agent */
+export const removeFavorite = async (agentId: string) => {
+  const { data } = await api.delete<{ success: boolean }>(`/favorites/${agentId}`);
+  return data;
+};
+
+/** 获取我的收藏列表 */
+export const fetchFavorites = async (params?: { page?: number; limit?: number }): Promise<FavoriteListResponse> => {
+  const { data } = await api.get<{ success: boolean; data: FavoriteListResponse }>('/favorites', { params });
+  return data.data;
+};
+
+/** 批量检查收藏状态 */
+export const checkFavorites = async (agentIds: string[]): Promise<Record<string, boolean>> => {
+  if (agentIds.length === 0) return {};
+  const { data } = await api.get<{ success: boolean; data: Record<string, boolean> }>('/favorites/check', {
+    params: { agentIds: agentIds.join(',') },
+  });
+  return data.data;
+};
+
 // ─── Agent 评估/反馈 ────────────────────────────────────────────────────────
 
 /** 提交用户评分/反馈 */
