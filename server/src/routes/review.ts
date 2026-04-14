@@ -19,6 +19,19 @@ import * as reviewService from '../services/reviewService.js';
 
 export const reviewRouter = new Router();
 
+/**
+ * XSS 过滤：移除 HTML 标签和潜在的脚本注入内容
+ * 评价内容为纯文本，不允许任何 HTML
+ */
+const sanitizeReviewContent = (text: string): string => {
+  return text
+    .replace(/<[^>]*>/g, '')           // 移除所有 HTML 标签
+    .replace(/&(?:#x?[0-9a-f]+|\w+);/gi, '') // 移除 HTML 实体编码
+    .replace(/javascript:/gi, '')       // 移除 javascript: 协议
+    .replace(/on\w+\s*=/gi, '')         // 移除事件处理器属性（onerror=, onclick= 等）
+    .trim();
+};
+
 // ─── 获取评价列表 + 统计  GET /api/agents/:slug/reviews ──────────────────────
 
 reviewRouter.get('/agents/:slug/reviews', async (ctx) => {
@@ -69,6 +82,9 @@ reviewRouter.post('/agents/:slug/reviews', requireAuth, async (ctx) => {
       return;
     }
 
+    // XSS 过滤：移除 HTML 标签和危险字符
+    const sanitizedContent = content ? sanitizeReviewContent(content) : undefined;
+
     // 校验 Agent 是否存在
     const agent = await Agent.findOne({ slug }).lean();
     if (!agent) {
@@ -82,7 +98,7 @@ reviewRouter.post('/agents/:slug/reviews', requireAuth, async (ctx) => {
       user.userId,
       user.username,
       rating,
-      content
+      sanitizedContent
     );
 
     ctx.body = { success: true, data: review };
