@@ -1,6 +1,6 @@
 ---
 name: doc-code-to-kb
-description: "从代码生成项目知识库。扫描 TypeScript/React/Koa Monorepo 项目结构，按各层生成规范构建三层索引知识库。"
+description: "从代码生成项目知识库。扫描 TypeScript/React/Koa Monorepo 项目结构，按各层生成规范构建五层索引知识库（含项目宪法、架构模式、反模式）。"
 ---
 
 # Doc-Code-To-KB — 从代码生成知识库
@@ -21,9 +21,11 @@ description: "从代码生成项目知识库。扫描 TypeScript/React/Koa Monor
 
 知识库不是文档，而是 **AI 的项目认知缓存**。
 
-**消费路径**（AI 查阅时的三跳定位）：
+**消费路径**（AI 查阅时的五层定位）：
+0. 第零层 project_constitution → "这个项目的架构决策、编码约定、技术栈锁定是什么？"
 1. 第一层 project_map → "这个项目有哪些模块？我要找的功能在哪个模块？"
 2. 第二层 index → "这个模块有哪些 Route/Model/Service/Page？我要找的符号叫什么？在哪个文件？"
+2.5. 第二.五层 architecture_patterns / anti_patterns → "这个模块的编码模式是什么？哪些做法是被禁止的？"
 3. 第三层 detail → "这个 Service 的完整逻辑是什么？入参出参？调用了谁？"
 
 **三个使用场景的依赖层级**：
@@ -31,8 +33,9 @@ description: "从代码生成项目知识库。扫描 TypeScript/React/Koa Monor
 | 场景 | 最依赖 | 次依赖 | 生成时的关注点 |
 |------|--------|--------|--------------|
 | 解答用户提问 | 第一层+第二层 | 第三层 | 索引表的搜索友好性（关键词、路径、说明） |
-| AI 编码参考 | 第二层+第三层 | 第一层 | 函数签名精确、入参出参完整、调用链清晰 |
-| 方案设计参考 | 第一层+第二层 | 第三层 | 模块关系、依赖矩阵、业务逻辑摘要 |
+| AI 编码参考 | 第零层+第二.五层+第三层 | 第二层 | 架构模式遵循、函数签名精确、反模式规避 |
+| 方案设计参考 | 第零层+第一层+第二层 | 第三层 | 架构决策、模块关系、依赖矩阵 |
+| Code Review | 第零层+第二.五层 | 第三层 | 架构模式合规、反模式检测 |
 
 因此生成时的优先保障顺序：**签名精确 > 覆盖全量 > 逻辑详尽**
 
@@ -43,13 +46,19 @@ description: "从代码生成项目知识库。扫描 TypeScript/React/Koa Monor
 2. **签名可追溯**：每个 API 的入参出参可以追溯到具体的 TypeScript 类型定义
 3. **调用链可查**：任意路由处理函数能沿 Route → Service → Model 链路追踪到数据库操作
 4. **前后端可关联**：前端 API 函数能对应到后端路由路径
+5. **架构模式已提取**：每个模块有 `06_architecture_patterns.md`，包含 ✅ GOOD / ❌ BAD 代码示例
+6. **反模式已记录**：每个模块有 `07_anti_patterns.md`，列出禁止做的事情及检测方法
+7. **项目宪法已生成**：`kb/00_project_constitution.md` 包含架构决策、编码约定、技术栈锁定
 
-## 三层索引体系
+## 五层索引体系
 
 ```
-第一层: 00_project_map.md   → 项目全景："这个项目有什么？去哪里找？"
-第二层: 0N_index_*.md       → 符号索引表：所有 API/Model/Service/Page 等的详细索引
-第三层: api/ services/ pages/ → 全量详情文件：每个路由/Service/页面一个文件（分详略）
+第零层: kb/00_project_constitution.md → 项目宪法：架构决策、编码约定、技术栈锁定（全局唯一）
+第一层: 00_project_map.md            → 项目全景："这个项目有什么？去哪里找？"
+第二层: 0N_index_*.md                → 符号索引表：所有 API/Model/Service/Page 等的详细索引
+第二.五层: 06_architecture_patterns.md → 架构模式：✅ GOOD / ❌ BAD 代码示例（每个模块一个）
+         07_anti_patterns.md         → 反模式清单：禁止做的事情及检测方法（每个模块一个）
+第三层: api/ services/ pages/        → 全量详情文件：每个路由/Service/页面一个文件（分详略）
 ```
 
 ## 知识库目录规范
@@ -180,6 +189,95 @@ python3 {SKILL_DIR}/scripts/gen_progress.py init <kb_root> <kb_root>/.scan_resul
 5. **写完后立即执行** `python3 {SKILL_DIR}/scripts/gen_progress.py done <kb_root> <relative_filepath>` 标记完成
 
 **每完成一个模块后**，执行 `python3 {SKILL_DIR}/scripts/gen_progress.py status <kb_root>` 确认无遗漏，再处理下一个模块。
+
+### 第 3.5 步：提取架构模式与反模式（🆕 新增）
+
+> 借鉴 BMAD-METHOD 的 `project-context.md` 和 awesome-cursorrules 的 MDC 格式。
+> 本步骤从实际代码中提取架构模式，生成 ✅ GOOD / ❌ BAD 代码示例。
+
+#### 3.5.1 生成项目宪法
+
+**输出文件**：`kb/00_project_constitution.md`（全局唯一）
+
+**提取方法**：
+1. 读取 `package.json` → 提取技术栈和版本号
+2. 读取 `server/src/config/env.ts` → 提取环境变量管理模式
+3. 读取 `server/src/index.ts` → 提取中间件注册顺序和路由挂载模式
+4. 读取 `server/src/middleware/auth.ts` → 提取认证和权限模式
+5. 读取 `web/src/api/index.ts` → 提取 API 封装模式（axios 实例、拦截器）
+6. 读取 `web/src/store/index.ts` → 提取状态管理模式（Zustand 配置）
+7. 综合以上信息，按模板生成项目宪法
+
+**项目宪法必须包含**：
+- 架构决策记录（ADR）：为什么选择 X 而不是 Y
+- 全局编码约定：命名、错误处理、响应格式
+- 技术栈锁定：每个层级的技术选型和禁止替代
+- 目录结构约定
+- 多语言约定
+- 环境变量约定
+
+#### 3.5.2 生成后端架构模式
+
+**输出文件**：`kb/server/{module}/06_architecture_patterns.md`
+
+**提取方法**：
+1. 读取 3 个典型路由文件 → 提取路由注册模式、响应格式模式
+2. 读取 `middleware/auth.ts` → 提取认证中间件链模式
+3. 读取 2 个典型 Model 文件 → 提取 Schema 定义模式
+4. 读取 `config/env.ts` → 提取环境变量读取模式
+5. 读取 1 个 SSE 路由 → 提取流式响应模式
+6. 读取 `index.ts` → 提取全局错误处理模式
+
+**每个模式必须包含**：
+- 模式编号和名称（如 `Pattern-S001: 路由注册模式`）
+- 一段文字说明
+- ✅ GOOD 代码示例（从实际代码中提取）
+- ❌ BAD 代码示例（常见错误写法）
+
+#### 3.5.3 生成后端反模式
+
+**输出文件**：`kb/server/{module}/07_anti_patterns.md`
+
+**提取方法**：
+1. 扫描 `routes/*.ts` → 检测是否有直接操作 Model 的复杂业务逻辑
+2. 扫描所有 `.ts` 文件 → 检测 `process.env.` 出现在 `config/env.ts` 以外的位置
+3. 扫描所有 `.ts` 文件 → 检测空 catch 块、缺少 .js 后缀的导入
+
+**每条反模式必须包含**：
+- 编号和名称（如 `AP-S001: 禁止在 Route 中直接操作复杂业务逻辑`）
+- 原因说明
+- 检测方法
+- ❌ BAD / ✅ GOOD 代码示例
+
+#### 3.5.4 生成前端架构模式
+
+**输出文件**：`kb/frontend/{app}/06_architecture_patterns.md`
+
+**提取方法**：
+1. 读取 `api/index.ts` 前 80 行 → 提取 axios 实例配置和拦截器模式
+2. 读取 `store/index.ts` → 提取 Zustand 使用模式（persist、useShallow）
+3. 读取 `types/index.ts` 前 50 行 → 提取类型定义模式
+4. 读取 3 个典型页面 → 提取页面组件结构模式（hooks 顺序、事件处理命名）
+5. 对比 web 和 admin 的 `api/index.ts` → 提取差异模式（baseURL、token key）
+
+#### 3.5.5 生成前端反模式
+
+**输出文件**：`kb/frontend/{app}/07_anti_patterns.md`
+
+**提取方法**：
+1. 扫描 `pages/*.tsx` → 检测是否有绕过 axios 实例的 fetch 调用
+2. 扫描 `store/index.ts` → 检测是否有 token 字段
+3. 扫描 `pages/*.tsx` → 检测是否有 `style={{ }}` 内联样式
+4. 扫描 `pages/*.tsx` → 检测是否有 `export interface`（应在 types/ 中）
+
+#### 执行要求
+
+1. **先生成项目宪法**（全局唯一），再逐模块生成架构模式和反模式
+2. **代码示例必须来自实际代码**，不要编造
+3. **每个文件写完后立即执行** `gen_progress.py done`
+4. **如果项目宪法已存在**，读取并检查是否需要更新（技术栈版本变化等）
+
+---
 
 ### 第 4 步：生成第三层（全量详情文件）
 
@@ -374,6 +472,9 @@ python3 {SKILL_DIR}/scripts/verify_kb.py <kb_root>
 7. **必须严格按规范文件中的格式生成**，不得省略表格列、参数详情或响应字段
 8. **生成每个索引文件前必须先 read_file 读取对应规范文件**，不要凭记忆生成
 9. **每个文件写完后必须执行 gen_progress.py done**，保持进度清单实时更新
+10. **架构模式必须有 ✅ GOOD / ❌ BAD 代码示例**，示例必须来自实际代码
+11. **反模式必须有检测方法**，说明如何在代码中发现违规
+12. **项目宪法是全局唯一的**，放在 `kb/` 根目录，不在模块目录下重复
 
 ---
 

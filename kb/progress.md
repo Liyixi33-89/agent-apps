@@ -9,6 +9,10 @@
 
 - ✅ 00_project_map.md (2026-04-13 16:11)
 
+### 第零层（项目宪法）
+
+- ✅ 00_project_constitution.md (2026-04-14 14:33)
+
 ## server/server
 
 ### 第二层（索引文件）
@@ -72,6 +76,11 @@
 - ✅ 05_index_types.md (2026-04-13 16:13)
 - ✅ changelog.md (2026-04-13 16:13)
 
+### 第二.五层（架构模式与反模式）
+
+- ✅ 06_architecture_patterns.md (2026-04-14 14:33)
+- ✅ 07_anti_patterns.md (2026-04-14 14:33)
+
 ### 第三层（详情文件）
 
 #### pages/
@@ -115,6 +124,11 @@
 - ✅ 04_index_store.md (2026-04-13 16:13)
 - ✅ 05_index_types.md (2026-04-13 16:13)
 - ✅ changelog.md (2026-04-13 16:13)
+
+### 第二.五层（架构模式与反模式）
+
+- ✅ 06_architecture_patterns.md (2026-04-14 14:33)
+- ✅ 07_anti_patterns.md (2026-04-14 14:33)
 
 ### 第三层（详情文件）
 
