@@ -61,6 +61,19 @@ triggers:
 2. 检查是否有 PRD（`version-doc/{版本号}/prd/prd.md`）
 3. 检查是否有设计文档（`version-doc/{版本号}/design/`）
 4. 检查是否有 Story 文件（`version-doc/{版本号}/stories/`）
+5. **检查 CHANGELOG 是否已存在**（🆕 新增）：
+   - 如果 `version-doc/{版本号}/CHANGELOG.md` 已存在 → 读取内容
+     - 如果内容与当前需求**一致**（同一功能的更新）→ **覆盖模式**（重新生成）
+     - 如果内容与当前需求**不同**（不同功能的 CHANGELOG）→ ⛔ **拒绝覆盖**，输出：
+       ```
+       ❌ CHANGELOG 冲突：version-doc/{版本号}/CHANGELOG.md 已包含「{已有功能名}」的变更日志。
+       当前需求与已有 CHANGELOG 不匹配。
+       
+       建议：
+       1. 使用新的版本号
+       2. 或手动合并两个功能的 CHANGELOG
+       ```
+   - 如果不存在 → 正常创建
 
 ### 第 1 步：收集变更信息
 
