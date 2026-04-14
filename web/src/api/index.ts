@@ -86,7 +86,7 @@ export const fetchOverview = async () => {
 
 // ─── Agents ────────────────────────────────────────────────────────────────────
 
-export const fetchAgents = async (params?: { category?: string; search?: string; modelType?: string; page?: number; limit?: number }) => {
+export const fetchAgents = async (params?: { category?: string; search?: string; modelType?: string; sort?: string; page?: number; limit?: number }) => {
   const { data } = await api.get<{ success: boolean; data: Agent[]; pagination: { page: number; limit: number; total: number; pages: number } }>('/agents', { params });
   return data;
 };
@@ -874,4 +874,29 @@ export const executeReActLoop = (
     });
 
   return () => controller.abort();
+};
+
+// ─── Agent 评价 API（v1.3.0）──────────────────────────────────────────────────
+
+/** 获取评价列表 + 统计信息 */
+export const fetchReviews = async (slug: string, params?: { page?: number; limit?: number }) => {
+  const { data } = await api.get(`/agents/${slug}/reviews`, { params });
+  return data;
+};
+
+/** 提交/更新评价（upsert） */
+export const submitAgentReview = async (slug: string, body: { rating: number; content?: string }) => {
+  const { data } = await api.post(`/agents/${slug}/reviews`, body);
+  return data.data;
+};
+
+/** 获取当前用户对某个 Agent 的评价 */
+export const fetchMyReview = async (slug: string) => {
+  const { data } = await api.get(`/agents/${slug}/reviews/mine`);
+  return data.data;
+};
+
+/** 删除当前用户的评价 */
+export const deleteAgentReview = async (slug: string) => {
+  await api.delete(`/agents/${slug}/reviews`);
 };

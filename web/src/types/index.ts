@@ -33,6 +33,11 @@ export interface Agent {
     wordCount: number;
   };
   favoriteCount?: number;
+  ratingStats?: {
+    avgRating: number;
+    totalReviews: number;
+    distribution: number[];
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -499,4 +504,35 @@ export interface McpPrompt {
   name: string;
   description?: string;
   arguments?: Array<{ name: string; description?: string; required?: boolean }>;
+}
+
+// ─── Agent 评价类型（v1.3.0）────────────────────────────────────────────────
+
+/** Agent 评价条目 */
+export interface AgentReview {
+  _id: string;
+  agentSlug: string;
+  userId: string;
+  username: string;
+  rating: number;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 评分统计数据 */
+export interface ReviewStatsData {
+  avgRating: number;
+  totalReviews: number;
+  distribution: number[];
+}
+
+/** 评价列表响应 */
+export interface ReviewListResponse {
+  success: boolean;
+  data: {
+    stats: ReviewStatsData;
+    reviews: AgentReview[];
+  };
+  pagination: { page: number; limit: number; total: number; pages: number };
 }

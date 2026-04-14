@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agent 收藏功能 — Demo v1.3.0</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @keyframes heartbeat { 0%,100%{transform:scale(1)} 50%{transform:scale(1.2)} }
+    .animate-heartbeat { animation: heartbeat 0.2s ease-out; }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <!-- 顶部导航 -->
+  <nav class="bg-white shadow-sm border-b px-6 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <span class="text-xl">🤖</span>
+      <span class="font-bold text-lg">Agency Agents</span>
+    </div>
+    <div class="flex items-center gap-3">
+      <span class="text-sm text-gray-500">已登录：demo_user</span>
+      <div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-sm">D</div>
+    </div>
+  </nav>
+
+  <!-- 主内容 -->
+  <div class="max-w-6xl mx-auto px-6 py-6">
+    <h1 class="text-2xl font-bold mb-4">我的 Agent</h1>
+
+    <!-- Tabs -->
+    <div class="flex border-b mb-6" id="tabs">
+      <button class="tab-btn px-4 py-2 text-blue-600 border-b-2 border-blue-600 font-medium" data-tab="all" onclick="switchTab('all')">
+        全部
+      </button>
+      <button class="tab-btn px-4 py-2 text-gray-500 hover:text-gray-700" data-tab="favorites" onclick="switchTab('favorites')">
+        ⭐ 收藏 (<span id="fav-count-tab">0</span>)
+      </button>
+    </div>
+
+    <!-- 全部 Agent 列表 -->
+    <div id="tab-all" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+
+    <!-- 收藏列表 -->
+    <div id="tab-favorites" class="hidden">
+      <div id="fav-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+      <div id="fav-empty" class="hidden text-center py-16">
+        <div class="text-4xl mb-3">⭐</div>
+        <p class="text-gray-500 mb-2">还没有收藏的 Agent</p>
+        <a href="#" onclick="switchTab('all'); return false;" class="text-blue-500 hover:underline">去看看全部 Agent →</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Agent 详情弹窗 -->
+  <div id="detail-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50" onclick="closeDetail(event)">
+    <div class="bg-white rounded-xl shadow-xl max-w-lg w-full mx-4 p-6" onclick="event.stopPropagation()">
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-3">
+          <span id="detail-emoji" class="text-3xl"></span>
+          <div>
+            <h2 id="detail-name" class="text-xl font-bold"></h2>
+            <p id="detail-desc" class="text-gray-500 text-sm"></p>
+          </div>
+        </div>
+        <button onclick="closeDetail()" class="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+      </div>
+      <div class="flex items-center gap-4 mb-4">
+        <button id="detail-fav-btn" class="flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors" onclick="toggleFavoriteDetail()">
+          <span id="detail-star"></span>
+          <span id="detail-fav-text"></span>
+          <span id="detail-fav-count" class="text-gray-400 text-sm"></span>
+        </button>
+        <button class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">开始对话</button>
+      </div>
+      <div class="flex gap-2" id="detail-tags"></div>
+    </div>
+  </div>
+
+  <script>
+    // 模拟数据
+    const agents = [
+      { id: '1', emoji: '💻', name: '代码助手', desc: '帮你写代码、审查代码、解释代码', tags: ['编程', 'TypeScript'], favCount: 1234 },
+      { id: '2', emoji: '📝', name: '文案写手', desc: '撰写营销文案、产品描述、社交媒体内容', tags: ['写作', '营销'], favCount: 856 },
+      { id: '3', emoji: '🎨', name: 'UI 设计师', desc: '生成 UI 设计方案、配色建议、布局优化', tags: ['设计', 'UI/UX'], favCount: 423 },
+      { id: '4', emoji: '📊', name: '数据分析师', desc: '分析数据趋势、生成报表、SQL 查询', tags: ['数据', 'SQL'], favCount: 2100 },
+      { id: '5', emoji: '🔍', name: 'SEO 专家', desc: '优化搜索排名、关键词分析、内容策略', tags: ['SEO', '营销'], favCount: 167 },
+      { id: '6', emoji: '🤝', name: '面试教练', desc: '模拟面试、简历优化、职业规划', tags: ['求职', '面试'], favCount: 89 },
+    ];
+
+    // 收藏状态
+    const favorites = new Set();
+
+    // 格式化收藏数
+    const formatCount = (count) => {
+      if (count <= 0) return '';
+      if (count < 1000) return String(count);
+      if (count < 10000) return `${(count / 1000).toFixed(1)}k`;
+      return `${Math.floor(count / 1000)}k`;
+    };
+
+    // 渲染 Agent 卡片
+    const renderCard = (agent, container) => {
+      const isFav = favorites.has(agent.id);
+      const card = document.createElement('div');
+      card.className = 'bg-white rounded-xl border shadow-sm hover:shadow-md transition-shadow p-4 cursor-pointer';
+      card.innerHTML = `
+        <div class="flex items-start justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <span class="text-2xl">${agent.emoji}</span>
+            <h3 class="font-semibold">${agent.name}</h3>
+          </div>
+          <button class="fav-btn flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-gray-100 transition-colors"
+                  onclick="event.stopPropagation(); toggleFavorite('${agent.id}')"
+                  aria-label="${isFav ? '取消收藏此 Agent' : '收藏此 Agent'}" tabindex="0">
+            <span class="text-lg ${isFav ? 'text-yellow-400' : 'text-gray-300'}">${isFav ? '★' : '☆'}</span>
+            <span class="text-xs text-gray-400">${formatCount(agent.favCount + (isFav ? 1 : 0))}</span>
+          </button>
+        </div>
+        <p class="text-gray-500 text-sm mb-3">${agent.desc}</p>
+        <div class="flex gap-2">
+          ${agent.tags.map(t => `<span class="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full">${t}</span>`).join('')}
+        </div>
+      `;
+      card.onclick = () => openDetail(agent.id);
+      container.appendChild(card);
+    };
+
+    // 渲染全部列表
+    const renderAll = () => {
+      const container = document.getElementById('tab-all');
+      container.innerHTML = '';
+      agents.forEach(a => renderCard(a, container));
+    };
+
+    // 渲染收藏列表
+    const renderFavorites = () => {
+      const list = document.getElementById('fav-list');
+      const empty = document.getElementById('fav-empty');
+      list.innerHTML = '';
+
+      const favAgents = agents.filter(a => favorites.has(a.id));
+      document.getElementById('fav-count-tab').textContent = favAgents.length;
+
+      if (favAgents.length === 0) {
+        list.classList.add('hidden');
+        empty.classList.remove('hidden');
+      } else {
+        list.classList.remove('hidden');
+        empty.classList.add('hidden');
+        favAgents.forEach(a => renderCard(a, list));
+      }
+    };
+
+    // 切换收藏
+    const toggleFavorite = (id) => {
+      if (favorites.has(id)) {
+        favorites.delete(id);
+      } else {
+        favorites.add(id);
+      }
+      renderAll();
+      renderFavorites();
+      // 如果详情弹窗打开，也更新
+      if (!document.getElementById('detail-modal').classList.contains('hidden')) {
+        updateDetailFav(id);
+      }
+    };
+
+    // Tab 切换
+    const switchTab = (tab) => {
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        const isActive = btn.dataset.tab === tab;
+        btn.className = `tab-btn px-4 py-2 ${isActive ? 'text-blue-600 border-b-2 border-blue-600 font-medium' : 'text-gray-500 hover:text-gray-700'}`;
+      });
+      document.getElementById('tab-all').classList.toggle('hidden', tab !== 'all');
+      document.getElementById('tab-favorites').classList.toggle('hidden', tab !== 'favorites');
+    };
+
+    // 详情弹窗
+    let currentDetailId = null;
+
+    const openDetail = (id) => {
+      currentDetailId = id;
+      const agent = agents.find(a => a.id === id);
+      document.getElementById('detail-emoji').textContent = agent.emoji;
+      document.getElementById('detail-name').textContent = agent.name;
+      document.getElementById('detail-desc').textContent = agent.desc;
+      document.getElementById('detail-tags').innerHTML = agent.tags.map(t =>
+        `<span class="px-3 py-1 bg-gray-100 text-gray-600 text-sm rounded-full">${t}</span>`
+      ).join('');
+      updateDetailFav(id);
+      document.getElementById('detail-modal').classList.remove('hidden');
+    };
+
+    const updateDetailFav = (id) => {
+      const agent = agents.find(a => a.id === id);
+      const isFav = favorites.has(id);
+      const btn = document.getElementById('detail-fav-btn');
+      btn.className = `flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${isFav ? 'bg-yellow-50 border-yellow-300' : 'hover:bg-gray-50'}`;
+      document.getElementById('detail-star').textContent = isFav ? '★' : '☆';
+      document.getElementById('detail-star').className = isFav ? 'text-yellow-400' : 'text-gray-400';
+      document.getElementById('detail-fav-text').textContent = isFav ? '已收藏' : '收藏';
+      document.getElementById('detail-fav-count').textContent = `(${formatCount(agent.favCount + (isFav ? 1 : 0))})`;
+    };
+
+    const toggleFavoriteDetail = () => {
+      if (currentDetailId) toggleFavorite(currentDetailId);
+    };
+
+    const closeDetail = (e) => {
+      if (!e || e.target === e.currentTarget) {
+        document.getElementById('detail-modal').classList.add('hidden');
+        currentDetailId = null;
+      }
+    };
+
+    // 初始化
+    renderAll();
+    renderFavorites();
+  </script>
+</body>
+</html>

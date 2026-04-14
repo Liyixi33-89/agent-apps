@@ -6,7 +6,7 @@ import {
 } from 'antd';
 import {
   SearchOutlined, RobotOutlined, EyeOutlined, MessageOutlined, FilterOutlined,
-  StarOutlined,
+  StarOutlined, StarFilled,
 } from '@ant-design/icons';
 import { fetchAgents, fetchCategories, fetchFavorites, checkFavorites } from '../api';
 import { useLang } from '../store';
@@ -30,6 +30,7 @@ const AgentsPage = () => {
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
+  const [sortBy, setSortBy] = useState('');
 
   // ─── 收藏相关状态 ──────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<'all' | 'favorites'>('all');
@@ -50,6 +51,7 @@ const AgentsPage = () => {
         category: selectedCategory || undefined,
         search: searchQuery || undefined,
         modelType: modelFilter || undefined,
+        sort: sortBy || undefined,
         page,
         limit: 24,
       });
@@ -60,7 +62,7 @@ const AgentsPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [selectedCategory, searchQuery, modelFilter, page]);
+  }, [selectedCategory, searchQuery, modelFilter, sortBy, page]);
 
   // 加载收藏列表
   const loadFavorites = useCallback(async () => {
@@ -204,6 +206,15 @@ const AgentsPage = () => {
           value={modelFilter}
           onChange={(v) => handleModelFilter(v as string)}
           aria-label="模型类型筛选"
+        />
+        <Segmented
+          options={[
+            { label: lang === 'zh' ? '默认排序' : 'Default', value: '' },
+            { label: <Space size={4}><StarFilled style={{ color: '#fadb14' }} />{lang === 'zh' ? '按评分' : 'By Rating'}</Space>, value: 'rating' },
+          ]}
+          value={sortBy}
+          onChange={(v) => { setSortBy(v as string); setPage(1); }}
+          aria-label="排序方式"
         />
       </div>
 
@@ -383,9 +394,18 @@ const AgentsPage = () => {
                             <Tag color={agent.modelPreferences.primary === 'vision' ? 'purple' : 'cyan'} className="text-xs">
                               {agent.modelPreferences.primary === 'vision' ? '👁️ Vision' : '💬 Text'}
                             </Tag>
-                            <Text type="secondary" className="text-xs ml-auto">
-                              {agent.stats.wordCount.toLocaleString()} words
-                            </Text>
+                            {/* 评分显示（v1.3.0） */}
+                            {agent.ratingStats && agent.ratingStats.totalReviews > 0 ? (
+                              <span className="flex items-center gap-1 text-xs text-gray-500 ml-auto">
+                                <StarFilled style={{ color: '#fadb14', fontSize: 12 }} />
+                                <span className="font-medium text-gray-700">{agent.ratingStats.avgRating.toFixed(1)}</span>
+                                <span className="text-gray-400">({agent.ratingStats.totalReviews})</span>
+                              </span>
+                            ) : (
+                              <Text type="secondary" className="text-xs ml-auto">
+                                {agent.stats.wordCount.toLocaleString()} words
+                              </Text>
+                            )}
                           </div>
                         </Card>
                       </Link>

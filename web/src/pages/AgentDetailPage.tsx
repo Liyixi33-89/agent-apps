@@ -6,6 +6,8 @@ import remarkGfm from 'remark-gfm';
 import { fetchAgent, checkFavorites } from '../api';
 import { useLang } from '../store';
 import FavoriteButton from '../components/FavoriteButton';
+import ReviewForm from '../components/ReviewForm';
+import ReviewList from '../components/ReviewList';
 import type { Agent } from '../types';
 
 const colorMap: Record<string, string> = {
@@ -34,6 +36,11 @@ const AgentDetailPage = () => {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['overview']));
   const [activeTab, setActiveTab] = useState<'overview' | 'workflow' | 'raw'>('overview');
   const [isFavorited, setIsFavorited] = useState(false);
+  const [reviewRefreshKey, setReviewRefreshKey] = useState(0);
+
+  const handleReviewSubmitted = () => {
+    setReviewRefreshKey((prev) => prev + 1);
+  };
 
   useEffect(() => {
     if (!slug) return;
@@ -285,6 +292,15 @@ const AgentDetailPage = () => {
           </div>
         </div>
       )}
+
+      {/* 评分评价区域（v1.3.0） */}
+      <div className="mt-6">
+        <h2 className="text-lg font-bold text-slate-800 mb-4">
+          {lang === 'zh' ? '用户评价' : 'User Reviews'}
+        </h2>
+        <ReviewList agentSlug={agent.slug} refreshKey={reviewRefreshKey} />
+        <ReviewForm agentSlug={agent.slug} onSubmitSuccess={handleReviewSubmitted} />
+      </div>
     </div>
   );
 };

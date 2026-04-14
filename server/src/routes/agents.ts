@@ -53,6 +53,7 @@ import { compileRouter } from './compile.js';
 import { mcpRouter } from './mcp.js';
 import { skillRouter } from './skill.js';
 import { oauthRouter } from './oauth.js';
+import { reviewRouter } from './review.js';
 
 // =============================================================================
 // § 1  基础设施 — Prompt 读取工具 / Router 实例
@@ -104,7 +105,7 @@ agentsRouter.get('/overview', async (ctx) => {
 // ─── Agent 列表  GET /api/agents ─────────────────────────────────────────────
 
 agentsRouter.get('/agents', async (ctx) => {
-  const { category, search = '', modelType, page = '1', limit = '20' } = ctx.query as Record<string, string>;
+  const { category, search = '', modelType, sort, page = '1', limit = '20' } = ctx.query as Record<string, string>;
   const query: Record<string, unknown> = {};
 
   if (category) query.categoryKey = category;
@@ -122,8 +123,13 @@ agentsRouter.get('/agents', async (ctx) => {
   const limitNum = Math.min(100, parseInt(limit));
   const skip = (pageNum - 1) * limitNum;
 
+  // 排序逻辑：支持 sort=rating 按评分降序
+  const sortQuery = sort === 'rating'
+    ? { 'ratingStats.avgRating': -1, 'ratingStats.totalReviews': -1 }
+    : { categoryKey: 1, 'name.en': 1 };
+
   const [agents, total] = await Promise.all([
-    Agent.find(query).sort({ categoryKey: 1, 'name.en': 1 }).skip(skip).limit(limitNum).lean(),
+    Agent.find(query).sort(sortQuery as any).skip(skip).limit(limitNum).lean(), // eslint-disable-line @typescript-eslint/no-explicit-any
     Agent.countDocuments(query)
   ]);
 
@@ -182,3 +188,4 @@ agentsRouter.use(compileRouter.routes(), compileRouter.allowedMethods());
 agentsRouter.use(mcpRouter.routes(), mcpRouter.allowedMethods());
 agentsRouter.use(skillRouter.routes(), skillRouter.allowedMethods());
 agentsRouter.use(oauthRouter.routes(), oauthRouter.allowedMethods());
+agentsRouter.use(reviewRouter.routes(), reviewRouter.allowedMethods());

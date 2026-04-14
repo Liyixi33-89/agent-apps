@@ -44,6 +44,12 @@ export interface IAgent extends Document {
     sectionCount: number;
     wordCount: number;
   };
+  favoriteCount: number;
+  ratingStats: {
+    avgRating: number;
+    totalReviews: number;
+    distribution: number[];
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -97,7 +103,12 @@ const agentSchema = new Schema<IAgent>(
       sectionCount: { type: Number, default: 0 },
       wordCount: { type: Number, default: 0 }
     },
-    favoriteCount: { type: Number, default: 0, min: 0 }
+    favoriteCount: { type: Number, default: 0, min: 0 },
+    ratingStats: {
+      avgRating: { type: Number, default: 0 },
+      totalReviews: { type: Number, default: 0 },
+      distribution: { type: [Number], default: [0, 0, 0, 0, 0] },
+    },
   },
   { timestamps: true }
 );
@@ -106,5 +117,6 @@ const agentSchema = new Schema<IAgent>(
 agentSchema.index({ slug: 1 }, { unique: true });
 agentSchema.index({ 'name.zh': 'text', 'name.en': 'text', 'description.zh': 'text', 'description.en': 'text' });
 agentSchema.index({ 'stats.wordCount': -1 });
+agentSchema.index({ 'ratingStats.avgRating': -1 });
 
 export const Agent = mongoose.models.Agent || mongoose.model<IAgent>('Agent', agentSchema);
