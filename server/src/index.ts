@@ -21,6 +21,7 @@ import { seedBuiltinRoles } from './models/Role.js';
 import { startKnowledgeScheduler, stopKnowledgeScheduler } from './services/knowledgeScheduler.js';
 import { knowledgeGraphRouter } from './routes/knowledgeGraph.js';
 import { agentMarketRouter } from './routes/agentMarket.js';
+import { favoriteRouter } from './routes/favorite.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -106,6 +107,8 @@ app.use(knowledgeGraphRouter.routes());
 app.use(knowledgeGraphRouter.allowedMethods());
 app.use(agentMarketRouter.routes());
 app.use(agentMarketRouter.allowedMethods());
+app.use(favoriteRouter.routes());
+app.use(favoriteRouter.allowedMethods());
 
 // ─── 启动 ──────────────────────────────────────────────────────────────────────
 
