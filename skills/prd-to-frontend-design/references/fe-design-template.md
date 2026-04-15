@@ -37,7 +37,25 @@
 
 ---
 
-## 二、路由设计
+## 二、文件变更清单（快速预览）
+
+> 供 design-review 和人工审批快速了解本次变更涉及的所有文件，无需通读全文。
+
+| # | 文件路径 | 操作 | 变更内容 | 影响范围 |
+|---|---------|------|---------|---------|
+| 1 | `{app}/src/pages/{PageName}.tsx` | 🆕 新增 / ✏️ 修改 | {简要描述变更内容} | {新文件 / 影响哪些页面} |
+| 2 | `{app}/src/components/{ComponentName}.tsx` | 🆕 新增 / ✏️ 修改 | {简要描述变更内容} | {新文件 / 影响哪些页面引用} |
+| 3 | `{app}/src/api/index.ts` | ✏️ 修改 | {新增 N 个 API 封装函数} | {影响哪些页面调用} |
+| 4 | `{app}/src/store/index.ts` | ✏️ 修改 / 📎 无变更 | {新增 N 个状态和 Action} | {影响哪些组件} |
+| 5 | `{app}/src/types/index.ts` | ✏️ 修改 | {新增 N 个类型定义} | {影响哪些文件引用} |
+| 6 | `{app}/src/App.tsx` | ✏️ 修改 | {注册新路由} | {N 行变更} |
+| ... | ... | ... | ... | ... |
+
+**操作图例**：🆕 新增文件 · ✏️ 修改现有文件 · 🗑️ 删除文件 · 📎 复用（无变更）
+
+---
+
+## 三、路由设计
 
 ### 新增路由
 
@@ -54,9 +72,9 @@
 
 ---
 
-## 三、页面设计
+## 四、页面设计
 
-### 3.1 {PageName}（新增/修改现有）
+### 4.1 {PageName}（新增/修改现有）
 
 > 来源：PRD 功能模块 {N}
 > 文件：{app}/src/pages/{PageName}.tsx
@@ -114,9 +132,9 @@
 
 ---
 
-## 四、组件设计
+## 五、组件设计
 
-### 4.1 {ComponentName}（新增/复用）
+### 5.1 {ComponentName}（新增/复用）
 
 > 来源：PRD 功能模块 {N}
 > 文件：{app}/src/components/{ComponentName}.tsx（公共组件）
@@ -144,7 +162,7 @@ interface {ComponentName}Props {
 
 ---
 
-## 五、API 封装设计
+## 六、API 封装设计
 
 ### 文件：{app}/src/api/index.ts
 
@@ -169,7 +187,7 @@ export const {funcName} = (params: {ParamType} & { newParam?: type }): Promise<{
 
 ---
 
-## 六、Store 设计
+## 七、Store 设计
 
 ### 文件：{app}/src/store/index.ts
 
@@ -191,7 +209,7 @@ set{StateName}: (value: {type}) => set({ {stateName}: value }),
 
 ---
 
-## 七、类型定义设计
+## 八、类型定义设计
 
 ### 文件：{app}/src/types/index.ts
 
@@ -217,7 +235,7 @@ export interface {TypeName} {
 
 ---
 
-## 八、KB 参考
+## 九、KB 参考
 
 | 参考内容 | KB 文件 | 说明 |
 |---------|---------|------|
@@ -225,7 +243,7 @@ export interface {TypeName} {
 
 ---
 
-## 九、实施建议
+## 十、实施建议
 
 ### 实施顺序
 

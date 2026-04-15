@@ -1,7 +1,7 @@
 
 # Skills 架构全景图
 
-> 本文档基于 **Agency Agents Platform** 项目的 `skills/` 目录，系统梳理当前 22 个 Agent Skill 的分层架构、工作流编排、依赖关系与数据流。每个 Skill 均以 `SKILL.md` 声明式定义，由 `pipeline-orchestrator` 统一调度。
+> 本文档基于 **Agency Agents Platform** 项目的 `skills/` 目录，系统梳理当前 23 个 Agent Skill 的分层架构、工作流编排、依赖关系与数据流。每个 Skill 均以 `SKILL.md` 声明式定义，由 `pipeline-orchestrator` 统一调度。Pipeline 默认采用 **Review-First 模式**（规划 → 设计评审 → 编码 → 代码审查），借鉴 Kiro Spec-Driven Development 理念。
 
 ---
 
@@ -20,11 +20,11 @@
 
 ## 1. Skill 清单总览
 
-共 **22 个 Skill**，按生命周期阶段分为 7 层：
+共 **23 个 Skill**，按生命周期阶段分为 7 层：
 
 | # | Skill 名称 | 类别 | 描述 |
 |---|-----------|------|------|
-| 1 | `pipeline-orchestrator` | 🎯 编排层 | AI 开发 Pipeline 编排器，根据任务类型自动串联 Skill 工作流 |
+| 1 | `pipeline-orchestrator` | 🎯 编排层 | AI 开发 Pipeline 编排器，默认 Review-First 模式，三阶段 + 两道门禁 |
 | 2 | `brd-normalize` | 📋 需求阶段 | 将原始业务需求标准化为 BRD 文档 |
 | 3 | `prd-brd-to-prd` | 📋 需求阶段 | BRD → PRD 产品需求文档（含质量门禁） |
 | 4 | `story-split` | 📋 需求阶段 | PRD → Epic → Story → Task 拆分 |
@@ -32,20 +32,21 @@
 | 6 | `prd-to-backend-design` | 🎨 设计阶段 | PRD → 后端技术设计文档 |
 | 7 | `prd-to-frontend-design` | 🎨 设计阶段 | PRD → 前端技术设计文档 |
 | 8 | `gen-demo-html` | 🎨 设计阶段 | 基于 BRD/PRD 生成可交互 HTML Demo |
-| 9 | `db-migration` | 🔧 编码阶段 | Schema 变更 → 安全的数据库迁移脚本 |
-| 10 | `gen-backend-code` | 🔧 编码阶段 | 读取后端设计文档，生成/修改后端代码 |
-| 11 | `gen-frontend-code` | 🔧 编码阶段 | 读取前端设计文档，生成/修改前端代码 |
-| 12 | `code-review` | ✅ 质量阶段 | 代码审查（含 PRD 非功能需求覆盖检查） |
-| 13 | `gen-test-code` | ✅ 质量阶段 | 自动生成测试用例（单元/集成/E2E） |
-| 14 | `bug-fix` | 🐛 维护阶段 | Bug 分析与修复 |
-| 15 | `refactor` | 🐛 维护阶段 | 代码重构 |
-| 16 | `doc-code-to-kb` | 📚 知识阶段 | 代码/文档 → 知识库（KB）更新 |
-| 17 | `kb-qa` | 📚 知识阶段 | 基于知识库的问答与审查 |
-| 18 | `changelog-gen` | 📦 发布阶段 | 自动生成版本变更日志 |
-| 19 | `deploy-check` | 📦 发布阶段 | 部署前检查清单 |
-| 20 | `sprint-report` | 📦 发布阶段 | Sprint 回顾报告生成 |
-| 21 | `api-doc-gen` | 📦 发布阶段 | 生成 OpenAPI 3.0 API 文档 |
-| 22 | `tech-debt-tracker` | 🔍 治理层 | 技术债务追踪与管理 |
+| 9 | `design-review` | ⛔ 门禁层 | 🆕 设计评审，生成变更清单摘要，供人工审批（Gate 1） |
+| 10 | `db-migration` | 🔧 编码阶段 | Schema 变更 → 安全的数据库迁移脚本 |
+| 11 | `gen-backend-code` | 🔧 编码阶段 | 读取后端设计文档，生成/修改后端代码 |
+| 12 | `gen-frontend-code` | 🔧 编码阶段 | 读取前端设计文档，生成/修改前端代码 |
+| 13 | `code-review` | ✅ 质量阶段 | 代码审查（含 PRD 非功能需求覆盖检查）（Gate 2） |
+| 14 | `gen-test-code` | ✅ 质量阶段 | 自动生成测试用例（单元/集成/E2E） |
+| 15 | `bug-fix` | 🐛 维护阶段 | Bug 分析与修复 |
+| 16 | `refactor` | 🐛 维护阶段 | 代码重构 |
+| 17 | `doc-code-to-kb` | 📚 知识阶段 | 代码/文档 → 知识库（KB）更新 |
+| 18 | `kb-qa` | 📚 知识阶段 | 基于知识库的问答与审查 |
+| 19 | `changelog-gen` | 📦 发布阶段 | 自动生成版本变更日志 |
+| 20 | `deploy-check` | 📦 发布阶段 | 部署前检查清单 |
+| 21 | `sprint-report` | 📦 发布阶段 | Sprint 回顾报告生成 |
+| 22 | `api-doc-gen` | 📦 发布阶段 | 生成 OpenAPI 3.0 API 文档 |
+| 23 | `tech-debt-tracker` | 🔍 治理层 | 技术债务追踪与管理 |
 
 ---
 
